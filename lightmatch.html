@@ -1323,17 +1323,35 @@ const STORE = {
   },
 
   // -- IndexedDB plumbing -------------------------------------------------------------
+  // DB_NAME is the real user database. _dbName is the ACTIVE database name (#6):
+  // defaults to DB_NAME, but the selftest points it at "lightmatch-selftest" around
+  // every IDB-touching suite so `?selftest` in the user's daily browser can never
+  // read, prune, or delete their real "lightmatch" sessions. _useDb() below switches
+  // it and drops the cached open handle so the next _openDB() opens the new database.
   DB_NAME: "lightmatch", DB_VERSION: 1, STORE_NAME: "sessions",
+  _dbName: "lightmatch",
   persistent: true,
   _dbPromise: null,
   _mem: new Map(), // in-memory fallback, keyed by session id — used only if IDB open fails
+
+  // -- _useDb(name): switch the active IDB database name and invalidate the cached
+  // open promise (a later _openDB() reopens against the new name). Also clears the
+  // in-memory fallback map so a degraded-mode selftest can't see the user's rows.
+  // Returns the previous name so a caller can restore it in a finally. --------------
+  _useDb(name) {
+    const prev = this._dbName;
+    this._dbName = name;
+    this._dbPromise = null;
+    this._mem = new Map();
+    return prev;
+  },
 
   _openDB() {
     if (this._dbPromise) return this._dbPromise;
     this._dbPromise = new Promise((resolve) => {
       let req;
       try {
-        req = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+        req = indexedDB.open(this._dbName, this.DB_VERSION);
       } catch (e) {
         this.persistent = false;
         resolve(null);
@@ -1423,14 +1441,13 @@ const STORE = {
   // in memory, including any not-yet-persisted edit) but falls back to STORE's own
   // "current" notion (the latest SAVED session) when called with no argument, per the
   // plan's "exportJSON() returns a JSON string of the current session". importJSON
-  // does minimal shape validation — must be a parseable object with a string `id` and
-  // a `chains` object — then saves it. `created` is normalized (Task 7a hardening):
-  // missing or non-ISO-parseable becomes "now", since STORE.loadLatest() sorts
-  // sessions by a lexical comparison of `created` — a garbage or absent value would
-  // either crash that comparison's assumptions or silently sort the imported session
-  // to the wrong end of "latest". A VALID ISO `created` is preserved verbatim (an
-  // imported session should keep its true original timestamp, not be stamped as if
-  // freshly created). -------------------------------------------------------------
+  // validates the session shape — a parseable object with a string `id`, a `chains`
+  // object whose every chain is {recipe, attempts:[]} (attempts an array; any recipe
+  // carrying an array `values`), and no invalid image payloads (the XSS boundary
+  // below) — then saves it. `created` is ALWAYS stamped to now (#5b): an imported
+  // session is the one the user wants to work on right now, so it must sort as
+  // loadLatest()'s newest and survive _pruneSessions regardless of its original
+  // export timestamp. -------------------------------------------------------------
   async exportJSON(session) {
     const s = session !== undefined ? session : await this.loadLatest();
     return JSON.stringify(s);
@@ -1463,9 +1480,30 @@ const STORE = {
     if (!obj.chains || typeof obj.chains !== "object") {
       throw new Error("importJSON: missing session.chains");
     }
-    if (typeof obj.created !== "string" || Number.isNaN(Date.parse(obj.created))) {
-      obj.created = new Date().toISOString();
+    // -- SESSION-SHAPE VALIDATION (#5a): a malformed session must be rejected with a
+    // clear message, not silently saved and later crash a render read. Every chain
+    // must be a {recipe, attempts:[]} object with attempts an ARRAY, and any recipe
+    // present must carry an array `values` (the shape every render/history path
+    // assumes). Rejecting here — at the trust boundary — is the belt to the runtime
+    // null-guards scattered downstream.
+    for (const target of Object.keys(obj.chains)) {
+      const chain = obj.chains[target];
+      if (!chain || typeof chain !== "object") {
+        throw new Error(`importJSON: chain "${target}" is not an object.`);
+      }
+      if (!Array.isArray(chain.attempts)) {
+        throw new Error(`importJSON: chain "${target}" is missing an attempts[] array.`);
+      }
+      if (chain.recipe != null && !Array.isArray(chain.recipe.values)) {
+        throw new Error(`importJSON: chain "${target}" has a recipe without an array "values".`);
+      }
     }
+    // -- ACTIVATE THE IMPORT (#5b): stamp `created` to now so loadLatest() returns the
+    // imported session (it becomes the newest) AND _pruneSessions can't drop it as
+    // stale. This deliberately overrides any timestamp in the file — an imported
+    // session is the one the user wants to work on right now, so it must sort as the
+    // latest regardless of when it was originally exported.
+    obj.created = new Date().toISOString();
     // -- STORED-XSS BOUNDARY (CRITICAL): every dataUrl-bearing field in an imported
     // file is untrusted and flows into an <img src="${...}"> sink. Walk them all and
     // REJECT the whole import on the first bad payload — do NOT strip-and-continue,
@@ -3204,7 +3242,17 @@ const SELFTEST = { fails: [], n: 0,
   ok(cond, msg) { this.n++; if (!cond) this.fails.push(msg); },
   close(a, b, tol, msg) { this.ok(Math.abs(a - b) <= tol, `${msg} (got ${a}, want ${b}±${tol})`); },
   async run() {
-    for (const [name, fn] of Object.entries(SELFTEST.suites)) { try { await fn.call(SELFTEST); } catch (e) { this.fails.push(name + " threw: " + e.message); } }
+    // IDB isolation (#6): run EVERY suite against a throwaway "lightmatch-selftest"
+    // database, never the user's real "lightmatch" one. Even the retention suite's
+    // real prune then only ever touches selftest rows. Restored + the throwaway DB
+    // deleted in the finally so a ?selftest visit leaves the real database untouched.
+    const _restoreDb = STORE._useDb("lightmatch-selftest");
+    try {
+      for (const [name, fn] of Object.entries(SELFTEST.suites)) { try { await fn.call(SELFTEST); } catch (e) { this.fails.push(name + " threw: " + e.message); } }
+    } finally {
+      try { await new Promise((res) => { const r = indexedDB.deleteDatabase("lightmatch-selftest"); r.onsuccess = r.onerror = r.onblocked = () => res(); }); } catch (e) {}
+      STORE._useDb(_restoreDb);
+    }
     const line = this.fails.length ? `SELFTEST: FAIL\n` + this.fails.join("\n") : `SELFTEST: PASS (${this.n} asserts)`;
     document.body.textContent = line; document.title = line.split("\n")[0];
   }, suites: {} };
@@ -4599,9 +4647,11 @@ SELFTEST.suites.engine = async function () {
     }
   }
 
-  // -- STORE.importJSON: normalizes/validates `created` — missing or non-ISO becomes
-  // "now" rather than silently storing garbage that later breaks loadLatest()'s
-  // lexical-ISO-comparison sort.
+  // -- STORE.importJSON: ALWAYS stamps `created` to now (#5b) — an imported session is
+  // the one to work on right now, so it must sort as loadLatest()'s newest and survive
+  // prune regardless of any timestamp in the file (missing, garbage, OR a valid older
+  // ISO all become now). This replaces the old "preserve a valid ISO verbatim"
+  // behavior in lockstep with fix #5.
   {
     const impId1 = "selftest-" + Date.now() + "-import-missing-created";
     const impId2 = "selftest-" + Date.now() + "-import-bad-created";
@@ -4620,12 +4670,92 @@ SELFTEST.suites.engine = async function () {
       const importedBad = await STORE.importJSON(JSON.stringify(badCreated));
       this.ok(!Number.isNaN(Date.parse(importedBad.created)), `STORE.importJSON: non-ISO "created" ("not-a-date") is normalized to a valid date (got ${JSON.stringify(importedBad.created)})`);
 
+      // (#5b, updated in lockstep) a valid OLD ISO `created` is now OVERWRITTEN with now
+      // (activate-on-import), no longer preserved verbatim — so an imported session
+      // always becomes loadLatest()'s newest.
       const goodIso = "2026-01-01T00:00:00.000Z";
+      const beforeGood = new Date().toISOString();
       const goodCreated = { id: impId3, created: goodIso, context: { scene: "", time: "", rig: "" }, ref: null, base: null, settingsShot: null, activeTarget: "vray7max", chains: validChains };
       const importedGood = await STORE.importJSON(JSON.stringify(goodCreated));
-      this.ok(importedGood.created === goodIso, `STORE.importJSON: a valid ISO "created" is preserved verbatim, not overwritten (got ${importedGood.created})`);
+      this.ok(importedGood.created !== goodIso, "STORE.importJSON (#5b): a valid OLD ISO created is NOT kept verbatim — it is re-stamped to now on import");
+      this.ok(importedGood.created >= beforeGood && !Number.isNaN(Date.parse(importedGood.created)), `STORE.importJSON (#5b): the re-stamped created is (approximately) now (got ${importedGood.created})`);
     } finally {
       for (const id of [impId1, impId2, impId3]) { try { await STORE.deleteSession(id); } catch (e) {} }
+    }
+  }
+
+  // -- (#5) importJSON activates the imported session + validates its shape.
+  {
+    const olderId = "selftest-" + Date.now() + "-import-older";
+    const newerId = "selftest-" + Date.now() + "-import-current-newer";
+    const validChains = () => ({ vray7max: { recipe: null, attempts: [] }, vantage33: { recipe: null, attempts: [] } });
+    try {
+      // An existing "current" session lives in the store, its file timestamp a few
+      // seconds ago (deterministically backdated so the freshly-stamped import below is
+      // unambiguously newer — a same-millisecond tie would otherwise make loadLatest's
+      // ">" comparison insertion-order dependent). It is still NEWER than the imported
+      // file's own 2020 timestamp, which is the situation the test dramatizes.
+      await STORE.saveSession({ id: newerId, created: new Date(Date.now() - 3000).toISOString(), context: { scene: "", time: "", rig: "" }, ref: null, base: null, settingsShot: null, activeTarget: "vray7max", chains: validChains() });
+      // ...and we import a session whose file timestamp is OLDER than it. Before #5 this
+      // would import but NOT become loadLatest()'s result (and prune could drop it);
+      // now importJSON re-stamps `created` to now, so it activates as the newest.
+      const olderFile = { id: olderId, created: "2020-01-01T00:00:00.000Z", context: { scene: "", time: "", rig: "" }, ref: null, base: null, settingsShot: null, activeTarget: "vantage33", chains: validChains() };
+      const imported = await STORE.importJSON(JSON.stringify(olderFile));
+      this.ok(imported.id === olderId, "importJSON (#5): returns the imported session");
+      const latest = await STORE.loadLatest();
+      this.ok(!!latest && latest.id === olderId, `importJSON (#5): the imported (older-file) session becomes loadLatest()'s result over a newer existing session (got ${latest && latest.id})`);
+
+      // malformed shape: a chain missing its attempts[] array -> rejected with a clear message.
+      const badShape = { id: "selftest-" + Date.now() + "-import-badshape", created: new Date().toISOString(), context: {}, ref: null, base: null, settingsShot: null, activeTarget: "vray7max", chains: { vray7max: { recipe: null }, vantage33: { recipe: null, attempts: [] } } };
+      let threwShape5 = null;
+      try { await STORE.importJSON(JSON.stringify(badShape)); } catch (e) { threwShape5 = e; }
+      this.ok(!!threwShape5 && /attempts/.test(threwShape5.message || ""), `importJSON (#5): a chain missing attempts[] is rejected, message names attempts (got ${threwShape5 && threwShape5.message})`);
+      // malformed shape: a recipe without an array `values` -> rejected.
+      const badRecipe = { id: "selftest-" + Date.now() + "-import-badrecipe", created: new Date().toISOString(), context: {}, ref: null, base: null, settingsShot: null, activeTarget: "vray7max", chains: { vray7max: { recipe: { rationale: "x" }, attempts: [] }, vantage33: { recipe: null, attempts: [] } } };
+      let threwRecipe5 = null;
+      try { await STORE.importJSON(JSON.stringify(badRecipe)); } catch (e) { threwRecipe5 = e; }
+      this.ok(!!threwRecipe5 && /values/.test(threwRecipe5.message || ""), `importJSON (#5): a recipe without array values is rejected, message names values (got ${threwRecipe5 && threwRecipe5.message})`);
+      // the malformed sessions were NOT saved.
+      const stillOlder = await STORE.loadLatest();
+      this.ok(!!stillOlder && stillOlder.id === olderId, "importJSON (#5): a rejected malformed import did not overwrite loadLatest's result");
+    } finally {
+      for (const id of [olderId, newerId]) { try { await STORE.deleteSession(id); } catch (e) {} }
+    }
+  }
+
+  // -- (#6) selftest IDB isolation: the whole run operates on "lightmatch-selftest",
+  // never the real "lightmatch" database, so a ?selftest visit in the user's daily
+  // browser cannot read/prune/delete their real sessions. Prove it: write a sentinel
+  // straight into the REAL "lightmatch" DB, run a prune against the selftest DB (as the
+  // engineRetention suite does), then confirm the sentinel is still present in the real
+  // DB — and clean it up. Uses STORE._useDb to hop databases, restoring the active one.
+  {
+    const sentinelId = "selftest-sentinel-" + Date.now();
+    const activeDbBefore = STORE._dbName; // "lightmatch-selftest" during a run
+    try {
+      // hop to the REAL database and drop a sentinel row.
+      STORE._useDb("lightmatch");
+      await STORE.saveSession({ id: sentinelId, created: new Date().toISOString(), context: {}, ref: null, base: null, settingsShot: null, activeTarget: "vray7max", chains: { vray7max: { recipe: null, attempts: [], _attemptCount: 0 }, vantage33: { recipe: null, attempts: [], _attemptCount: 0 } } });
+      const realHasIt = await STORE._all();
+      this.ok(realHasIt.some(s => s.id === sentinelId), "IDB isolation (#6): sanity — sentinel written into the REAL 'lightmatch' database");
+
+      // hop to the selftest DB and run a real prune there.
+      STORE._useDb("lightmatch-selftest");
+      await ENGINE._pruneSessions();
+      const selftestAll = await STORE._all();
+      this.ok(!selftestAll.some(s => s.id === sentinelId), "IDB isolation (#6): the sentinel is NOT visible from the selftest database (separate stores)");
+
+      // hop back to the real DB — the sentinel must have survived the selftest prune.
+      STORE._useDb("lightmatch");
+      const realAfter = await STORE._all();
+      this.ok(realAfter.some(s => s.id === sentinelId), "IDB isolation (#6): the real 'lightmatch' sentinel SURVIVES a selftest-side prune (isolation holds)");
+      await STORE.deleteSession(sentinelId);
+    } finally {
+      // Belt-and-suspenders: ensure the real-DB sentinel is gone even if an await above
+      // threw before the explicit delete, THEN restore whatever DB the run was using
+      // (the outer run() wrapper set the selftest one).
+      try { STORE._useDb("lightmatch"); await STORE.deleteSession(sentinelId); } catch (e) {}
+      STORE._useDb(activeDbBefore);
     }
   }
 
