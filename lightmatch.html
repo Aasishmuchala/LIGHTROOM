@@ -1,40 +1,56 @@
 <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LightMatch</title>
 <style>
 /* ===== SECTION: STYLE =====
-   Task 7b: design-taste pass. Dark precision-instrument language (Resolve/Vantage
-   neighborhood): cool-neutral surfaces with border-driven elevation, ONE desaturated
-   tungsten-amber accent reserved for actions/selection, mono + tabular numerals for
-   every value. System fonts only; no external assets of any kind.
-   Radius rule (locked): 4px controls/badges/thumbs · 8px containers · dots round.
-   Type scale: 10/11/12/13/15px — hierarchy from weight/case/spacing, never font variety.
-   Elevation steps: --bg page < --panel cards < --ctl controls < --raised toasts.
-   All text/surface pairs verified ≥ 4.7:1 (small text) WCAG AA. */
+   Premium quiet-luxury pass (design-taste discipline, redesign-preserve mode).
+   The language: a precision instrument — editorial restraint, generous rhythm, one
+   tungsten note held back for action/selection, numbers treated as the jewels.
+   System fonts only ("Segoe UI Variable Display" carries the nameplate + titles on
+   Win11, graceful fallbacks elsewhere); no external assets of any kind.
+
+   Locks (documented, applied everywhere):
+   · Radius: 10px containers/cards/banners/slots/toasts · 5px controls/chips/badges/
+     thumbs/inputs · 3px nested-inside-a-control · dots round.
+   · Type scale: 10/10.5/11/11.5/12.5/13/15px. Hierarchy from weight/case/tracking,
+     never font variety. Micro-labels (rail + step headers) share ONE grammar:
+     10px/600/0.14em caps in --text-3.
+   · Numbers: --mono + tabular-nums; the value and the look-distance score are the
+     largest ink on their line (13px / 17px / 15px), labels recede around them.
+   · Elevation: --bg page < --panel cards < --panel-2 corrections < --ctl controls
+     < --raised toasts; steps are near-subliminal, hairlines carry the structure.
+   · Spacing rhythm: 4/8/12/16/20/28/40 — card padding 24×28, step-group gap 26,
+     row padding 12, topbar→content 28.
+   · Motion: 140ms ease-out on interactive color/border/shadow only + 1px press;
+     everything collapses under prefers-reduced-motion.
+   All text/surface pairs re-verified ≥ 4.5:1 (small text) WCAG AA — worst pair
+   --text-3 on --ctl = 5.46:1 (probes/contrast sweep, this pass). */
 :root {
-  --bg: #131417;
-  --panel: #17181b;
-  --panel-2: #1a1c21;
-  --ctl: #1e2026;
-  --ctl-hover: #24272e;
-  --raised: #262932;
-  --line: #24272d;
-  --line-2: #31353d;
-  --text: #e8eaed;
-  --text-2: #a9afb9;
-  --text-3: #8b929e;
+  --bg: #0e0f12;
+  --panel: #14151a;
+  --panel-2: #17181e;
+  --ctl: #1c1e25;
+  --ctl-hover: #23252e;
+  --raised: #262933;
+  --line: #22242b;
+  --line-2: #30333c;
+  --text: #edeef1;
+  --text-2: #a9afba;
+  --text-3: #8d94a1;
   --accent: #d9a15c;
-  --accent-strong: #e0a860;
-  --accent-ink: #131417;
-  --accent-wash: rgba(217, 161, 92, 0.12);
-  --ok: #7db98f;
-  --ok-edge: #4a7d5c;
-  --ok-wash: #16211b;
-  --warn: #c9a356;
-  --warn-edge: #8f7433;
-  --warn-wash: #221e12;
-  --err: #c96a5e;
-  --err-edge: #8f4a41;
-  --err-wash: #241717;
+  --accent-strong: #e5b170;
+  --accent-ink: #16130d;
+  --accent-wash: rgba(217, 161, 92, 0.11);
+  --ok: #85bd96;
+  --ok-edge: #41684f;
+  --ok-wash: #121c16;
+  --ok-text: #c8dfd1;
+  --warn: #cda75d;
+  --warn-edge: #6f5b2d;
+  --warn-wash: #1e1a10;
+  --err: #d17568;
+  --err-edge: #75433c;
+  --err-wash: #201414;
   --sans: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  --display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
   color-scheme: dark;
 }
@@ -45,96 +61,108 @@ html, body {
   color: var(--text);
   font-family: var(--sans);
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
-#app { padding: 20px 24px 32px; max-width: 1400px; margin: 0 auto; }
+#app { padding: 26px 40px 56px; max-width: 1480px; margin: 0 auto; }
 button, select, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: inherit; }
-::selection { background: rgba(217, 161, 92, 0.28); }
-:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+::selection { background: rgba(217, 161, 92, 0.30); }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; border-radius: 5px; }
 * { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 button, .chip, .slot, input, select, summary {
-  transition: background-color 0.12s ease-out, border-color 0.12s ease-out,
-              color 0.12s ease-out, box-shadow 0.12s ease-out;
+  transition: background-color 0.14s ease-out, border-color 0.14s ease-out,
+              color 0.14s ease-out, box-shadow 0.14s ease-out;
 }
 
-/* -- banners: warn = amber, error = brick, handoff = green milestone. Valence is
-      carried by a 3px left edge + tinted wash; message text stays high-contrast. -- */
+/* -- banners: warn = tungsten, error = brick, handoff = sage milestone. Valence is a
+      3px left edge + a barely-tinted wash; the message itself stays high-contrast
+      and unshouting — recognizable, never loud. ------------------------------------ */
 .banner {
   border: 1px solid var(--line-2);
   border-left-width: 3px;
-  border-radius: 8px;
-  padding: 10px 14px;
-  margin-bottom: 10px;
+  border-radius: 10px;
+  padding: 12px 18px;
+  margin-bottom: 12px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   flex-wrap: wrap;
-  font-size: 13px;
+  font-size: 12.5px;
+  line-height: 1.55;
 }
 .banner-warn { border-color: var(--warn-edge); border-left-color: var(--warn); background: var(--warn-wash); }
 .banner-error { border-color: var(--err-edge); border-left-color: var(--err); background: var(--err-wash); }
-.banner-handoff { border-color: var(--ok-edge); border-left-color: var(--ok); background: var(--ok-wash); color: #c3ddcd; }
-.banner .btn-small { margin-left: auto; }
+.banner-handoff {
+  border-color: var(--ok-edge); border-left-color: var(--ok); background: var(--ok-wash);
+  color: var(--ok-text); padding: 14px 18px; font-size: 13px;
+}
+.banner .btn-small { margin-left: 0; }
+.banner .btn-small:first-of-type { margin-left: auto; }
 .raw-details { width: 100%; }
-.raw-details summary { cursor: pointer; color: var(--text-3); font-size: 12px; }
+.raw-details summary { cursor: pointer; color: var(--text-3); font-size: 11.5px; }
 .raw-details summary:hover { color: var(--text-2); }
 .raw {
   white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto;
-  background: var(--bg); border: 1px solid var(--line); padding: 8px 10px; margin-top: 6px;
-  border-radius: 4px; font-family: var(--mono); font-size: 11px; color: var(--text-2);
+  background: var(--bg); border: 1px solid var(--line); padding: 10px 12px; margin-top: 8px;
+  border-radius: 5px; font-family: var(--mono); font-size: 11px; color: var(--text-2);
 }
 
-/* -- topbar: instrument nameplate + primary mode controls ------------------------- */
-#topbar { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 20px; }
-.topbar-inner { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.brand { font-weight: 650; font-size: 15px; letter-spacing: 0.02em; margin-right: 10px; }
+/* -- topbar: engraved nameplate (tracked caps, pure type) + one quiet control
+      cluster; the key status keeps to the far edge. -------------------------------- */
+#topbar { border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 28px; }
+.topbar-inner { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.brand {
+  font-family: var(--display); font-weight: 600; font-size: 12.5px;
+  text-transform: uppercase; letter-spacing: 0.22em; color: var(--text);
+  margin-right: 16px; padding-top: 1px;
+}
 .target-toggle {
   display: inline-flex; background: var(--ctl); border: 1px solid var(--line-2);
-  border-radius: 4px; padding: 2px; gap: 2px;
+  border-radius: 5px; padding: 2px; gap: 2px;
 }
 .toggle-btn {
   background: transparent; border: none; border-radius: 3px;
-  padding: 4px 12px; font-size: 12px; font-weight: 500; color: var(--text-2);
+  padding: 4px 13px; font-size: 12px; font-weight: 500; color: var(--text-2);
 }
 .toggle-btn:hover { color: var(--text); }
 .toggle-btn.active { background: var(--accent-wash); color: var(--accent-strong); font-weight: 600; }
 .model-picker {
-  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 4px;
-  padding: 5px 8px; font-size: 12px; color: var(--text-2);
+  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 5px;
+  padding: 5px 9px; font-size: 12px; color: var(--text-2);
 }
 .model-picker:hover { border-color: var(--text-3); color: var(--text); }
-.key-area { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
-.key-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.key-area { display: inline-flex; align-items: center; gap: 9px; margin-left: auto; }
+.key-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .key-dot-ok { background: var(--ok); }
 .key-dot-missing { background: var(--err); }
 .key-field {
-  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 4px;
-  padding: 5px 9px; width: 150px; font-family: var(--mono); font-size: 12px;
+  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 5px;
+  padding: 5px 10px; width: 160px; font-family: var(--mono); font-size: 12px;
 }
 .key-field::placeholder { color: var(--text-3); }
 .key-field:focus { outline: none; border-color: var(--accent); }
-.privacy-line { color: var(--text-3); font-size: 11px; margin-top: 8px; }
+.privacy-line { color: var(--text-3); font-size: 10.5px; margin-top: 9px; text-align: right; }
 
 /* -- main two-column layout -------------------------------------------------------- */
-#main { display: flex; gap: 28px; align-items: flex-start; }
-#leftrail { flex: 0 0 320px; min-width: 0; }
+#main { display: flex; gap: 32px; align-items: flex-start; }
+#leftrail { flex: 0 0 318px; min-width: 0; }
 #recipearea { flex: 1 1 auto; min-width: 0; }
 
-/* -- slots: inviting drop targets. Empty = dashed invitation; filled = solid,
-      confident thumb; focused = unmistakable accent ring (paste routing relies on
-      perceived focus). ------------------------------------------------------------- */
-.slots { display: flex; flex-direction: column; gap: 10px; }
+/* -- slots: labeled input ports. Empty = quiet dashed invitation; filled = solid,
+      confident thumb; focused = unmistakable tungsten ring (paste routing relies on
+      perceived focus). Labels share the rail's 10px caps grammar. ------------------ */
+.slots { display: flex; flex-direction: column; gap: 12px; }
 .slot {
   background: var(--panel);
   border: 1px dashed var(--line-2);
-  border-radius: 8px;
-  padding: 10px 12px 8px;
+  border-radius: 10px;
+  padding: 12px 14px 10px;
   cursor: pointer;
 }
 .slot:hover { border-color: var(--text-3); }
@@ -144,33 +172,36 @@ button, .chip, .slot, input, select, summary {
   border-style: solid; border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--accent-wash);
 }
-.slot-label { font-weight: 600; font-size: 12px; margin-bottom: 8px; }
-.slot-focused .slot-label { color: var(--accent-strong); }
-.slot-hint { font-weight: 400; color: var(--text-3); font-size: 11px; }
-.slot-drop { min-height: 64px; display: flex; align-items: center; justify-content: center; }
-.slot-empty { color: var(--text-3); text-align: center; font-size: 11.5px; padding: 4px 8px; }
-.slot-thumb {
-  width: 100%; max-height: 110px; object-fit: cover; display: block;
-  border-radius: 4px; border: 1px solid var(--line);
+.slot-label {
+  font-weight: 600; font-size: 10px; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 9px;
 }
-.slot-file-input { margin-top: 8px; font-size: 10.5px; color: var(--text-3); max-width: 100%; }
+.slot-focused .slot-label { color: var(--accent-strong); }
+.slot-hint { font-weight: 400; color: var(--text-3); font-size: 10.5px; text-transform: none; letter-spacing: 0.01em; }
+.slot-drop { min-height: 68px; display: flex; align-items: center; justify-content: center; }
+.slot-empty { color: var(--text-3); text-align: center; font-size: 11.5px; padding: 6px 10px; line-height: 1.6; }
+.slot-thumb {
+  width: 100%; max-height: 116px; object-fit: cover; display: block;
+  border-radius: 5px; border: 1px solid var(--line);
+}
+.slot-file-input { margin-top: 10px; font-size: 10px; color: var(--text-3); max-width: 100%; }
 .slot-file-input::file-selector-button {
-  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 4px;
-  color: var(--text-2); font: inherit; padding: 2px 8px; margin-right: 8px; cursor: pointer;
+  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 5px;
+  color: var(--text-2); font: inherit; padding: 3px 9px; margin-right: 9px; cursor: pointer;
 }
 .slot-file-input::file-selector-button:hover { color: var(--text); border-color: var(--text-3); }
-.attempt-hint { color: var(--text-3); font-size: 11px; margin: 10px 2px 14px; }
+.attempt-hint { color: var(--text-3); font-size: 11px; margin: 12px 2px 18px; }
 
 /* -- chips: single-select context toggles ------------------------------------------- */
-.chips { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.chips { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; }
 .chip-group-label {
-  font-size: 10px; color: var(--text-3); margin-bottom: 5px;
-  text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+  font-size: 10px; color: var(--text-3); margin-bottom: 6px;
+  text-transform: uppercase; letter-spacing: 0.14em; font-weight: 600;
 }
 .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip {
-  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 4px;
-  padding: 3px 10px; font-size: 11.5px; color: var(--text-2);
+  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 5px;
+  padding: 4px 11px; font-size: 11.5px; color: var(--text-2);
 }
 .chip:hover { color: var(--text); border-color: var(--text-3); }
 .chip-active, .chip-active:hover {
@@ -178,156 +209,182 @@ button, .chip, .slot, input, select, summary {
   color: var(--accent-strong); font-weight: 500;
 }
 
-/* -- buttons: one accent-filled primary; everything else stays quiet ---------------- */
+/* -- buttons: ONE accent-filled primary — the single confident note; everything
+      else stays a quiet ghost. ----------------------------------------------------- */
 .btn-primary {
   background: var(--accent); color: var(--accent-ink); font-weight: 600;
-  border: none; border-radius: 4px; padding: 9px 16px; width: 100%;
+  letter-spacing: 0.01em; border: none; border-radius: 5px; padding: 10px 16px; width: 100%;
 }
 .btn-primary:hover:not(:disabled) { background: var(--accent-strong); }
 .btn-primary:active:not(:disabled) { transform: translateY(1px); }
-.btn-primary:disabled { background: var(--ctl); color: var(--text-3); cursor: default; }
+.btn-primary:disabled {
+  background: var(--ctl); color: var(--text-3); cursor: default;
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
 .btn-secondary {
-  background: transparent; border: 1px solid var(--line-2); border-radius: 4px;
-  padding: 8px 16px; width: 100%; margin-top: 8px; color: var(--text-2); font-size: 12.5px;
+  background: transparent; border: 1px solid var(--line-2); border-radius: 5px;
+  padding: 9px 16px; width: 100%; margin-top: 10px; color: var(--text-2); font-size: 12.5px;
 }
 .btn-secondary:hover { color: var(--text); border-color: var(--text-3); }
 .btn-secondary:active { transform: translateY(1px); }
 .btn-small {
-  background: transparent; border: 1px solid var(--line-2); border-radius: 4px;
-  padding: 3px 9px; font-size: 11px; color: var(--text-2);
+  background: transparent; border: 1px solid var(--line-2); border-radius: 5px;
+  padding: 3px 10px; font-size: 11px; color: var(--text-2);
 }
 .btn-small:hover { color: var(--text); border-color: var(--text-3); }
 .spinner {
   display: inline-block; width: 10px; height: 10px; vertical-align: -1px;
-  border: 2px solid rgba(19, 20, 23, 0.35); border-top-color: var(--accent-ink);
+  border: 2px solid rgba(22, 19, 13, 0.35); border-top-color: var(--accent-ink);
   border-radius: 50%; animation: lm-spin 0.7s linear infinite;
 }
 @keyframes lm-spin { to { transform: rotate(360deg); } }
 
-/* -- recipe card: the hero. Step groups scan as bands; ui_path breadcrumbs recede,
-      the control leaf carries the weight; values are mono/tabular. ------------------ */
+/* -- recipe card: the hero surface. Step groups read as editorial bands; the
+      breadcrumb provenance recedes to 11.5px, the control leaf and its value are
+      the ink that matters. --------------------------------------------------------- */
 .empty-state {
-  color: var(--text-3); padding: 72px 24px; text-align: center; font-size: 13px;
-  border: 1px dashed var(--line-2); border-radius: 8px;
+  color: var(--text-3); padding: 104px 32px; text-align: center; font-size: 13px;
+  line-height: 1.7; border: 1px dashed var(--line-2); border-radius: 10px;
 }
 .recipe-card {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-  padding: 16px 20px 14px; margin-bottom: 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 22px 28px 18px; margin-bottom: 14px;
 }
 .correction-card { background: var(--panel-2); }
 .recipe-card-header {
-  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+  display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 16px;
 }
-.recipe-card-title { font-weight: 650; font-size: 14px; letter-spacing: 0.01em; }
+.recipe-card-title {
+  font-family: var(--display); font-weight: 650; font-size: 15px; letter-spacing: 0.005em;
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  flex: 1 1 auto; min-width: 0;
+}
 .recipe-card-baseline {
   color: var(--text-2); font-size: 11px; background: var(--ctl);
-  border: 1px solid var(--line); border-radius: 4px; padding: 1px 8px;
+  border: 1px solid var(--line); border-radius: 3px; padding: 2px 9px;
+  align-self: center; flex: 0 0 auto;
 }
-.recipe-card-actions { margin-left: auto; display: flex; gap: 6px; }
-.score-inline { color: var(--text-3); font-weight: 400; font-size: 12px; margin-left: 8px; }
-.score-num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 650; font-size: 13px; color: var(--text); }
-.step-group { margin-bottom: 16px; }
-.step-group:last-of-type { margin-bottom: 6px; }
+.recipe-card-actions { margin-left: auto; display: flex; gap: 6px; align-self: center; }
+.correction-card .recipe-card-header {
+  border-bottom: 1px solid var(--line); padding-bottom: 13px; margin-bottom: 2px;
+}
+.score-inline {
+  color: var(--text-3); font-weight: 400; font-size: 11px;
+  margin-left: auto; padding-left: 12px; white-space: nowrap;
+}
+.score-num {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-weight: 650; font-size: 17px; color: var(--text); padding-left: 3px;
+}
+.step-group { margin-bottom: 26px; }
+.step-group:last-of-type { margin-bottom: 8px; }
 .step-header {
-  display: flex; align-items: center; gap: 10px;
-  font-weight: 600; font-size: 10.5px; color: var(--text-2);
-  text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px;
+  display: flex; align-items: center; gap: 12px;
+  font-weight: 600; font-size: 10px; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 4px;
 }
 .step-header::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--line); }
-.rationale-foldout { margin-top: 12px; font-size: 12px; color: var(--text-2); }
-.rationale-foldout summary { cursor: pointer; color: var(--text-3); font-size: 12px; }
+.rationale-foldout {
+  margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line);
+  font-size: 12px; color: var(--text-2);
+}
+.rationale-foldout summary { cursor: pointer; color: var(--text-3); font-size: 11.5px; }
 .rationale-foldout summary:hover { color: var(--text-2); }
 .rationale-foldout p {
-  margin: 8px 0 2px; padding-left: 12px; border-left: 2px solid var(--line-2);
-  max-width: 68ch; line-height: 1.55;
+  margin: 10px 0 2px; padding-left: 14px; border-left: 2px solid var(--line-2);
+  max-width: 68ch; line-height: 1.6;
 }
-.hdri-mood, .gi-notes { font-size: 12px; color: var(--text-3); margin-top: 6px; max-width: 68ch; }
-.status-reason { font-size: 12px; color: var(--text-3); margin-top: 10px; max-width: 68ch; }
+.hdri-mood, .gi-notes { font-size: 12px; color: var(--text-3); margin-top: 8px; max-width: 68ch; line-height: 1.6; }
+.status-reason { font-size: 12px; color: var(--text-3); margin-top: 12px; max-width: 68ch; line-height: 1.6; }
 
-/* -- value rows ---------------------------------------------------------------------- */
+/* -- value rows: provenance above, value below — the value is the jewel (13px mono
+      against an 11.5px label), the why is a quiet footnote. ------------------------ */
 .value-row {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 9px 0 8px; border-top: 1px solid var(--line);
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 0 11px; border-top: 1px solid var(--line);
 }
 .step-group .value-row:first-of-type, .correction-card .value-row:first-of-type { border-top-color: transparent; }
 .value-row-main { flex: 1 1 auto; min-width: 0; }
-.value-row-label { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
-.path-sep { color: var(--text-3); opacity: 0.65; }
-.path-leaf { color: var(--text); font-weight: 600; }
+.value-row-label { font-size: 11.5px; color: var(--text-3); line-height: 1.6; }
+.path-sep { color: var(--text-3); opacity: 0.55; }
+.path-leaf { color: var(--text); font-weight: 600; font-size: 12.5px; }
 .value-row-value {
-  font-size: 12.5px; margin-top: 3px;
+  font-size: 13px; margin-top: 4px;
   font-family: var(--mono); font-variant-numeric: tabular-nums;
 }
-.value-text { color: var(--text); font-weight: 550; }
-.value-unit { color: var(--text-2); font-weight: 400; padding-left: 2px; }
+.value-text { color: var(--text); font-weight: 600; }
+.value-unit { color: var(--text-3); font-weight: 400; font-size: 11px; padding-left: 3px; }
 .value-row-placement .value-row-value { font-family: var(--sans); }
-.value-row-placement .value-text { font-weight: 450; font-style: italic; color: #d3d7dc; }
-.from-text { color: var(--text-3); font-family: var(--sans); font-size: 11.5px; }
-.value-row-why { color: var(--text-3); font-size: 11px; margin-top: 3px; max-width: 62ch; }
-.conf-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-top: 5px; flex-shrink: 0; }
+.value-row-placement .value-text { font-weight: 450; font-style: italic; color: #d6dade; line-height: 1.55; }
+.from-text { color: var(--text-3); font-family: var(--sans); font-size: 11px; }
+.value-row-why { color: var(--text-3); font-size: 11px; margin-top: 4px; max-width: 62ch; line-height: 1.55; }
+.conf-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-top: 7px; flex-shrink: 0; }
 .conf-high { background: var(--ok); }
 .conf-medium { background: var(--warn); }
 .conf-low { background: var(--err); }
 .clamped-flag {
-  color: var(--warn); font-size: 9.5px; font-family: var(--mono);
-  text-transform: uppercase; letter-spacing: 0.05em;
-  border: 1px solid var(--warn-edge); border-radius: 4px;
-  padding: 0 5px; margin-left: 8px; vertical-align: 1px;
+  color: var(--warn); font-size: 9px; font-family: var(--mono); font-weight: 400;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  border: 1px solid var(--warn-edge); border-radius: 3px;
+  padding: 1px 6px; margin-left: 10px; vertical-align: 2px;
 }
 .applied-toggle {
-  font-size: 11px; color: var(--text-3); display: flex; align-items: center;
-  gap: 5px; white-space: nowrap; margin-top: 2px; cursor: pointer;
+  font-size: 10.5px; color: var(--text-3); display: flex; align-items: center;
+  gap: 6px; white-space: nowrap; margin-top: 3px; cursor: pointer;
 }
 .applied-toggle:hover { color: var(--text-2); }
 .applied-toggle input { accent-color: var(--accent); width: 13px; height: 13px; margin: 0; cursor: pointer; }
 .row-copy-btn {
-  background: transparent; border: 1px solid transparent; border-radius: 4px;
-  padding: 2px 7px; font-size: 10px; color: var(--text-3); align-self: flex-start; margin-top: 1px;
+  background: transparent; border: 1px solid transparent; border-radius: 5px;
+  padding: 2px 8px; font-size: 10px; color: var(--text-3); align-self: flex-start; margin-top: 1px;
 }
 .value-row:hover .row-copy-btn { border-color: var(--line-2); }
 .row-copy-btn:hover { color: var(--text); border-color: var(--text-3); }
 
-/* -- session strip: filmstrip of attempts; the score is the headline number --------- */
-#sessionstrip { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; }
+/* -- session strip: the filmstrip ledger; each attempt's score is its headline
+      number, the reference stays visually anchored via a brighter frame. ----------- */
+#sessionstrip { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 20px; }
 #sessionstrip:empty { display: none; }
-.session-strip { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; }
-.strip-thumb { flex: 0 0 auto; width: 124px; text-align: center; }
+.session-strip { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
+.strip-thumb { flex: 0 0 auto; width: 138px; text-align: center; }
 .strip-thumb img {
-  width: 124px; height: 82px; object-fit: cover; display: block;
-  border-radius: 4px; border: 1px solid var(--line-2); background: var(--panel);
+  width: 138px; height: 92px; object-fit: cover; display: block;
+  border-radius: 5px; border: 1px solid var(--line-2); background: var(--panel);
 }
 .strip-ref img { border-color: var(--text-3); }
+.strip-ref .strip-caption { color: var(--text-2); font-weight: 600; letter-spacing: 0.02em; }
 .strip-thumb .slot-empty {
-  width: 124px; height: 82px; display: flex; align-items: center; justify-content: center;
-  border: 1px dashed var(--line-2); border-radius: 4px; box-sizing: border-box;
+  width: 138px; height: 92px; display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--line-2); border-radius: 5px; box-sizing: border-box;
 }
 .strip-caption {
-  font-size: 10px; color: var(--text-3); margin-top: 5px; line-height: 1.4;
+  font-size: 10px; color: var(--text-3); margin-top: 7px; line-height: 1.5;
   font-variant-numeric: tabular-nums;
 }
-.strip-score { font-family: var(--mono); font-size: 13px; font-weight: 650; color: var(--text); }
+.strip-score { font-family: var(--mono); font-size: 15px; font-weight: 650; color: var(--text); padding-left: 2px; }
 .trend { font-size: 9px; }
 .trend-up { color: var(--ok); }
 .trend-down { color: var(--err); }
 .trend-flat { color: var(--text-3); }
-.strip-caveat { font-size: 11px; color: var(--text-3); margin-top: 8px; font-style: italic; }
+.strip-caveat { font-size: 11px; color: var(--text-3); margin-top: 12px; font-style: italic; }
 
 /* -- toasts -------------------------------------------------------------------------- */
-#toasts { position: fixed; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 6px; z-index: 1000; }
+#toasts { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 1000; }
 .toast {
-  background: var(--raised); border: 1px solid var(--line-2); border-radius: 8px;
-  padding: 8px 14px; font-size: 12px; color: var(--text);
-  box-shadow: 0 8px 24px rgba(8, 9, 11, 0.5);
+  background: var(--raised); border: 1px solid var(--line-2); border-radius: 10px;
+  padding: 9px 16px; font-size: 12px; color: var(--text);
+  box-shadow: 0 12px 32px rgba(5, 6, 8, 0.55);
 }
 
 /* -- narrow (half-of-a-monitor) layout: rail stacks above the recipe, the three
       named slots compress into a row so the recipe stays near the fold. ------------- */
 @media (max-width: 880px) {
-  #main { flex-direction: column; }
+  #main { flex-direction: column; gap: 24px; }
   #leftrail { flex: 1 1 auto; width: 100%; }
   .slots { display: grid; grid-template-columns: repeat(3, 1fr); }
   .slot-attempt { grid-column: 1 / -1; }
-  #app { padding: 16px 16px 28px; }
+  #app { padding: 20px 20px 40px; }
+  .recipe-card { padding: 18px 20px 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
   button, .chip, .slot, input, select, summary { transition: none; }
