@@ -505,7 +505,9 @@ const METRICS = {
   //    upscales (scale = min(1, maxEdge / longEdge), same rule as thumb()). Two call
   //    shapes cover the plan: lossy default (1568, image/jpeg, q=0.85) and a lossless
   //    variant for the settings screenshot (2048, image/png — q is ignored by PNG
-  //    encoders but accepted here for a uniform signature). -----------------------
+  //    encoders but accepted here for a uniform signature). Rejects (throws) if the
+  //    source is a File/Blob that the browser cannot decode as an image — callers
+  //    must wrap this in try/catch (see SECTION: ADAPTER header comment). -----------
   async downscaleForSend(fileOrBlobOrCanvas, maxEdge, type, q) {
     maxEdge = maxEdge === undefined ? 1568 : maxEdge;
     type = type === undefined ? "image/jpeg" : type;
@@ -515,9 +517,13 @@ const METRICS = {
     const isCanvasLike = source && typeof source.getContext === "function"
       && typeof source.width === "number" && typeof source.height === "number";
     const isBitmapLike = typeof ImageBitmap !== "undefined" && source instanceof ImageBitmap;
+    let decodedHere = false;
     if (!isCanvasLike && !isBitmapLike) {
-      // File or Blob: decode to an ImageBitmap first.
+      // File or Blob: decode to an ImageBitmap first. We own this bitmap and must
+      // close it ourselves once drawn — a caller-supplied ImageBitmap (isBitmapLike)
+      // is never closed here, since the caller still owns its lifecycle.
       source = await createImageBitmap(fileOrBlobOrCanvas);
+      decodedHere = true;
     }
     const sw = source.width, sh = source.height;
 
@@ -530,6 +536,7 @@ const METRICS = {
     c.width = w; c.height = h;
     const ctx = c.getContext("2d");
     ctx.drawImage(source, 0, 0, w, h);
+    if (decodedHere) source.close();
     const dataUrl = c.toDataURL(type, q);
     return { dataUrl, w, h };
   }
@@ -738,6 +745,12 @@ SELFTEST.suites.metrics = async function () {
   this.ok(METRICS.score(mGray, mGray) === 0, "score(m,m) === 0");
   const s = METRICS.score(mGray, mGrad);
   this.ok(s > 10, `score(gray128, gradient) > 10 (got ${s})`);
+
+  // -- weights<->diff lock: every SCORE_WEIGHTS key must exist in diff()'s output, so
+  // score() never silently reads `undefined` (falls back to 0) for a weighted term
+  // because a key drifted out of sync between the two tables.
+  const diffKeys = new Set(Object.keys(METRICS.diff(mGray, mGray)));
+  for (const key of Object.keys(METRICS.SCORE_WEIGHTS)) this.ok(diffKeys.has(key), `SCORE_WEIGHTS key "${key}" exists in diff() output`);
 
   // -- thumb contract ------------------------------------------------------------------
   const big = solidCanvas(4000, 2000, 200, 150, 100);
