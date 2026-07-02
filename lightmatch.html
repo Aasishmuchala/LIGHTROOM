@@ -40,7 +40,7 @@ const SELFTEST = { fails: [], n: 0,
   ok(cond, msg) { this.n++; if (!cond) this.fails.push(msg); },
   close(a, b, tol, msg) { this.ok(Math.abs(a - b) <= tol, `${msg} (got ${a}, want ${b}±${tol})`); },
   async run() {
-    for (const [name, fn] of Object.entries(SELFTEST.suites)) { try { await fn(); } catch (e) { this.fails.push(name + " threw: " + e.message); } }
+    for (const [name, fn] of Object.entries(SELFTEST.suites)) { try { await fn.call(SELFTEST); } catch (e) { this.fails.push(name + " threw: " + e.message); } }
     const line = this.fails.length ? `SELFTEST: FAIL\n` + this.fails.join("\n") : `SELFTEST: PASS (${this.n} asserts)`;
     document.body.textContent = line; document.title = line.split("\n")[0];
   }, suites: {} };
