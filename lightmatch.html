@@ -438,7 +438,7 @@ const PACKS = {
         notes: "0 = no change; positive pushes colors away from mid grey, negative toward it (docs). Practical range; slider bounds not stated in docs. Display-side: keep identical across attempts. Layer is not in the VFB's default stack — add it via V-Ray Frame Buffer ▸ Layers panel ▸ + (Add layer) if not present (docs)." },
       { id: "cm.saturation", ui_path: "V-Ray Frame Buffer ▸ Layers panel ▸ Hue/Saturation layer ▸ Saturation",
         kind: "spinner", unit: "", range: [-100, 100], default: 0, verified: "2026-07-02",
-        notes: "Lower moves toward greyscale, higher intensifies colors (docs); 0 = no change. Display-side: keep identical across attempts. Layer is not in the VFB's default stack — add it via V-Ray Frame Buffer ▸ Layers panel ▸ + (Add layer) if not present (docs). Range pending in-product confirmation — Chaos docs don't print slider bounds; if the VFB Hue/Saturation slider is actually -1..1, this is a 100x scale mismatch (flagged to user)." },
+        notes: "Lower moves toward greyscale, higher intensifies colors (docs); 0 = no change. Display-side: keep identical across attempts. Layer is not in the VFB's default stack — add it via V-Ray Frame Buffer ▸ Layers panel ▸ + (Add layer) if not present (docs). Range pending in-product confirmation — Chaos docs don't print slider bounds; if the VFB Hue/Saturation slider is actually -1..1, this is a 100x scale mismatch (pending an in-product check)." },
       { id: "vfb.exposure", ui_path: "V-Ray Frame Buffer ▸ Layers panel ▸ Exposure layer ▸ Exposure",
         kind: "spinner", unit: "stops", range: [-5, 5], default: 0, verified: "2026-07-02",
         notes: "Doc-stated default 0.0 = original brightness; +1.0 doubles, -1.0 halves (docs). Practical range; slider bounds not stated in docs. Display-side only — keep identical across attempts. Layer is not in the VFB's default stack — add it via V-Ray Frame Buffer ▸ Layers panel ▸ + (Add layer) if not present (docs)." },
@@ -601,13 +601,13 @@ const PACKS = {
         notes: "Options: Hable | AMPAS (docs — Vantage exposes fewer curve types than the V-Ray VFB). Requires the Filmic tonemap toggle ON; enabling it hides Highlight burn (docs). Default selection not stated in current Chaos docs (Hable assumed)." },
       { id: "post.saturation", ui_path: "Color Corrections tab ▸ Hue / Saturation ▸ Saturation",
         kind: "spinner", unit: "", range: [-100, 100], default: 0, verified: "2026-07-02",
-        notes: "Positive = more vibrant, negative = desaturated (docs); 0 = no change. Requires the Hue / Saturation toggle ON. Range pending in-product confirmation — Chaos docs don't print slider bounds; if the Hue/Saturation slider is actually -1..1, this is a 100x scale mismatch (flagged to user)." },
+        notes: "Positive = more vibrant, negative = desaturated (docs); 0 = no change. Requires the Hue / Saturation toggle ON. Range pending in-product confirmation — Chaos docs don't print slider bounds; if the Hue/Saturation slider is actually -1..1, this is a 100x scale mismatch (pending an in-product check)." },
       { id: "post.wb_kelvin", ui_path: "Color Corrections tab ▸ White balance ▸ Temperature",
         kind: "spinner", unit: "K", range: [1000, 20000], default: 6500, verified: "2026-07-02",
         notes: "Lower = bluer, higher = more amber (docs). 6500 K = neutral (no correction; derived, not doc-stated). Requires the White balance toggle ON. Practical range." },
       { id: "post.wb_tint", ui_path: "Color Corrections tab ▸ White balance ▸ Magenta-Green tint",
         kind: "spinner", unit: "", range: [-100, 100], default: 0, verified: "2026-07-02",
-        notes: "Positive = greener, negative = more purple (docs); 0 = neutral. Range pending in-product confirmation — Chaos docs don't print slider bounds; if the Magenta-Green tint slider is actually -1..1, this is a 100x scale mismatch (flagged to user)." },
+        notes: "Positive = greener, negative = more purple (docs); 0 = neutral. Range pending in-product confirmation — Chaos docs don't print slider bounds; if the Magenta-Green tint slider is actually -1..1, this is a 100x scale mismatch (pending an in-product check)." },
       // -- render quality (GI character) -------------------------------------------------
       { id: "render.quality_preset", ui_path: "Viewport bar ▸ Render ▸ quality preset",
         kind: "dropdown", unit: "", range: [0, 0], default: "High", verified: false,
@@ -827,8 +827,8 @@ const SCHEMAS = {
     lines.push("  3. dome/environment — HDRI or skylight fill, mood, and rotation.");
     lines.push("  4. fills/rim — secondary/artificial lights and their key:fill ratio.");
     lines.push("  5. color mapping — highlight burn, contrast, saturation, and any display-side correction.");
-    lines.push("  6. atmosphere/weather — fog, mist, haze, and clouds (and Vantage wetting): a mood layer matched " +
-      "to the reference's atmospheric depth.");
+    lines.push("  6. atmosphere/weather — fog, mist, haze, clouds, and any host-specific weather effects listed in " +
+      "the pack: a mood layer matched to the reference's atmospheric depth.");
     lines.push("Why this order is fixed, not a suggestion: doubling the sun's intensity and opening the camera by " +
       "+1 EV produce nearly the same pixels — it is a genuine degeneracy, not a matter of taste. Locking exposure " +
       "and WB FIRST removes that ambiguity before you touch the light itself; without a fixed order the refine " +
