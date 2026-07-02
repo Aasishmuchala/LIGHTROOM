@@ -949,6 +949,22 @@ const SCHEMAS = {
     const items = Array.isArray(obj && obj[arrKey]) ? obj[arrKey] : [];
     const cleanedItems = [];
 
+    // Blank/partial-recipe rejection (#4a): a `{}` / `{values:[]}` / a response
+    // truncated so its move array never arrived must NOT read as a successful empty
+    // recipe. Reject when the value/move array is absent or empty, and when any
+    // top-level field the tool schema marks `required` is missing. Because validate
+    // now returns ok:false here, ADAPTER.call's one-shot re-ask handles the empty
+    // case the same way it handles any other invalid emit.
+    if (!Array.isArray(obj && obj[arrKey]) || obj[arrKey].length === 0) {
+      errors.push(`"${arrKey}" is absent or empty — an emit must carry at least one ${isCorrection ? "move" : "value"}`);
+    }
+    const schema = isCorrection ? SCHEMAS.emit_correction : SCHEMAS.emit_recipe;
+    const required = (schema && schema.input_schema && schema.input_schema.required) || [];
+    for (const field of required) {
+      if (field === arrKey) continue; // the array is checked (presence + non-empty) just above
+      if (!obj || !(field in obj)) errors.push(`missing required field "${field}"`);
+    }
+
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const where = `${arrKey}[${i}]`;
@@ -1618,11 +1634,18 @@ const ADAPTER = {
     const send = async () => {
       let lastErr = null;
       for (let attempt = 0; attempt < this.BACKOFF_MS.length + 1; attempt++) {
-        let res = null;
+        // A single AbortController + timeout spans the WHOLE attempt — the request
+        // headers AND the response body read (#3). Clearing the timeout the moment
+        // headers arrive (the old bug) left a gateway that streams headers then
+        // stalls the body able to wedge `await res.json()` forever, so the retry loop
+        // never fired. Keeping the signal armed through the body read means a stalled
+        // body aborts too, and is treated exactly like any other network reject
+        // (retryable with backoff), not a permanent hang.
+        let outcome = null; // {json} on success, {retry, err} to retry, {fatal, err} to throw
         const ac = new AbortController();
         const t = setTimeout(() => ac.abort(), this.TIMEOUT_MS);
         try {
-          res = await fetch("https://omega.kesarcloud.in/v1/messages", {
+          const res = await fetch("https://omega.kesarcloud.in/v1/messages", {
             method: "POST",
             headers: {
               "content-type": "application/json",
@@ -1635,41 +1658,56 @@ const ADAPTER = {
             }),
             signal: ac.signal
           });
+          if (res.ok) {
+            // Body read stays INSIDE the try, still under the live abort signal, so a
+            // stalled body aborts here and falls into the network-retry catch below.
+            const json = await res.json();
+            outcome = { json };
+          } else {
+            const action = this.classify(res.status);
+            if (action === "auth") {
+              outcome = { fatal: new this.AuthError(`Gateway returned 401 — the API key is missing or invalid.`) };
+            } else if (action === "retry") {
+              outcome = { retry: true, err: new Error(`Gateway returned HTTP ${res.status}`) };
+            } else {
+              // .text() read is also under the live signal (part of the body read).
+              const bodyText = await res.text().catch(() => "");
+              outcome = { fatal: new Error(`Gateway request failed: HTTP ${res.status}${bodyText ? " — " + bodyText : ""}`) };
+            }
+          }
         } catch (networkErr) {
           // fetch rejected (offline, DNS, CORS preflight failure, ...) OR our
-          // TIMEOUT_MS abort fired (gateway accepted the socket, never answered).
-          // No status code to classify in either case, but both ARE the "network"
-          // case in the plan's "429/5xx/network" retry list — treated as retryable.
-          lastErr = networkErr;
+          // TIMEOUT_MS abort fired during EITHER the header wait or the body read
+          // (gateway accepted the socket / streamed headers, then never finished).
+          // No status code to classify in any case, but all ARE the "network" case in
+          // the plan's "429/5xx/network" retry list — treated as retryable.
+          outcome = { retry: true, err: networkErr };
         } finally {
+          // Only now — after the body has been fully read (or the attempt failed) — is
+          // it safe to disarm the timeout for this attempt.
           clearTimeout(t);
         }
-        if (res === null) {
-          if (attempt < this.BACKOFF_MS.length) { await this._sleep(this.BACKOFF_MS[attempt]); continue; }
-          throw lastErr;
-        }
 
-        if (res.ok) {
-          const json = await res.json();
-          return json;
-        }
-
-        const action = this.classify(res.status);
-        if (action === "auth") {
-          throw new this.AuthError(`Gateway returned 401 — the API key is missing or invalid.`);
-        }
-        if (action === "retry" && attempt < this.BACKOFF_MS.length) {
-          await this._sleep(this.BACKOFF_MS[attempt]);
-          continue;
-        }
-        const bodyText = await res.text().catch(() => "");
-        throw new Error(`Gateway request failed: HTTP ${res.status}${bodyText ? " — " + bodyText : ""}`);
+        if (outcome.json !== undefined) return outcome.json;
+        if (outcome.fatal) throw outcome.fatal;
+        // retry
+        lastErr = outcome.err;
+        if (attempt < this.BACKOFF_MS.length) { await this._sleep(this.BACKOFF_MS[attempt]); continue; }
+        throw lastErr;
       }
       // Defensive: the loop always returns or throws earlier; unreachable in practice.
       throw lastErr || new Error("Gateway request failed after retries.");
     };
 
     const extractToolInput = (json) => {
+      // Truncation guard (#4b): a response cut off at the token cap ("stop_reason":
+      // "max_tokens") almost always carries a half-written tool_use whose JSON input is
+      // structurally incomplete — surface it as a ShapeError (with the raw body for the
+      // banner's "show raw response") rather than letting a partial recipe flow into
+      // validation as if it were a real, complete emit.
+      if (json && json.stop_reason === "max_tokens") {
+        throw new this.ShapeError("response truncated at max_tokens", JSON.stringify(json));
+      }
       const block = Array.isArray(json.content) ? json.content.find(b => b.type === "tool_use") : null;
       if (!block) throw new this.ShapeError("Response contained no tool_use block.", JSON.stringify(json));
       return block.input;
@@ -1804,6 +1842,16 @@ const ENGINE = {
         vantage33: { recipe: null, attempts: [], _attemptCount: 0 }
       }
     };
+  },
+
+  // -- _mediaTypeFromDataUrl(dataUrl): read the real MIME from a data: URL prefix
+  // (#13) instead of hardcoding "image/jpeg". ref/base are JPEG and settings is PNG
+  // in the normal capture path, but an imported session can seed a slot with a PNG (or
+  // WEBP) dataUrl, and sending it labeled image/jpeg is a wire lie that a strict vision
+  // endpoint can reject. Falls back to image/jpeg only when the prefix is unreadable. -
+  _mediaTypeFromDataUrl(dataUrl) {
+    const m = typeof dataUrl === "string" ? dataUrl.match(/^data:([^;,]+)[;,]/) : null;
+    return m ? m[1] : "image/jpeg";
   },
 
   // -- reset(): back to a blank "empty" session. Used by boot() when there is nothing
@@ -2094,9 +2142,9 @@ const ENGINE = {
       base: s.base.metrics,
       diff: METRICS.diff(s.base.metrics, s.ref.metrics)
     };
-    const images = [{ role: "reference", dataUrl: s.ref.dataUrl, mediaType: "image/jpeg" },
-                     { role: "base", dataUrl: s.base.dataUrl, mediaType: "image/jpeg" }];
-    if (s.settingsShot) images.push({ role: "settings", dataUrl: s.settingsShot.dataUrl, mediaType: "image/png" });
+    const images = [{ role: "reference", dataUrl: s.ref.dataUrl, mediaType: this._mediaTypeFromDataUrl(s.ref.dataUrl) },
+                     { role: "base", dataUrl: s.base.dataUrl, mediaType: this._mediaTypeFromDataUrl(s.base.dataUrl) }];
+    if (s.settingsShot) images.push({ role: "settings", dataUrl: s.settingsShot.dataUrl, mediaType: this._mediaTypeFromDataUrl(s.settingsShot.dataUrl) });
 
     const system = SCHEMAS.systemPrompt(target, mode);
     // buildUserContent is pure content-assembly (no network) — always the real ADAPTER,
@@ -2224,8 +2272,8 @@ const ENGINE = {
     chain._attemptCount++;
     const attemptN = chain._attemptCount;
     const images = [
-      { role: "reference", dataUrl: s.ref.dataUrl, mediaType: "image/jpeg" },
-      { role: "attempt", n: attemptN, dataUrl: captured.dataUrl, mediaType: "image/jpeg" }
+      { role: "reference", dataUrl: s.ref.dataUrl, mediaType: this._mediaTypeFromDataUrl(s.ref.dataUrl) },
+      { role: "attempt", n: attemptN, dataUrl: captured.dataUrl, mediaType: this._mediaTypeFromDataUrl(captured.dataUrl) }
     ];
     const history = this._historyForActiveChain();
     const system = SCHEMAS.systemPrompt(target, "correction");
@@ -3437,6 +3485,32 @@ SELFTEST.suites.schemas = async function () {
   // unknown target: every param lookup fails -> every value errors
   const rUnknownTarget = SCHEMAS.validateRecipe(baseRecipe(), "corona");
   this.ok(rUnknownTarget.ok === false, "validateRecipe: unknown target -> ok===false (no params resolve)");
+
+  // -- (#4a) blank / partial recipe rejection: an empty or field-missing emit is NOT a
+  // successful empty recipe. {} and {values:[]} both fail; a recipe missing a
+  // schema-required top-level field fails and the error names that field. -----------
+  const rEmptyObj = SCHEMAS.validateRecipe({}, "vray7max");
+  this.ok(rEmptyObj.ok === false, "validateRecipe (#4a): {} -> ok===false (blank recipe is not a success)");
+  const rEmptyValues = SCHEMAS.validateRecipe({ values: [] }, "vray7max");
+  this.ok(rEmptyValues.ok === false, "validateRecipe (#4a): {values:[]} -> ok===false (empty values array rejected)");
+  this.ok(rEmptyValues.errors.some(e => /values.*absent or empty|absent or empty/i.test(e)), `validateRecipe (#4a): empty-values error explains the absent/empty array (got ${JSON.stringify(rEmptyValues.errors)})`);
+  // a recipe that has values but is missing a required top-level field (status) fails,
+  // and the error names the missing field.
+  const missingStatus = baseRecipe();
+  delete missingStatus.status;
+  const rMissingStatus = SCHEMAS.validateRecipe(missingStatus, "vray7max");
+  this.ok(rMissingStatus.ok === false, "validateRecipe (#4a): a recipe missing a required top-level field (status) -> ok===false");
+  this.ok(rMissingStatus.errors.some(e => /status/.test(e)), `validateRecipe (#4a): the missing-field error names "status" (got ${JSON.stringify(rMissingStatus.errors)})`);
+  // correction mode: empty moves + missing required field both rejected.
+  const rEmptyMoves = SCHEMAS.validateRecipe({ moves: [] }, "vray7max", "correction");
+  this.ok(rEmptyMoves.ok === false, "validateRecipe (#4a): {moves:[]} in correction mode -> ok===false");
+  const missingApplied = baseCorrection();
+  delete missingApplied.applied_assumed;
+  const rMissingApplied = SCHEMAS.validateRecipe(missingApplied, "vray7max", "correction");
+  this.ok(rMissingApplied.ok === false && rMissingApplied.errors.some(e => /applied_assumed/.test(e)), `validateRecipe (#4a): a correction missing applied_assumed -> ok===false naming the field (got ${JSON.stringify(rMissingApplied.errors)})`);
+  // a fully-populated valid recipe/correction still passes (no false positive from #4a).
+  this.ok(SCHEMAS.validateRecipe(baseRecipe(), "vray7max").ok === true, "validateRecipe (#4a): a complete valid recipe still passes (no false reject)");
+  this.ok(SCHEMAS.validateRecipe(baseCorrection(), "vray7max", "correction").ok === true, "validateRecipe (#4a): a complete valid correction still passes");
 };
 
 // -- suite: adapter (Task 5) -- NO LIVE NETWORK CALLS. Pure parts (classify(),
@@ -3671,6 +3745,42 @@ SELFTEST.suites.adapter = async function () {
     this.ok(rF.fine === true, "mocked (f): hung fetch aborts at TIMEOUT_MS, retries, succeeds on attempt 2");
     this.ok(calls.length === 2, `mocked (f): exactly 2 fetch calls (got ${calls.length})`);
     this.ok(calls[0].opts.signal instanceof AbortSignal, "mocked (f): fetch receives a per-attempt AbortSignal");
+
+    // (g) #3 — the BODY read (not just headers) is covered by the timeout: headers
+    // arrive fine (res.ok true) but res.json() never resolves on its own. The
+    // AbortController that armed the fetch must still be live, so the abort fires and
+    // rejects the body read -> treated as a retryable network error -> attempt 2 (a
+    // clean 200) succeeds. On the OLD code (clearTimeout right after headers), this
+    // would hang forever and the runner would time out with no verdict.
+    ADAPTER.TIMEOUT_MS = 50;
+    calls = [];
+    queue = [
+      (url, opts) => Promise.resolve({
+        ok: true, status: 200,
+        // body read hangs until the shared abort signal fires:
+        json: () => new Promise((resolve, reject) => {
+          opts.signal.addEventListener("abort", () => {
+            const e = new Error("The operation was aborted."); e.name = "AbortError"; reject(e);
+          });
+        }),
+        text: async () => ""
+      }),
+      res200(okBody)
+    ];
+    const rG = await ADAPTER.call({ model: "m", system: "s", userContent: [], tool: TOOL });
+    this.ok(rG.fine === true, "mocked (g) #3: a stalled response BODY aborts at TIMEOUT_MS and retries, succeeding on attempt 2");
+    this.ok(calls.length === 2, `mocked (g) #3: exactly 2 fetch calls after a body-read timeout (got ${calls.length})`);
+    ADAPTER.TIMEOUT_MS = realTimeout;
+
+    // (h) #4b — stop_reason:"max_tokens" throws ShapeError (truncated emit), carrying
+    // the raw body; exactly 1 call (truncation is not retryable).
+    calls = [];
+    queue = [res200({ stop_reason: "max_tokens", content: [{ type: "tool_use", id: "tu_trunc", name: "emit_recipe", input: { partial: true } }] })];
+    let threwH = null;
+    try { await ADAPTER.call({ model: "m", system: "s", userContent: [], tool: TOOL }); } catch (e) { threwH = e; }
+    this.ok(threwH instanceof ADAPTER.ShapeError, "mocked (h) #4b: a max_tokens-truncated response throws ADAPTER.ShapeError");
+    this.ok(!!threwH && /truncat|max_tokens/i.test(threwH.message || ""), `mocked (h) #4b: the ShapeError message names the truncation (got ${threwH && threwH.message})`);
+    this.ok(calls.length === 1, `mocked (h) #4b: exactly 1 call, truncation is not retried (got ${calls.length})`);
   } finally {
     globalThis.fetch = realFetch;
     ADAPTER.BACKOFF_MS = realBackoff;
@@ -4190,6 +4300,33 @@ SELFTEST.suites.engine = async function () {
     this.ok(STORE.prefs().target === "vantage33", `reanalyze-prefs (#2): STORE.prefs().target followed the flip to vantage33 (got ${STORE.prefs().target})`);
     STORE.setPrefs({ target: "vray7max" }); // restore the suite's default target for later sections
     ENGINE._adapter = ADAPTER;
+
+    // -- (#13) media_type derived from the dataUrl prefix, not hardcoded image/jpeg.
+    this.ok(typeof ENGINE._mediaTypeFromDataUrl === "function", "media_type (#13): ENGINE._mediaTypeFromDataUrl is a function");
+    this.ok(ENGINE._mediaTypeFromDataUrl("data:image/png;base64,AAAA") === "image/png", `media_type (#13): a png dataUrl -> "image/png" (got ${ENGINE._mediaTypeFromDataUrl("data:image/png;base64,AAAA")})`);
+    this.ok(ENGINE._mediaTypeFromDataUrl("data:image/jpeg;base64,/9j/") === "image/jpeg", "media_type (#13): a jpeg dataUrl -> image/jpeg");
+    this.ok(ENGINE._mediaTypeFromDataUrl("data:image/webp;base64,UklGRg==") === "image/webp", "media_type (#13): a webp dataUrl -> image/webp");
+    this.ok(ENGINE._mediaTypeFromDataUrl("not a data url") === "image/jpeg", "media_type (#13): an unreadable prefix falls back to image/jpeg");
+    // integration: an imported PNG ref must be SENT to the adapter as image/png, not a
+    // hardcoded image/jpeg wire lie. Seed a png ref + base directly, analyze, inspect.
+    {
+      // Real (full) metrics from a measured canvas so analyze()'s diff() has every
+      // field, but a PNG dataUrl on the ref (as an imported session would carry) so
+      // the media_type derivation has something other than jpeg to read.
+      const okPng13 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+      const s13 = ENGINE.session();
+      s13.ref = { dataUrl: okPng13, metrics: METRICS.measure(solidCanvas(16, 16, 200, 180, 150)) };
+      s13.base = { dataUrl: okPng13, metrics: METRICS.measure(solidCanvas(16, 16, 120, 130, 140)) };
+      const stub13 = makeStubAdapter();
+      ENGINE._adapter = stub13;
+      STORE.setPrefs({ target: "vray7max" });
+      ENGINE.setActiveTarget("vray7max");
+      await ENGINE.analyze();
+      const sent13 = stub13.calls[stub13.calls.length - 1].userContent;
+      const refImgBlock = sent13.find(b => b.type === "image");
+      this.ok(!!refImgBlock && refImgBlock.source.media_type === "image/png", `media_type (#13): analyze() sends an imported PNG ref as image/png (got ${refImgBlock && refImgBlock.source.media_type})`);
+      ENGINE._adapter = ADAPTER;
+    }
 
     // -- setImage decode-reject path: an undecodable "image" must surface a typed error,
     // never throw an unhandled raw exception past ENGINE's boundary -------------------
