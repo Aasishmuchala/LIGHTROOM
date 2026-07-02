@@ -1757,6 +1757,11 @@ const ENGINE = {
   // thrown/rejected op still unblocks the next call. ------------------------------
   _guarded(fn) {
     if (this._inFlight) return this._inFlight;
+    // Clear any stale error banner at the entry of every guarded user action
+    // (analyze/addAttempt/reanalyze) — a fresh attempt that then succeeds must not
+    // leave the previous failure's banner on screen. If fn() itself fails,
+    // _annotateError repopulates lastError with the new failure.
+    this.lastError = null;
     const p = (async () => {
       try {
         return await fn();
@@ -1844,6 +1849,8 @@ const ENGINE = {
   // the UI never mutates session.context directly; every session field change still
   // flows through one ENGINE action method that owns the persist step. -------------
   async setContext(patch) {
+    // A successful state change clears any stale error banner (#1).
+    this.lastError = null;
     const s = this.session();
     s.context = Object.assign({}, s.context || {}, patch || {});
     await this._persist();
@@ -1864,12 +1871,36 @@ const ENGINE = {
     if (this._inFlight) {
       throw this._annotateError(new this.BusyError("ENGINE.setRecipeApplied(): an analyze/attempt/reanalyze call is already in flight — wait for it to finish before changing the applied set."));
     }
+    // A successful state change clears any stale error banner (#1).
+    this.lastError = null;
     const chain = this.activeChain();
     if (!chain) return null;
     if (!chain.recipeApplied || typeof chain.recipeApplied !== "object") chain.recipeApplied = {};
     chain.recipeApplied[param] = !!applied;
     await this._persist();
     return chain.recipeApplied;
+  },
+
+  // -- toggleAttemptApplied(attemptIndex, param): flips a correction-row applied flag
+  // on the active chain's stored attempt (#9). Mirrors setRecipeApplied's discipline —
+  // an ENGINE action that owns the persist step and respects the _inFlight busy gate,
+  // so the correction-row toggle can no longer mutate session state out from under an
+  // in-flight addAttempt (whose _historyForActiveChain snapshot already read the old
+  // appliedParams). Absent/false toggles to true, otherwise to false — identical
+  // behavior to the prior direct UI mutation when idle. -----------------------------
+  async toggleAttemptApplied(attemptIndex, param) {
+    if (this._inFlight) {
+      throw this._annotateError(new this.BusyError("ENGINE.toggleAttemptApplied(): an analyze/attempt/reanalyze call is already in flight — wait for it to finish before changing the applied set."));
+    }
+    // A successful state change clears any stale error banner (#1).
+    this.lastError = null;
+    const chain = this.activeChain();
+    if (!chain || !chain.attempts[attemptIndex]) return null;
+    const att = chain.attempts[attemptIndex];
+    att.appliedParams = att.appliedParams || {};
+    att.appliedParams[param] = att.appliedParams[param] === false ? true : false;
+    await this._persist();
+    return att.appliedParams;
   },
 
   // -- lookup(paramId): UI's display-string API, delegates to PACKS for the ACTIVE
@@ -2019,6 +2050,11 @@ const ENGINE = {
     if (this._inFlight) {
       throw this._annotateError(new this.BusyError("ENGINE.setImage(): an analyze/attempt/reanalyze call is already in flight — wait for it to finish before swapping images."));
     }
+    // A successful image set clears any stale error banner (#1) — but only after the
+    // busy check above, so an in-flight BusyError is still recorded. If _captureSlot
+    // rejects (undecodable file), _annotateError repopulates lastError with the decode
+    // error, so this early clear never hides a genuine failure.
+    this.lastError = null;
     const captured = await this._captureSlot(fileOrCanvas, { lossless: slot === "settings" });
     const s = this.session();
     if (slot === "ref") s.ref = captured;
@@ -2231,6 +2267,11 @@ const ENGINE = {
     if (!s.ref || !s.base) throw new Error("ENGINE.reanalyzeOtherTarget(): requires reference and base images to already be set.");
     const other = s.activeTarget === "vray7max" ? "vantage33" : "vray7max";
     s.activeTarget = other;
+    // Keep STORE.prefs().target in lockstep with the flip (#2): the topbar target
+    // toggle and the "Re-analyze for <other>" button both read prefs.target, so
+    // without this they would keep showing the OLD target and a second click could
+    // burn a paid call against the wrong pack.
+    STORE.setPrefs({ target: other });
     await this._persist();
     return this._analyzeImpl();
   },
@@ -2585,12 +2626,15 @@ const UI = {
   },
 
   async toggleApplied(attemptIndex, param) {
-    const chain = ENGINE.activeChain();
-    if (!chain || !chain.attempts[attemptIndex]) return;
-    const att = chain.attempts[attemptIndex];
-    att.appliedParams = att.appliedParams || {};
-    att.appliedParams[param] = att.appliedParams[param] === false ? true : false;
-    await STORE.saveSession(ENGINE.session());
+    // Route through the ENGINE boundary (#9) so the correction-row toggle respects the
+    // _inFlight busy gate and owns its own persist — no direct session mutation +
+    // save from the UI. BusyError while an op is in flight surfaces as a toast; the
+    // render() below snaps the checkbox back to the stored (unchanged) state.
+    try {
+      await ENGINE.toggleAttemptApplied(attemptIndex, param);
+    } catch (e) {
+      if (e && e.kind === "busy") this.toast("Already working — one moment.");
+    }
     this.render();
   },
 
@@ -4099,6 +4143,53 @@ SELFTEST.suites.engine = async function () {
     try { await ENGINE.analyze(); } catch (e) { threwShape = e; }
     this.ok(!!threwShape, "ENGINE.analyze(): adapter ShapeError propagates");
     this.ok(!!ENGINE.lastError && /shape/i.test(ENGINE.lastError.kind || ENGINE.lastError.name || ""), `ENGINE.lastError records a shape-classifiable error after a ShapeError (got ${JSON.stringify(ENGINE.lastError && (ENGINE.lastError.kind || ENGINE.lastError.name))})`);
+
+    // -- (#1) lastError clears on a SUCCESSFUL action: a stale banner from the failed
+    // analyze above must not survive the next action that succeeds. Swap in a working
+    // stub and run analyze() — lastError must be back to null. -------------------------
+    this.ok(!!ENGINE.lastError, "lastError-clears (#1): sanity — a stale error is currently set (from the ShapeError above)");
+    ENGINE._adapter = makeStubAdapter();
+    await ENGINE.analyze();
+    this.ok(ENGINE.lastError === null, `lastError-clears (#1): a successful analyze() wipes the stale error banner (got ${JSON.stringify(ENGINE.lastError)})`);
+
+    // Also prove the non-network state-change actions clear it: set a stale error, then
+    // call setContext / setImage / setRecipeApplied / toggleAttemptApplied — each nulls it.
+    ENGINE.lastError = { kind: "other", message: "stale", at: new Date().toISOString() };
+    await ENGINE.setContext({ scene: "interior" });
+    this.ok(ENGINE.lastError === null, "lastError-clears (#1): setContext() clears a stale error banner");
+    ENGINE.lastError = { kind: "other", message: "stale", at: new Date().toISOString() };
+    await ENGINE.setImage("ref", solidCanvas(8, 8, 210, 190, 160));
+    this.ok(ENGINE.lastError === null, "lastError-clears (#1): a successful setImage() clears a stale error banner");
+    ENGINE.lastError = { kind: "other", message: "stale", at: new Date().toISOString() };
+    await ENGINE.setRecipeApplied("cam.iso", false);
+    this.ok(ENGINE.lastError === null, "lastError-clears (#1): setRecipeApplied() clears a stale error banner");
+    ENGINE.lastError = { kind: "other", message: "stale", at: new Date().toISOString() };
+    await ENGINE.addAttempt(solidCanvas(8, 8, 200, 185, 150));
+    ENGINE.lastError = { kind: "other", message: "stale", at: new Date().toISOString() };
+    await ENGINE.toggleAttemptApplied(0, "cam.iso");
+    this.ok(ENGINE.lastError === null, "lastError-clears (#1): toggleAttemptApplied() clears a stale error banner");
+
+    // -- (#9) toggleAttemptApplied routes through ENGINE + busy guard: idle behavior
+    // matches the old direct mutation (flips absent/false->true, else->false), and it
+    // throws BusyError while an op is in flight (never mutates mid-flight). ------------
+    this.ok(typeof ENGINE.toggleAttemptApplied === "function", "toggleAttemptApplied (#9): is an ENGINE method");
+    const chainTA = ENGINE.activeChain();
+    const att0 = chainTA.attempts[0];
+    const p0 = att0.correction.moves[0].param;
+    const before = !(att0.appliedParams && att0.appliedParams[p0] === false);
+    await ENGINE.toggleAttemptApplied(0, p0);
+    this.ok((att0.appliedParams[p0] === false) === before, `toggleAttemptApplied (#9): idle toggle flips the stored applied flag (was ${before}, now false=${att0.appliedParams[p0] === false})`);
+
+    // -- (#2) reanalyzeOtherTarget updates STORE.prefs().target in lockstep with the
+    // activeTarget flip, so the topbar/button never desync onto the old target. --------
+    STORE.setPrefs({ target: "vray7max" });
+    ENGINE.setActiveTarget("vray7max");
+    this.ok(STORE.prefs().target === "vray7max", "reanalyze-prefs (#2): sanity — prefs.target starts at vray7max");
+    await ENGINE.reanalyzeOtherTarget();
+    this.ok(ENGINE.activeTarget() === "vantage33", `reanalyze-prefs (#2): activeTarget flipped to vantage33 (got ${ENGINE.activeTarget()})`);
+    this.ok(STORE.prefs().target === "vantage33", `reanalyze-prefs (#2): STORE.prefs().target followed the flip to vantage33 (got ${STORE.prefs().target})`);
+    STORE.setPrefs({ target: "vray7max" }); // restore the suite's default target for later sections
+    ENGINE._adapter = ADAPTER;
 
     // -- setImage decode-reject path: an undecodable "image" must surface a typed error,
     // never throw an unhandled raw exception past ENGINE's boundary -------------------
