@@ -1622,7 +1622,8 @@ const ADAPTER = {
     const legend = "COMPUTED EVIDENCE — deterministic, trust for magnitude. Units: luminance values are " +
       "linearized 0-1 (not sRGB 0-255); warmth* is (R-B)/(R+B) computed on linear channel means, positive = " +
       "warmer, negative = cooler, roughly +-0.05 ~= a few hundred kelvin; tint is positive = green, negative = " +
-      "magenta.";
+      "magenta. " +
+      "diff is reference minus current (positive = reference is higher; move that way).";
     // Token precision: 4 decimals is well past the metrics' meaningful resolution;
     // full float64 digit-runs only burn tokens and invite false precision.
     const round4 = (k, v) => typeof v === "number" && Number.isFinite(v) ? Math.round(v * 1e4) / 1e4 : v;
@@ -1995,6 +1996,25 @@ const ENGINE = {
     return PACKS.lookup(this.activeTarget(), paramId);
   },
 
+  // -- _attemptNumberForChain(chain, idx) / attemptNumberAt(idx): the MONOTONIC
+  // attempt number (#8) for the stored attempt at array index `idx`. attempts[] keeps
+  // only the last ATTEMPTS_CAP entries, but _attemptCount keeps climbing, so the
+  // newest stored entry is #_attemptCount and index idx (0-based, oldest-kept first)
+  // is _attemptCount - (length - 1 - idx). This is the SAME number the model was told
+  // in that attempt's "ATTEMPT N:" image label, so the correction card title,
+  // session-strip caption, and move-history round labels all agree with it — no more
+  // "Correction — attempt 1" on the card while the model saw "ATTEMPT 9". Falls back to
+  // idx+1 for a legacy chain that predates _attemptCount. ---------------------------
+  _attemptNumberForChain(chain, idx) {
+    if (!chain || !Array.isArray(chain.attempts)) return idx + 1;
+    const L = chain.attempts.length;
+    if (typeof chain._attemptCount !== "number") return idx + 1;
+    return chain._attemptCount - (L - 1 - idx);
+  },
+  attemptNumberAt(idx) {
+    return this._attemptNumberForChain(this.activeChain(), idx);
+  },
+
   // -- activeChain(): read-only view of the active target's own chain object
   // ({recipe, attempts[], _attemptCount, _evictedScores?}). Public accessor (Task 7a
   // hardening) so the UI never reaches into session().chains[activeTarget] directly —
@@ -2250,7 +2270,10 @@ const ENGINE = {
     chain.attempts.forEach((att, idx) => {
       if (att.correction && Array.isArray(att.correction.moves)) {
         rounds.push({
-          round: idx + 1,
+          // Monotonic attempt number (#8), matching the "ATTEMPT N:" label the model
+          // saw for this attempt — not the array index+1, which would relabel every
+          // round after the FIFO cap starts evicting.
+          round: this._attemptNumberForChain(chain, idx),
           applied_assumed: !att.appliedParams,
           moves: att.correction.moves.map(m => ({
             param: m.param, from: m.from, to: m.to,
@@ -2426,12 +2449,27 @@ const UI = {
   //   filled: {ref, base, settings} booleans — whether each NAMED slot already holds
   //     an image (the Attempt "slot" is not part of this map; it is never "empty" in
   //     the same sense — every paste/drop mid-session creates a brand new attempt).
-  // Priority: focused slot -> first EMPTY named slot in Reference->Base->Settings
-  // order -> (only once every named slot is filled) new attempt IF state is
-  // analyzed/refining -> otherwise null (nothing sensible to route to; caller must
-  // not silently overwrite an anchor slot with an unfocused, unrouted paste). -----
+  // Sticky-focus reconciliation (#7): a focused slot no longer wins UNCONDITIONALLY.
+  // It wins when it is a sensible target — the Attempt slot (explicit), or a named slot
+  // that is genuinely EMPTY (the "click an empty slot, then paste" flow). But a STALE
+  // focus left on an already-FILLED named slot must NOT hijack a mid-session paste and
+  // silently overwrite that anchor: once the session is analyzed/refining with ref+base
+  // both present, such a paste falls through to the empty-slot priority and then to a
+  // NEW ATTEMPT. Before analysis a focused slot still wins outright (there is no attempt
+  // target yet, and overwriting a not-yet-committed anchor is the user's intent).
+  // Priority after the focus decision: first EMPTY named slot in Reference->Base->
+  // Settings order -> (once every named slot is filled) new attempt IF analyzed/refining
+  // -> otherwise null (nothing sensible to route to; caller must not silently overwrite
+  // an anchor slot with an unfocused, unrouted paste). -----------------------------
   routePaste(state, focusedSlot, filled) {
-    if (focusedSlot) return focusedSlot;
+    const midSession = (state === "analyzed" || state === "refining") && !!filled.ref && !!filled.base;
+    if (focusedSlot === "attempt") return "attempt";
+    if (focusedSlot) {
+      const focusedIsEmptyNamed = filled[focusedSlot] === false;
+      if (focusedIsEmptyNamed) return focusedSlot; // click an empty slot then paste -> honored
+      if (!midSession) return focusedSlot;         // pre-analysis: focus still wins outright
+      // else: a stale focus on a FILLED slot mid-session — do not overwrite; fall through.
+    }
     if (!filled.ref) return "ref";
     if (!filled.base) return "base";
     if (!filled.settings) return "settings";
@@ -2615,6 +2653,15 @@ const UI = {
     // -- global paste routing: Ctrl+V anywhere in the document. ----------------------
     document.addEventListener("paste", (ev) => this._onPaste(ev));
 
+    // -- document-level drop guard (#12): a file dropped anywhere OUTSIDE a slot would
+    // otherwise make the browser NAVIGATE to that file (leaving the app, silently
+    // losing the session). preventDefault on document dragover+drop cancels that
+    // default. The per-slot drop handlers still run first (bubbling reaches document
+    // afterward) and already preventDefault + ingest their own drop, so this guard
+    // never double-ingests — it only neutralizes the stray off-target drop. ---------
+    document.addEventListener("dragover", (ev) => { ev.preventDefault(); });
+    document.addEventListener("drop", (ev) => { ev.preventDefault(); });
+
     await ENGINE.boot();
     this.render();
   },
@@ -2654,6 +2701,12 @@ const UI = {
       this.render();
       return;
     }
+    // Clear the sticky focus at ingest time (#7): routing (routePaste) has already
+    // consulted _focusedSlot by the time we get here, and a slot the user clicked to
+    // target THIS one paste/drop must not silently capture the NEXT paste too (which,
+    // once the session is analyzed, should become a fresh attempt — not re-fill that
+    // slot). Cleared before _runAction so its trailing render() drops the focus ring.
+    this._focusedSlot = null;
     if (slot === "attempt") {
       await this._runAction(() => ENGINE.addAttempt(file));
     } else {
@@ -3150,10 +3203,13 @@ const UI = {
     if (!att.correction) return "";
     const c = att.correction;
     const movesHtml = (c.moves || []).map(m => this._valueRowHtml(m, target, "correction", idx)).join("");
+    // Monotonic attempt number (#8) so the card title matches the "ATTEMPT N:" the
+    // model was told for this attempt, even after FIFO eviction relabels array indices.
+    const attemptN = ENGINE.attemptNumberAt(idx);
     return `
       <div class="recipe-card correction-card" data-attempt-index="${idx}">
         <div class="recipe-card-header">
-          <div class="recipe-card-title">Correction — attempt ${idx + 1} <span class="score-inline">look distance <span class="score-num">${Math.round(att.score)}</span></span></div>
+          <div class="recipe-card-title">Correction — attempt ${attemptN} <span class="score-inline">look distance <span class="score-num">${Math.round(att.score)}</span></span></div>
         </div>
         ${movesHtml}
         <div class="status-reason">${this.esc(c.status_reason || "")}</div>
@@ -3213,8 +3269,10 @@ const UI = {
           : att.score > prev.score ? '<span class="trend trend-down" title="Further from reference">▼</span>'
           : '<span class="trend trend-flat">–</span>';
       }
+      // Monotonic attempt number (#8) in the thumb alt so it agrees with the card title.
+      const attemptN = ENGINE.attemptNumberAt(idx);
       const attSafe = this.safeSrc(att.dataUrl);
-      const attImg = attSafe ? `<img src="${attSafe}" alt="Attempt ${idx + 1}" />` : `<div class="slot-empty">image unavailable</div>`;
+      const attImg = attSafe ? `<img src="${attSafe}" alt="Attempt ${attemptN}" />` : `<div class="slot-empty">image unavailable</div>`;
       return `
         <div class="strip-thumb" data-attempt-index="${idx}">
           ${attImg}
@@ -3223,11 +3281,20 @@ const UI = {
       `;
     }).join("");
 
+    // Handoff banner triggers on the latest handoff signal (#11): a correction round
+    // that declared handoff_to_grade, OR — when there are no attempts yet — the INITIAL
+    // recipe itself declaring handoff (the very first analysis can already conclude the
+    // residual is a grade, not a lighting problem). The correction signal takes
+    // precedence once attempts exist; the recipe carries the same status enum.
     const latestAtt = attempts.length ? attempts[attempts.length - 1] : null;
-    const handoff = latestAtt && latestAtt.correction && latestAtt.correction.status === "handoff_to_grade";
+    const attHandoff = latestAtt && latestAtt.correction && latestAtt.correction.status === "handoff_to_grade";
+    const recipeHandoff = !attHandoff && chain && chain.recipe && chain.recipe.status === "handoff_to_grade";
+    const handoffReason = attHandoff ? (latestAtt.correction.status_reason || "")
+      : recipeHandoff ? (chain.recipe.status_reason || "") : null;
+    const handoff = handoffReason !== null;
 
     host.innerHTML = `
-      ${handoff ? `<div class="banner banner-handoff">${this.esc(latestAtt.correction.status_reason || "")} — lighting is within noise of the reference — the rest is a grade; take it to REFGRADE.</div>` : ""}
+      ${handoff ? `<div class="banner banner-handoff">${this.esc(handoffReason)} — lighting is within noise of the reference — the rest is a grade; take it to REFGRADE.</div>` : ""}
       <div class="session-strip">
         ${refThumb}
         ${attemptThumbs}
@@ -3629,6 +3696,9 @@ SELFTEST.suites.adapter = async function () {
   this.ok(/positive = warmer/i.test(evidenceBlock.text), "evidence block: units legend states positive=warmer");
   this.ok(/few hundred kelvin|hundred kelvin/i.test(evidenceBlock.text), "evidence block: units legend gives the +-0.05 ~ a few hundred kelvin approximation");
   this.ok(/tint.*positive.*green|positive = green/i.test(evidenceBlock.text), "evidence block: units legend states tint positive=green");
+  // (#10) the legend states the diff DIRECTION so the model never mis-signs a move.
+  this.ok(/diff is reference minus current/i.test(evidenceBlock.text), "evidence block (#10): units legend states diff is reference minus current");
+  this.ok(/positive = reference is higher/i.test(evidenceBlock.text), "evidence block (#10): units legend states positive = reference is higher (move that way)");
   this.ok(evidenceBlock.text.includes(JSON.stringify({ ref: { lum: { p50: 0.2 } }, base: { lum: { p50: 0.3 } }, diff: { "lum.p50": 0.1 } })), "evidence block contains JSON.stringify of the metricsBundle verbatim");
   const contextBlock = contentAnalyze.find(b => b.type === "text" && /exterior/.test(b.text) && /golden hour/.test(b.text));
   this.ok(!!contextBlock, "a context-chips block mentioning scene/time/rig exists");
@@ -4551,6 +4621,21 @@ SELFTEST.suites.engine = async function () {
 
       const chainAfter9 = ENGINE.activeChain();
       this.ok(chainAfter9.attempts.length === ENGINE.ATTEMPTS_CAP, `ENGINE.activeChain(): attempts[] length matches attemptInfo().stored (got ${chainAfter9.attempts.length})`);
+
+      // -- (#8) attempt numbering is consistent after FIFO eviction: with _attemptCount
+      // at 9 and only the last 8 stored (attempt #1 evicted), the stored array holds
+      // attempts #2..#9. attemptNumberAt(idx) must return the MONOTONIC number for each
+      // index — the same number the model was told in the "ATTEMPT N:" label — so the
+      // correction card title "Correction — attempt N" agrees with it.
+      this.ok(typeof ENGINE.attemptNumberAt === "function", "attempt numbering (#8): ENGINE.attemptNumberAt is a function");
+      this.ok(ENGINE.attemptNumberAt(0) === 2, `attempt numbering (#8): oldest-kept (index 0) is attempt #2 after evicting #1 (got ${ENGINE.attemptNumberAt(0)})`);
+      this.ok(ENGINE.attemptNumberAt(chainAfter9.attempts.length - 1) === 9, `attempt numbering (#8): newest (last index) is attempt #9 (got ${ENGINE.attemptNumberAt(chainAfter9.attempts.length - 1)})`);
+      // the history sent to the model labels correction rounds with the SAME monotonic
+      // numbers (2..9), not 1..8 — so "round N" text matches the "ATTEMPT N:" images.
+      const hist9 = ENGINE._historyForActiveChain();
+      const correctionRounds9 = hist9.filter(r => r.round !== 0).map(r => r.round);
+      this.ok(correctionRounds9[0] === 2 && correctionRounds9[correctionRounds9.length - 1] === 9, `attempt numbering (#8): history correction round labels run 2..9 (monotonic), not 1..8 (got ${JSON.stringify(correctionRounds9)})`);
+      this.ok(!correctionRounds9.includes(1), "attempt numbering (#8): the evicted attempt #1 is not relabeled onto a surviving round");
     } finally {
       ENGINE._adapter = ADAPTER;
       delete ENGINE._testSessionId;
@@ -4943,6 +5028,30 @@ SELFTEST.suites.ui = async function () {
   this.ok(UI.routePaste("ready", null, { ref: true, base: true, settings: true }) === null,
     "routePaste: ready state (not analyzed), all slots filled, no focus -> null (nothing sensible to route to)");
 
+  // -- (#7) sticky-focus reconciliation: a stale focus on a FILLED slot must not hijack
+  // a mid-session paste (it would silently overwrite that anchor); route to a new
+  // attempt instead. But focusing a genuinely EMPTY slot still wins (click-then-paste).
+  // (task-mandated case A) focused="base", refining, ref+base+settings filled -> attempt
+  // (base is a filled anchor; the stale focus must not overwrite it mid-session).
+  this.ok(UI.routePaste("refining", "base", { ref: true, base: true, settings: true }) === "attempt",
+    "routePaste (#7): a stale focus on the FILLED Base slot does NOT hijack a mid-session paste -> routes to a new attempt");
+  // (task-mandated case B) focused=EMPTY "settings", ready -> settings (click-then-paste still works).
+  this.ok(UI.routePaste("ready", "settings", { ref: true, base: true, settings: false }) === "settings",
+    "routePaste (#7): focusing a genuinely EMPTY settings slot still wins (click an empty slot, then paste)");
+  // an analyzed-state stale focus on the filled REFERENCE anchor also can't overwrite it.
+  this.ok(UI.routePaste("analyzed", "ref", { ref: true, base: true, settings: true }) === "attempt",
+    "routePaste (#7): a stale focus on the FILLED Reference anchor mid-session routes to a new attempt, not an overwrite");
+  // but a focused EMPTY named slot mid-session is still honored (fills that slot, not attempt).
+  this.ok(UI.routePaste("analyzed", "settings", { ref: true, base: true, settings: false }) === "settings",
+    "routePaste (#7): mid-session, focusing the still-EMPTY settings slot fills it (not an attempt)");
+  // explicit attempt focus always routes to attempt (unchanged).
+  this.ok(UI.routePaste("refining", "attempt", { ref: true, base: true, settings: true }) === "attempt",
+    "routePaste (#7): explicit attempt focus routes to attempt");
+  // pre-analysis, a focus on a FILLED anchor still wins outright (no attempt target yet;
+  // overwriting a not-yet-committed anchor is the user's intent) -> preserves case (1).
+  this.ok(UI.routePaste("ready", "ref", { ref: true, base: false, settings: false }) === "ref",
+    "routePaste (#7): pre-analysis, a focus on a filled slot still wins outright (no attempt target exists yet)");
+
   // -- UI.acceptsFile(file) -> {ok, reason}. Pure function over a File-like object
   // (only .type/.name are read — works against a real File or a plain fake object,
   // so this suite never needs to construct a real Blob/File). ----------------------
@@ -5059,6 +5168,34 @@ SELFTEST.suites.ui = async function () {
   this.ok(UI.safeSrc("data:image/svg+xml;base64,PHN2Zz4=") === "", "safeSrc: data:image/svg+xml (scriptable) -> \"\" (only png/jpe?g/webp allowed)");
   this.ok(UI.safeSrc("") === "" && UI.safeSrc(null) === "" && UI.safeSrc(undefined) === "", "safeSrc: empty/null/undefined -> \"\"");
   this.ok(UI.safeSrc("data:image/png;base64,iVBOR!@#$") === "", "safeSrc: a data:image/png prefix with non-base64 chars in the payload -> \"\" (charset-locked)");
+
+  // -- (#11) initial-recipe handoff surfaced in the session strip. The REFGRADE handoff
+  // banner must render when the INITIAL recipe (no attempts yet) declares
+  // status:"handoff_to_grade", not only when a correction round does. Exercised by
+  // pointing UI._els.sessionstrip at a plain {innerHTML} sink (NOT a real DOM node, per
+  // this suite's scope) and inspecting the produced markup string. -------------------
+  {
+    const okPng11 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+    const prevEls = UI._els;
+    const sink = { innerHTML: "" };
+    UI._els = { sessionstrip: sink };
+    try {
+      const session11 = { ref: { dataUrl: okPng11 }, activeTarget: "vray7max" };
+      // initial recipe declares handoff; NO attempts.
+      const chainHandoff = { recipe: { status: "handoff_to_grade", status_reason: "residual is chromatic-only", values: [] }, attempts: [] };
+      UI._renderSessionStrip("analyzed", session11, chainHandoff);
+      this.ok(/banner-handoff/.test(sink.innerHTML), "session-strip (#11): an INITIAL recipe with status handoff_to_grade renders the handoff banner");
+      this.ok(/take it to REFGRADE/.test(sink.innerHTML), "session-strip (#11): the initial-recipe handoff banner carries the verbatim REFGRADE handoff sentence");
+      this.ok(/residual is chromatic-only/.test(sink.innerHTML), "session-strip (#11): the initial-recipe handoff banner shows the recipe's status_reason");
+      // control: an initial recipe that is still "continue" must NOT render the banner.
+      sink.innerHTML = "";
+      const chainContinue = { recipe: { status: "continue", status_reason: "", values: [] }, attempts: [] };
+      UI._renderSessionStrip("analyzed", session11, chainContinue);
+      this.ok(!/banner-handoff/.test(sink.innerHTML), "session-strip (#11): a status:continue initial recipe does NOT render the handoff banner (no false positive)");
+    } finally {
+      UI._els = prevEls;
+    }
+  }
 };
 
 addEventListener("DOMContentLoaded", () => {
