@@ -1,0 +1,154 @@
+# Pack verification log — 2026-07-02
+
+Task 2 doc-grounding for `PACKS.vray7max` and `PACKS.vantage33` in `lightmatch.html`.
+
+**Method.** `docs.chaos.com` now fronts a Refined site backed by Confluence Cloud
+(`docs-chaos.atlassian.net`); pages render via JS, so each page body was pulled through the
+public Confluence REST API (`/wiki/rest/api/content?spaceKey=…&title=…&expand=body.view`)
+and read in full. Space **VMAX** = "V-Ray for 3ds Max" current docs (V-Ray 7.x — the space
+carries the 7.30.02 changelog; pages last modified 2026-04/05). Space **LAV** = "Chaos
+Vantage" current docs; the What's New page lists **Chaos Vantage v3.3.0, official release
+2026-06-11**, and the pages below document 3.3 features (e.g. the 3.3 Color mixer appears on
+the Color Corrections Tab page). `docs.chaos.com/display/<SPACE>/<Page>` URLs remain the
+canonical citations (they 301 to `documentation.chaos.com`).
+
+**Verification policy (also in the PACKS section header):**
+- `verified:"2026-07-02"` — control name, panel location, option lists and every doc-stated
+  range/default in the entry were confirmed on the cited page. Where Chaos docs do not print
+  spinner bounds (they almost never do), `range` is a **practical range** and the entry's
+  `notes` say so — per the plan's practical-range rule.
+- `verified:false` — the ui_path itself is doc-checked, but the entry states a **factory
+  default that current Chaos docs do not print** (typically a creation value like a light
+  multiplier). The shipped value is conservative and flagged "(N assumed)" in `notes`.
+- Neutral values that follow from doc-stated semantics (a multiplier's 1.0, a ± slider's 0,
+  "no override" dropdown states, 6500 K as a WB layer's no-correction point) are accepted as
+  verified with the derivation noted; arbitrary creation values are not.
+
+**Id decisions forced by doc-grounding** (plan said final ids follow the docs):
+- `sun.kelvin` (vray7max) — **V-Ray 7's VRaySun has no Kelvin control.** Color mode options
+  are `filter | direct | override` (VRaySun page); sun color is physical (elevation +
+  Turbidity + Ozone). The id is kept (spec/selftest contract) as a `placement` instruction
+  entry pointing at the real controls (`Color mode` + `Filter color`), with the honest
+  mechanism in notes. The spec example's "Color temperature" spinner does not exist in the
+  V-Ray 7 Modify panel and is not claimed.
+- `sun.kelvin_or_skymodel` (vantage33 draft) — split into `sun.color_mode`
+  (Filter | Direct | Override — the Vantage sun also has no Kelvin control) and
+  `env.sky_model` (the sky-model dropdown).
+- `env.tint` (vantage33 draft) — Vantage has no environment tint control in Texture mode;
+  numeric tinting lives in post: shipped as `post.wb_kelvin` + `post.wb_tint`
+  (Color Corrections tab ▸ White balance). The vray7max "tint" group member is
+  `dome.temperature` (VRayLight Mode = Temperature), which only applies untextured.
+- `dome.rotation_h` (vray7max) — the Max dome light has **no rotation spinner**; the real
+  controls are the HDRI's `VRayBitmap ▸ Horiz. rotation` or rotating the light icon with
+  `Lock texture to icon` enabled (both doc-verified).
+- Vantage exposure: the task asked to confirm the exposure control names — they are
+  `Camera tab ▸ Exposure (advanced) ▸ Exposure (None | Physical | Value)` + `Exposure Value`,
+  plus a **Toggle auto-exposure** on the Viewport bar which *ignores* the set camera exposure
+  (shipped as `cam.auto_exposure` with a recipe-critical warning note).
+- Vantage post/tonemapping: lives in the **Color Corrections tab** (not the Camera tab):
+  Exposure corrections (Exposure bias, Highlight burn, Contrast), Filmic tonemap
+  (Type: Hable | AMPAS), Hue/Saturation, White balance (Temperature, Magenta-Green tint), LUT,
+  Lens effects, Bloom, Color mixer (new in 3.3), Color balance, Chromatic aberration.
+
+## Source pages
+
+| Key | URL (canonical) | Last modified |
+|---|---|---|
+| VMAX VRaySun | https://docs.chaos.com/display/VMAX/VRaySun | 2026-04-22 |
+| VMAX Dome Light | https://docs.chaos.com/display/VMAX/Dome+Light | 2026-04-22 |
+| VMAX Plane-Disc-Sphere Light | https://docs.chaos.com/display/VMAX/Plane+-+Disc+-+Sphere+Light | 2026-04-22 |
+| VMAX VRayBitmap | https://docs.chaos.com/display/VMAX/VRayBitmap | 2026-04-24 |
+| VMAX VRayPhysicalCamera | https://docs.chaos.com/display/VMAX/VRayPhysicalCamera | 2026-05-21 |
+| VMAX Environment Settings | https://docs.chaos.com/display/VMAX/Environment+Settings | 2026-05-21 |
+| VMAX Color Mapping | https://docs.chaos.com/display/VMAX/Color+Mapping | 2026-05-21 |
+| VMAX Global Illumination Rollout | https://docs.chaos.com/display/VMAX/Global+Illumination+Rollout | 2026-05-21 |
+| VMAX Universal V-Ray Settings | https://docs.chaos.com/display/VMAX/Universal+V-Ray+Settings | 2026-05-22 |
+| VMAX Layers (VFB) | https://docs.chaos.com/display/VMAX/Layers | 2026-05-21 |
+| LAV Sky | https://docs.chaos.com/display/LAV/Sky | 2026-02-27 |
+| LAV Environment Tab | https://docs.chaos.com/display/LAV/Environment+Tab | 2026-06-11 |
+| LAV Background | https://docs.chaos.com/display/LAV/Background | 2026-03-19 |
+| LAV Vantage Default Sun | https://docs.chaos.com/display/LAV/Vantage+Default+Sun | 2026-03-19 |
+| LAV Sun Light | https://docs.chaos.com/display/LAV/Sun+Light | 2026-02-27 |
+| LAV Lights Tab | https://docs.chaos.com/display/LAV/Lights+Tab | 2026-06-23 |
+| LAV Camera Tab | https://docs.chaos.com/display/LAV/Camera+Tab | 2026-07-01 |
+| LAV Viewport Bar | https://docs.chaos.com/display/LAV/Viewport+Bar | 2026-06-23 |
+| LAV Color Corrections Tab | https://docs.chaos.com/display/LAV/Color+Corrections+Tab | 2026-06-15 |
+| LAV What's New (v3.3.0) | https://docs.chaos.com/display/LAV/What%27s+New | 2026-06-11 |
+
+## PACKS.vray7max (30 entries)
+
+- `env.gi_skylight_on` — Render Setup ▸ V-Ray tab ▸ Environment rollout ▸ GI Environment (Skylight) ▸ On — VERIFIED https://docs.chaos.com/display/VMAX/Environment+Settings (rollout path + On/Color/Multiplier/Texture group; "off" default from the page's own statement that without the override the 3ds Max Environment dialog is used).
+- `env.gi_skylight_mult` — … ▸ GI Environment (Skylight) ▸ Multiplier — VERIFIED https://docs.chaos.com/display/VMAX/Environment+Settings ("multiplier does not affect the environment texture" doc-stated; range practical, default 1.0 = neutral multiplier).
+- `dome.texture_slot` — VRayLight (Dome) ▸ Modify panel ▸ General rollout ▸ Map — VERIFIED https://docs.chaos.com/display/VMAX/Dome+Light (Map under General Rollout; texture overrides Color/Temperature).
+- `dome.intensity` — VRayLight (Dome) ▸ Modify panel ▸ General rollout ▸ Multiplier — UNVERIFIED (factory creation value not printed in docs) — control + path VERIFIED on https://docs.chaos.com/display/VMAX/Dome+Light ; default 1.0 assumed, range practical.
+- `dome.rotation_h` — Dome HDRI: VRayBitmap ▸ Mapping ▸ Horiz. rotation — VERIFIED https://docs.chaos.com/display/VMAX/VRayBitmap ("Horiz. rotation – Allows left and right rotation of the environment map"; alternative Lock texture to icon on https://docs.chaos.com/display/VMAX/Dome+Light).
+- `dome.invisible` — VRayLight (Dome) ▸ Modify panel ▸ Options rollout ▸ Invisible — VERIFIED https://docs.chaos.com/display/VMAX/Dome+Light (incl. the still-affects-GI caveat).
+- `dome.temperature` — VRayLight (Dome) ▸ Modify panel ▸ General rollout ▸ Temperature (Mode = Temperature) — UNVERIFIED (factory Kelvin value not printed in docs) — Mode Color|Temperature and Kelvin semantics VERIFIED on https://docs.chaos.com/display/VMAX/Dome+Light ; 6500 assumed.
+- `sun.placement_azimuth` — viewport move / Daylight system — VERIFIED https://docs.chaos.com/display/VMAX/VRaySun ("You can also specify the VRaySun as the sun type inside a 3ds Max Daylight system"; creation via click-and-drag UI paths; no azimuth spinner exists on the sun — hence kind:placement, default informational).
+- `sun.placement_elevation` — viewport move / Daylight system — VERIFIED https://docs.chaos.com/display/VMAX/VRaySun (same grounds; sun/sky appearance follows direction per the page's direction example).
+- `sun.intensity_mult` — VRaySun ▸ Modify panel ▸ Sun Parameters ▸ Intensity multiplier — VERIFIED https://docs.chaos.com/display/VMAX/VRaySun (control + "reduce its effect" semantics; 1.0 = physical neutral per the page's Notes on real-world irradiance; range practical).
+- `sun.size_mult` — VRaySun ▸ Modify panel ▸ Sun Parameters ▸ Size multiplier — VERIFIED https://docs.chaos.com/display/VMAX/VRaySun (disc size + shadow blurriness, illumination unchanged; examples 4–40; 1.0 neutral; range practical).
+- `sun.kelvin` — VRaySun ▸ Modify panel ▸ Sun Parameters ▸ Color mode + Filter color — VERIFIED https://docs.chaos.com/display/VMAX/VRaySun (Color mode options filter|direct|override confirmed; the entry's claim is the *absence* of a Kelvin spinner + the real mechanism; 5777 K physical constant, informational).
+- `sun.turbidity` — VRaySun ▸ Modify panel ▸ Sky Parameters ▸ Turbidity — UNVERIFIED (factory default not printed in docs) — control, Sky Parameters location and 2–8 example values VERIFIED on https://docs.chaos.com/display/VMAX/VRaySun ; 3.0 assumed, range practical.
+- `fill.plane_intensity` — VRayLight (Plane) ▸ Modify panel ▸ General rollout ▸ Multiplier — UNVERIFIED (factory creation value not printed in docs) — control/path/units-size interaction VERIFIED on https://docs.chaos.com/display/VMAX/Plane+-+Disc+-+Sphere+Light ; 30 assumed, range practical.
+- `fill.plane_kelvin` — … ▸ Temperature (Mode = Temperature) — UNVERIFIED (factory Kelvin value not printed in docs) — Mode/Temperature control VERIFIED on https://docs.chaos.com/display/VMAX/Plane+-+Disc+-+Sphere+Light ; 6500 assumed.
+- `fill.sphere_intensity` — VRayLight (Sphere) ▸ Modify panel ▸ General rollout ▸ Multiplier — UNVERIFIED (factory creation value not printed in docs) — control + size/units interaction VERIFIED on https://docs.chaos.com/display/VMAX/Plane+-+Disc+-+Sphere+Light ; 30 assumed, range practical.
+- `fill.key_fill_guidance` — Create menu ▸ Lights ▸ V-Ray ▸ V-Ray Plane/Sphere Light — VERIFIED https://docs.chaos.com/display/VMAX/Plane+-+Disc+-+Sphere+Light (creation UI paths verbatim; ratio bounds are guidance, not a UI control — kind:placement).
+- `cam.iso` — VRayPhysicalCamera ▸ Modify panel ▸ Aperture ▸ Film speed (ISO) — UNVERIFIED (factory default not printed in docs) — control name/rollout + "around 100 ISO for day scenes" VERIFIED on https://docs.chaos.com/display/VMAX/VRayPhysicalCamera ; 100 assumed, range practical.
+- `cam.fnumber` — … ▸ Aperture ▸ F-Number — UNVERIFIED (factory default not printed in docs) — control + brightness/DOF semantics VERIFIED on https://docs.chaos.com/display/VMAX/VRayPhysicalCamera ; 8.0 assumed, range practical.
+- `cam.shutter` — … ▸ Aperture ▸ Shutter speed (s^-1) — UNVERIFIED (factory default not printed in docs) — control + inverse-seconds semantics VERIFIED on https://docs.chaos.com/display/VMAX/VRayPhysicalCamera ; 200 assumed, range practical.
+- `cam.wb_kelvin` — … ▸ Color & Exposure ▸ Temperature (K) (White balance = Temperature) — UNVERIFIED (factory value not printed in docs) — control name + activation condition + presets (e.g. Daylight) VERIFIED on https://docs.chaos.com/display/VMAX/VRayPhysicalCamera ; 6500 assumed.
+- `cam.ev_readout` — … ▸ Color & Exposure ▸ Exposure value — VERIFIED https://docs.chaos.com/display/VMAX/VRayPhysicalCamera (derived/greyed-out behavior doc-stated verbatim; default explicitly labeled approximate in notes).
+- `cm.type` — Render Setup ▸ V-Ray tab ▸ Color mapping rollout ▸ Type — VERIFIED https://docs.chaos.com/display/VMAX/Color+Mapping (all 7 options; default Reinhard + Burn 1.0 = linear doc-stated).
+- `cm.highlight_burn` — … ▸ Burn value (Type = Reinhard) — VERIFIED https://docs.chaos.com/display/VMAX/Color+Mapping (range [0,1] and default 1.0 doc-stated).
+- `cm.contrast` — V-Ray Frame Buffer ▸ Layers panel ▸ Exposure layer ▸ Contrast — VERIFIED https://docs.chaos.com/display/VMAX/Layers (control + ± semantics; 0 neutral derived; range practical).
+- `cm.saturation` — V-Ray Frame Buffer ▸ Layers panel ▸ Hue/Saturation layer ▸ Saturation — VERIFIED https://docs.chaos.com/display/VMAX/Layers (layer + lower/higher semantics; 0 neutral derived; range practical).
+- `vfb.exposure` — V-Ray Frame Buffer ▸ Layers panel ▸ Exposure layer ▸ Exposure — VERIFIED https://docs.chaos.com/display/VMAX/Layers (default 0.0 and ±1 = double/half doc-stated; range practical).
+- `vfb.wb_kelvin` — V-Ray Frame Buffer ▸ Layers panel ▸ White Balance layer ▸ Temperature — VERIFIED https://docs.chaos.com/display/VMAX/Layers (Kelvin control + bluer/amber semantics; 6500 neutral derived, noted as such; range practical).
+- `gi.primary` — Render Setup ▸ GI tab ▸ Global illumination rollout ▸ Primary engine — VERIFIED https://docs.chaos.com/display/VMAX/Global+Illumination+Rollout (options incl. Irradiance map deprecation) + default Brute force VERIFIED https://docs.chaos.com/display/VMAX/Universal+V-Ray+Settings ("GI enabled, using Brute Force as Primary GI engine and Light Cache as Secondary GI engine" as the default settings).
+- `gi.secondary` — … ▸ Secondary engine — VERIFIED https://docs.chaos.com/display/VMAX/Global+Illumination+Rollout + https://docs.chaos.com/display/VMAX/Universal+V-Ray+Settings (default Light cache; bounce defaults 3/100 doc-stated).
+
+## PACKS.vantage33 (27 entries)
+
+- `env.mode` — Environment tab ▸ Sky rollout ▸ Settings ▸ Environment mode — VERIFIED https://docs.chaos.com/display/LAV/Sky (Texture | Solid Color | Physical Sky; Physical Sky needs VRaySky in the .vrscene doc-stated; startup scene-dependent, noted).
+- `env.hdri_slot` — … ▸ Load environment (Texture mode) — VERIFIED https://docs.chaos.com/display/LAV/Sky (control + RGB color space options).
+- `env.intensity` — … ▸ Intensity — VERIFIED https://docs.chaos.com/display/LAV/Sky (present in all three modes; 1.0 neutral derived; range practical).
+- `env.rotation` — … ▸ Rotation (Texture mode) — VERIFIED https://docs.chaos.com/display/LAV/Sky ("rotation angle in degrees for the Environment texture").
+- `env.background_mode` — Environment tab ▸ Background rollout ▸ Mode — VERIFIED https://docs.chaos.com/display/LAV/Background (Same as environment | Solid color | Image; not-used-for-lighting caveat doc-stated; "Same as environment" = neutral no-override).
+- `env.sky_model` — … ▸ Sky model (Physical Sky mode) — VERIFIED https://docs.chaos.com/display/LAV/Sky (all 6 options incl. PRG Clear Sky (old) vs updated PRG with turbidity 1.81–4.89 and twilight to −12°; default scene-dependent, noted).
+- `sun.enabled` — Lights tab ▸ Sun ▸ Basic settings ▸ Enabled — VERIFIED https://docs.chaos.com/display/LAV/Vantage+Default+Sun + https://docs.chaos.com/display/LAV/Sun+Light + https://docs.chaos.com/display/LAV/Lights+Tab (tab name; identical parameter sets for default/imported sun).
+- `sun.intensity` — … ▸ Intensity — VERIFIED https://docs.chaos.com/display/LAV/Sun+Light ("reduce the default brightness" semantics; 1.0 physical neutral; range practical).
+- `sun.size` — … ▸ Sun size mult. — VERIFIED https://docs.chaos.com/display/LAV/Sun+Light (disc size + shadow softness; 1.0 neutral; range practical).
+- `sun.position_mode` — … ▸ Sun position mode — VERIFIED https://docs.chaos.com/display/LAV/Vantage+Default+Sun (Manual | Altitude/Azimuth | Geolocation | Animated Geolocation; recipe recommendation noted, scene default follows import).
+- `sun.azimuth` — … ▸ Azimuth (Altitude/Azimuth mode) — VERIFIED https://docs.chaos.com/display/LAV/Sun+Light (control + mode gating; compass convention from the page's azimuth description; default informational).
+- `sun.elevation` — … ▸ Altitude (Altitude/Azimuth mode) — VERIFIED https://docs.chaos.com/display/LAV/Sun+Light (Vantage's name is **Altitude**, noted; negative-elevation twilight bound from the PRG sky on https://docs.chaos.com/display/LAV/Sky ; range practical).
+- `sun.color_mode` — … ▸ Color mode — VERIFIED https://docs.chaos.com/display/LAV/Sun+Light (Filter | Direct | Override; no Kelvin control on the Vantage sun — replaces draft id `sun.kelvin_or_skymodel`).
+- `cam.exposure_mode` — Camera tab ▸ Exposure (advanced) ▸ Exposure — UNVERIFIED (startup default not printed in docs) — options None | Physical | Value + grey-out behavior VERIFIED on https://docs.chaos.com/display/LAV/Camera+Tab ; "Value" assumed.
+- `cam.exposure_value` — … ▸ Exposure Value (Exposure = Value) — UNVERIFIED (factory default not printed in docs) — control + mode gating VERIFIED on https://docs.chaos.com/display/LAV/Camera+Tab , twilight example EV 10 on https://docs.chaos.com/display/LAV/Sky ; 14 assumed, range practical.
+- `cam.auto_exposure` — Viewport bar ▸ Exposure ▸ Toggle auto-exposure — UNVERIFIED (startup state not printed in docs) — control + "ignores set camera exposure" VERIFIED on https://docs.chaos.com/display/LAV/Viewport+Bar ; "off" is the recipe-safe recommendation, noted.
+- `cam.wb` — Camera tab ▸ White balance (color swatch) — VERIFIED https://docs.chaos.com/display/LAV/Camera+Tab (color-swatch semantics + "only works when Exposure is Physical or Value" doc-stated; no Kelvin field on the camera — kind:placement instruction).
+- `cam.dof_note` — Camera tab ▸ Depth of field (advanced) — VERIFIED https://docs.chaos.com/display/LAV/Camera+Tab (toggle + advanced Focus distance/Aperture size/Optical vignetting; docs' Optical-vignetting-over-Vignetting recommendation quoted in notes; off = neutral effect state).
+- `post.exposure_corrections` — Color Corrections tab ▸ Exposure corrections (toggle) — VERIFIED https://docs.chaos.com/display/LAV/Color+Corrections+Tab (+ Viewport bar Toggle Color Corrections on https://docs.chaos.com/display/LAV/Viewport+Bar ; off = neutral).
+- `post.exposure_bias` — … ▸ Exposure bias — VERIFIED https://docs.chaos.com/display/LAV/Color+Corrections+Tab (also on the Viewport bar; 0 neutral derived; range practical).
+- `post.highlight_burn` — … ▸ Highlight burn — UNVERIFIED (range/neutral value not printed in Vantage docs) — control + hidden-when-Filmic-tonemap behavior VERIFIED on https://docs.chaos.com/display/LAV/Color+Corrections+Tab ; [0,1]/1.0 follow the V-Ray burn convention, flagged in notes.
+- `post.contrast` — … ▸ Contrast — VERIFIED https://docs.chaos.com/display/LAV/Color+Corrections+Tab (± around mid-grey semantics doc-stated; 0 neutral; range practical).
+- `post.tonemap_type` — Color Corrections tab ▸ Filmic tonemap ▸ Type — UNVERIFIED (default selection not printed in docs) — options Hable | AMPAS + gating/Highlight-burn interaction VERIFIED on https://docs.chaos.com/display/LAV/Color+Corrections+Tab ; "Hable" assumed.
+- `post.saturation` — Color Corrections tab ▸ Hue / Saturation ▸ Saturation — VERIFIED https://docs.chaos.com/display/LAV/Color+Corrections+Tab (positive vibrant / negative desaturate doc-stated; 0 neutral; range practical).
+- `post.wb_kelvin` — Color Corrections tab ▸ White balance ▸ Temperature — VERIFIED https://docs.chaos.com/display/LAV/Color+Corrections+Tab (Kelvin + bluer/amber semantics; 6500 neutral derived, noted; range practical).
+- `post.wb_tint` — … ▸ Magenta-Green tint — VERIFIED https://docs.chaos.com/display/LAV/Color+Corrections+Tab (greener/purple semantics; 0 neutral; range practical).
+- `render.quality_preset` — Viewport bar ▸ Render ▸ quality preset — UNVERIFIED (startup preset not printed in docs) — options Low | Medium | High | Ultra | Custom + per-preset GI values VERIFIED on https://docs.chaos.com/display/LAV/Viewport+Bar ; "High" assumed.
+
+## Summary
+
+- vray7max: 30 entries — 20 verified, **10 UNVERIFIED** (`dome.intensity`, `dome.temperature`,
+  `sun.turbidity`, `fill.plane_intensity`, `fill.plane_kelvin`, `fill.sphere_intensity`,
+  `cam.iso`, `cam.fnumber`, `cam.shutter`, `cam.wb_kelvin`).
+- vantage33: 27 entries — 21 verified, **6 UNVERIFIED** (`cam.exposure_mode`,
+  `cam.exposure_value`, `cam.auto_exposure`, `post.highlight_burn`, `post.tonemap_type`,
+  `render.quality_preset`).
+- Every UNVERIFIED entry has a **doc-checked ui_path**; only a factory default (and where
+  noted, a practical range) could not be confirmed, because current Chaos docs do not print
+  factory values for those controls. Also probed without success: V-Ray AppSDK plugin
+  reference (no defaults listed), VMAX MAXScript page (no per-plugin defaults), VNS/APPSDK
+  Confluence spaces (no plugin pages). Follow-up that would close them: read the values from
+  a fresh 3ds Max + V-Ray 7 / Vantage 3.3 install and stamp them here.

@@ -15,7 +15,244 @@ html, body {
 <div id="app"></div>
 <script>
 /* ===== SECTION: PACKS ===== */
-const PACKS = {};
+// Target packs: the exactness asset. Every ui_path is rendered verbatim in the UI and
+// was checked against current Chaos documentation (docs.chaos.com, spaces VMAX + LAV)
+// on 2026-07-02 — see docs/pack-verification.md for the per-entry log.
+// verified: "2026-07-02" = control name/location/options and all doc-stated facts checked.
+// verified: false        = the control path is doc-checked but a stated default (usually a
+//                          factory creation value) is NOT printed in current Chaos docs;
+//                          the value shipped here is conservative and flagged in notes.
+// kinds: spinner (numeric field), dropdown (option list in notes, string default),
+//        slot (texture/HDRI slot, range [0,0], default "none"),
+//        placement (instruction row: how to place/aim/set something; string or numeric).
+const PACKS = {
+  vray7max: {
+    label: "V-Ray 7 for 3ds Max",
+    entries: [
+      // -- environment / dome --------------------------------------------------------
+      { id: "env.gi_skylight_on", ui_path: "Render Setup ▸ V-Ray tab ▸ Environment rollout ▸ GI Environment (Skylight) ▸ On",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: "2026-07-02",
+        notes: "Options: on | off. Enables the GI environment (skylight) override; while off, the 3ds Max Environment dialog drives GI (docs)." },
+      { id: "env.gi_skylight_mult", ui_path: "Render Setup ▸ V-Ray tab ▸ Environment rollout ▸ GI Environment (Skylight) ▸ Multiplier",
+        kind: "spinner", unit: "x", range: [0, 20], default: 1.0, verified: "2026-07-02",
+        notes: "Practical range; UI spinner accepts far higher. Multiplies the override Color only — it does NOT affect an assigned environment texture (docs: use an Output map for texture brightness)." },
+      { id: "dome.texture_slot", ui_path: "VRayLight (Dome) ▸ Modify panel ▸ General rollout ▸ Map (texture slot)",
+        kind: "slot", unit: "", range: [0, 0], default: "none", verified: "2026-07-02",
+        notes: "Load the HDRI via a VRayBitmap map in this slot; a texture overrides the light's Color/Temperature (docs). Value = HDRI file or mood description, not a number." },
+      { id: "dome.intensity", ui_path: "VRayLight (Dome) ▸ Modify panel ▸ General rollout ▸ Multiplier",
+        kind: "spinner", unit: "x", range: [0, 100], default: 1.0, verified: false,
+        notes: "Practical range; UI accepts higher. With Units = Default (image) the multiplier scales the HDRI brightness directly. Factory creation value not stated in current Chaos docs (1.0 assumed)." },
+      { id: "dome.rotation_h", ui_path: "Dome HDRI: VRayBitmap ▸ Mapping ▸ Horiz. rotation",
+        kind: "spinner", unit: "deg", range: [0, 360], default: 0, verified: "2026-07-02",
+        notes: "Rotates the environment map left/right; ignored when Mapping type = 3ds Max standard (docs). Alternative: rotate the Dome light icon with Dome Light rollout ▸ Lock texture to icon enabled." },
+      { id: "dome.invisible", ui_path: "VRayLight (Dome) ▸ Modify panel ▸ Options rollout ▸ Invisible",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: "2026-07-02",
+        notes: "Options: on | off. Hides the dome from camera/refraction rays only; it still lights the scene and is still seen by GI rays (docs)." },
+      { id: "dome.temperature", ui_path: "VRayLight (Dome) ▸ Modify panel ▸ General rollout ▸ Temperature (Mode = Temperature)",
+        kind: "spinner", unit: "K", range: [1000, 20000], default: 6500, verified: false,
+        notes: "Tints an UNtextured dome; any Map in the texture slot overrides color (docs). Kelvin field active only when Mode = Temperature. Factory value not stated in current Chaos docs (6500 assumed)." },
+      // -- sun -----------------------------------------------------------------------
+      { id: "sun.placement_azimuth", ui_path: "VRaySun ▸ move/rotate the sun head in the viewport, or Create panel ▸ Systems ▸ Daylight ▸ Sunlight = VRaySun ▸ Position (Date/Time/Location or Manual)",
+        kind: "placement", unit: "deg", range: [0, 360], default: 135, verified: "2026-07-02",
+        notes: "V-Ray 7 has no azimuth spinner on VRaySun itself — position is set by moving the sun or via a 3ds Max Daylight system with VRaySun as the sun type (docs). Compass: 0 = North, 90 = East. Emit as a placement instruction; default is informational." },
+      { id: "sun.placement_elevation", ui_path: "VRaySun ▸ move the sun head height in the viewport, or Create panel ▸ Systems ▸ Daylight ▸ Sunlight = VRaySun ▸ Position (Date/Time/Location or Manual)",
+        kind: "placement", unit: "deg", range: [0, 90], default: 35, verified: "2026-07-02",
+        notes: "Elevation above horizon; sun and sky color follow the position physically — a lower sun is warmer with longer, softer-lit shadows (docs). Emit as a placement instruction; default is informational." },
+      { id: "sun.intensity_mult", ui_path: "VRaySun ▸ Modify panel ▸ Sun Parameters ▸ Intensity multiplier",
+        kind: "spinner", unit: "x", range: [0, 2], default: 1.0, verified: "2026-07-02",
+        notes: "1.0 = physical solar brightness; docs recommend keeping it and exposing via camera or color mapping. Values like 0.01-0.05 only when NO exposure control is used. UI accepts higher than 2 (practical range)." },
+      { id: "sun.size_mult", ui_path: "VRaySun ▸ Modify panel ▸ Sun Parameters ▸ Size multiplier",
+        kind: "spinner", unit: "x", range: [0.2, 40], default: 1.0, verified: "2026-07-02",
+        notes: "Visible sun-disc size AND shadow-edge softness; overall illumination strength stays the same (docs). 1.0 = real sun; docs examples use 4-40 for visibly soft shadows. Practical range; UI accepts higher." },
+      { id: "sun.kelvin", ui_path: "VRaySun ▸ Modify panel ▸ Sun Parameters ▸ Color mode + Filter color",
+        kind: "placement", unit: "K", range: [1000, 20000], default: 5777, verified: "2026-07-02",
+        notes: "V-Ray 7's VRaySun has NO Kelvin spinner — Color mode options are filter | direct | override (docs) and sun color is physical (elevation + Turbidity + Ozone). To hit a target kelvin: lower the elevation / raise Turbidity for warmth, or set Color mode = direct with a warm Filter color; numeric kelvin white balance lives on the camera (cam.wb_kelvin). 5777 K = physical solar temperature, informational." },
+      { id: "sun.turbidity", ui_path: "VRaySun ▸ Modify panel ▸ Sky Parameters ▸ Turbidity",
+        kind: "spinner", unit: "", range: [2, 20], default: 3.0, verified: false,
+        notes: "Air dust: 2 = clear blue sky/sun, 8+ = yellow-orange haze (docs examples 2-8). Affects sun AND sky color. Practical range; UI accepts higher. Factory default not stated in current Chaos docs (3.0 assumed)." },
+      // -- artificial fills ------------------------------------------------------------
+      { id: "fill.plane_intensity", ui_path: "VRayLight (Plane) ▸ Modify panel ▸ General rollout ▸ Multiplier",
+        kind: "spinner", unit: "x", range: [0, 500], default: 30, verified: false,
+        notes: "With Units = Default (image) the intensity also depends on the light's SIZE (docs). Practical range; UI accepts higher. Factory creation value not stated in current Chaos docs (30 assumed)." },
+      { id: "fill.plane_kelvin", ui_path: "VRayLight (Plane) ▸ Modify panel ▸ General rollout ▸ Temperature (Mode = Temperature)",
+        kind: "spinner", unit: "K", range: [1000, 20000], default: 6500, verified: false,
+        notes: "Kelvin field active only when Mode = Temperature (docs). Factory value not stated in current Chaos docs (6500 assumed)." },
+      { id: "fill.sphere_intensity", ui_path: "VRayLight (Sphere) ▸ Modify panel ▸ General rollout ▸ Multiplier",
+        kind: "spinner", unit: "x", range: [0, 500], default: 30, verified: false,
+        notes: "Sphere size affects intensity with Default (image) / Luminance / Radiance units (docs). Practical range; UI accepts higher. Factory creation value not stated in current Chaos docs (30 assumed)." },
+      { id: "fill.key_fill_guidance", ui_path: "Create menu ▸ Lights ▸ V-Ray ▸ V-Ray Plane/Sphere Light ▸ click and drag in a viewport",
+        kind: "placement", unit: ":1", range: [1, 10], default: 4, verified: "2026-07-02",
+        notes: "Guidance entry: emit fill placement (position/aim relative to the key light) plus a key:fill intensity ratio — e.g. 4:1 reads moody, 2:1 reads soft. Rendered as an instruction row, not a spinner." },
+      // -- camera / exposure -----------------------------------------------------------
+      { id: "cam.iso", ui_path: "VRayPhysicalCamera ▸ Modify panel ▸ Aperture ▸ Film speed (ISO)",
+        kind: "spinner", unit: "ISO", range: [25, 6400], default: 100, verified: false,
+        notes: "Higher = brighter (docs: a V-Ray Sun day scene looks best around 100 ISO). Affects brightness when Exposure = Physical Exposure. Practical range. Factory default not stated in current Chaos docs (100 assumed)." },
+      { id: "cam.fnumber", ui_path: "VRayPhysicalCamera ▸ Modify panel ▸ Aperture ▸ F-Number",
+        kind: "spinner", unit: "f/", range: [0.7, 64], default: 8.0, verified: false,
+        notes: "Lower = brighter + more DOF (docs). Affects brightness only when Exposure = Physical Exposure. Practical range. Factory default not stated in current Chaos docs (8.0 assumed)." },
+      { id: "cam.shutter", ui_path: "VRayPhysicalCamera ▸ Modify panel ▸ Aperture ▸ Shutter speed (s^-1)",
+        kind: "spinner", unit: "s^-1", range: [1, 2000], default: 200, verified: false,
+        notes: "Inverse seconds: 30 means 1/30 s (docs); LOWER value = brighter image. Practical range. Factory default not stated in current Chaos docs (200 assumed)." },
+      { id: "cam.wb_kelvin", ui_path: "VRayPhysicalCamera ▸ Modify panel ▸ Color & Exposure ▸ Temperature (K) (White balance = Temperature)",
+        kind: "spinner", unit: "K", range: [1000, 20000], default: 6500, verified: false,
+        notes: "Kelvin field applies only when the White balance dropdown = Temperature (docs); presets such as Daylight also exist. Factory value not stated in current Chaos docs (6500 assumed)." },
+      { id: "cam.ev_readout", ui_path: "VRayPhysicalCamera ▸ Modify panel ▸ Color & Exposure ▸ Exposure value",
+        kind: "spinner", unit: "EV", range: [-6, 26], default: 14, verified: "2026-07-02",
+        notes: "derived: with Exposure = Physical Exposure this field is a greyed-out readout computed from ISO/F-Number/Shutter (docs); it is editable only when Exposure = Exposure Value (EV). Default shown is the approximate factory readout." },
+      // -- color mapping / VFB -----------------------------------------------------------
+      { id: "cm.type", ui_path: "Render Setup ▸ V-Ray tab ▸ Color mapping rollout ▸ Type",
+        kind: "dropdown", unit: "", range: [0, 0], default: "Reinhard", verified: "2026-07-02",
+        notes: "Options: Linear multiply | Exponential | HSV exponential | Intensity exponential | Gamma correction (deprecated) | Intensity gamma (deprecated) | Reinhard. Factory default is Reinhard with Burn value 1.0 = linear result (docs)." },
+      { id: "cm.highlight_burn", ui_path: "Render Setup ▸ V-Ray tab ▸ Color mapping rollout ▸ Burn value (Type = Reinhard)",
+        kind: "spinner", unit: "", range: [0, 1], default: 1.0, verified: "2026-07-02",
+        notes: "Doc-stated range and default: 1.0 = Linear multiply, 0.0 = Exponential, in-between blends the two (docs). Lower it to tame blown highlights at the render level." },
+      { id: "cm.contrast", ui_path: "V-Ray Frame Buffer ▸ Layers panel ▸ Exposure layer ▸ Contrast",
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, verified: "2026-07-02",
+        notes: "0 = no change; positive pushes colors away from mid grey, negative toward it (docs). Practical range; slider bounds not stated in docs. Display-side: keep identical across attempts." },
+      { id: "cm.saturation", ui_path: "V-Ray Frame Buffer ▸ Layers panel ▸ Hue/Saturation layer ▸ Saturation",
+        kind: "spinner", unit: "", range: [-100, 100], default: 0, verified: "2026-07-02",
+        notes: "Lower moves toward greyscale, higher intensifies colors (docs); 0 = no change. Practical range; slider bounds not stated in docs. Display-side: keep identical across attempts." },
+      { id: "vfb.exposure", ui_path: "V-Ray Frame Buffer ▸ Layers panel ▸ Exposure layer ▸ Exposure",
+        kind: "spinner", unit: "stops", range: [-5, 5], default: 0, verified: "2026-07-02",
+        notes: "Doc-stated default 0.0 = original brightness; +1.0 doubles, -1.0 halves (docs). Practical range; slider bounds not stated in docs. Display-side only — keep identical across attempts." },
+      { id: "vfb.wb_kelvin", ui_path: "V-Ray Frame Buffer ▸ Layers panel ▸ White Balance layer ▸ Temperature",
+        kind: "spinner", unit: "K", range: [1000, 20000], default: 6500, verified: "2026-07-02",
+        notes: "Lower = bluer, higher = more amber (docs). 6500 K = layer-neutral (no correction; derived, not doc-stated). Pairs with the Magenta - Green tint slider in the same layer. Practical range." },
+      // -- GI ------------------------------------------------------------------------
+      { id: "gi.primary", ui_path: "Render Setup ▸ GI tab ▸ Global illumination rollout ▸ Primary engine",
+        kind: "dropdown", unit: "", range: [0, 0], default: "Brute force", verified: "2026-07-02",
+        notes: "Options: Irradiance map (deprecated, slated for removal) | Brute force | Light cache. Factory default: Brute force (docs, Universal V-Ray Settings). Notes-only: engine choice changes noise/speed character, not the lighting targets." },
+      { id: "gi.secondary", ui_path: "Render Setup ▸ GI tab ▸ Global illumination rollout ▸ Secondary engine",
+        kind: "dropdown", unit: "", range: [0, 0], default: "Light cache", verified: "2026-07-02",
+        notes: "Options: None | Brute force | Light cache. Factory default: Light cache (docs). Brute force defaults to 3 bounces, Light cache works with ~100 (docs); None removes indirect color bleeding." }
+    ]
+  },
+
+  vantage33: {
+    label: "Chaos Vantage 3.3",
+    entries: [
+      // -- environment -----------------------------------------------------------------
+      { id: "env.mode", ui_path: "Environment tab ▸ Sky rollout ▸ Settings ▸ Environment mode",
+        kind: "dropdown", unit: "", range: [0, 0], default: "Texture", verified: "2026-07-02",
+        notes: "Options: Texture | Solid Color | Physical Sky. Physical Sky is available only when the imported .vrscene has a VRaySky texture (docs). Startup value follows the imported scene." },
+      { id: "env.hdri_slot", ui_path: "Environment tab ▸ Sky rollout ▸ Settings ▸ Load environment (Environment mode = Texture)",
+        kind: "slot", unit: "", range: [0, 0], default: "none", verified: "2026-07-02",
+        notes: "Loads the environment HDRI; RGB color space is deduced automatically (Auto) or set explicitly (docs). Value = HDRI file or mood description, not a number." },
+      { id: "env.intensity", ui_path: "Environment tab ▸ Sky rollout ▸ Settings ▸ Intensity",
+        kind: "spinner", unit: "x", range: [0, 20], default: 1.0, verified: "2026-07-02",
+        notes: "Intensity of the environment lighting in every Environment mode (docs). 1.0 = neutral. Practical range; spinner bounds not stated in docs." },
+      { id: "env.rotation", ui_path: "Environment tab ▸ Sky rollout ▸ Settings ▸ Rotation (Environment mode = Texture)",
+        kind: "spinner", unit: "deg", range: [0, 360], default: 0, verified: "2026-07-02",
+        notes: "Rotation angle in degrees for the environment texture (docs) — use it to swing the HDRI key-light direction." },
+      { id: "env.background_mode", ui_path: "Environment tab ▸ Background rollout ▸ Mode",
+        kind: "dropdown", unit: "", range: [0, 0], default: "Same as environment", verified: "2026-07-02",
+        notes: "Options: Same as environment | Solid color | Image. The background override is NOT used for lighting or glossy reflections (docs); Same as environment = no override (neutral)." },
+      { id: "env.sky_model", ui_path: "Environment tab ▸ Sky rollout ▸ Settings ▸ Sky model (Environment mode = Physical Sky)",
+        kind: "dropdown", unit: "", range: [0, 0], default: "PRG Clear Sky", verified: "2026-07-02",
+        notes: "Options: Preetham et al. | CIE Clear | CIE Overcast | Hosek et al. | PRG Clear Sky (old) | PRG Clear Sky. Updated PRG adds observer altitude, twilight to -12 deg and turbidity 1.81-4.89 (docs). Imported scenes keep their VRaySky model; default shown is the current model." },
+      // -- sun -------------------------------------------------------------------------
+      { id: "sun.enabled", ui_path: "Lights tab ▸ Sun (Vantage Default Sun / Sun Light) ▸ Basic settings ▸ Enabled",
+        kind: "dropdown", unit: "", range: [0, 0], default: "on", verified: "2026-07-02",
+        notes: "Options: on | off. Imported V-Ray suns list as Sun Light; Vantage's own sun as Vantage Default Sun — same parameters (docs). State follows the scene." },
+      { id: "sun.intensity", ui_path: "Lights tab ▸ Sun ▸ Basic settings ▸ Intensity",
+        kind: "spinner", unit: "x", range: [0, 2], default: 1.0, verified: "2026-07-02",
+        notes: "1.0 = physical sun; docs describe it as a way to reduce the default brightness. Practical range; UI accepts higher — prefer exposure moves first." },
+      { id: "sun.size", ui_path: "Lights tab ▸ Sun ▸ Basic settings ▸ Sun size mult.",
+        kind: "spinner", unit: "x", range: [0.2, 40], default: 1.0, verified: "2026-07-02",
+        notes: "Visible sun-disc size and shadow softness: lower = sharp shadows, higher = soft (docs). 1.0 = real sun. Practical range." },
+      { id: "sun.position_mode", ui_path: "Lights tab ▸ Sun ▸ Basic settings ▸ Sun position mode",
+        kind: "dropdown", unit: "", range: [0, 0], default: "Altitude/Azimuth", verified: "2026-07-02",
+        notes: "Options: Manual | Altitude/Azimuth | Geolocation | Animated Geolocation (docs). Set Altitude/Azimuth so numeric recipe moves apply; scene default follows the import." },
+      { id: "sun.azimuth", ui_path: "Lights tab ▸ Sun ▸ Basic settings ▸ Azimuth (Sun position mode = Altitude/Azimuth)",
+        kind: "spinner", unit: "deg", range: [0, 360], default: 135, verified: "2026-07-02",
+        notes: "Compass azimuth from scene North, eastward — 90 = East (docs convention). Default is informational; position is scene-specific." },
+      { id: "sun.elevation", ui_path: "Lights tab ▸ Sun ▸ Basic settings ▸ Altitude (Sun position mode = Altitude/Azimuth)",
+        kind: "spinner", unit: "deg", range: [-18, 90], default: 35, verified: "2026-07-02",
+        notes: "Vantage names this Altitude: 0 = horizon, 90 = zenith; negative values give twilight (PRG sky renders the sun to -12 deg, docs). Default is informational; position is scene-specific." },
+      { id: "sun.color_mode", ui_path: "Lights tab ▸ Sun ▸ Basic settings ▸ Color mode",
+        kind: "dropdown", unit: "", range: [0, 0], default: "Filter", verified: "2026-07-02",
+        notes: "Options: Filter | Direct | Override (docs). The Vantage sun has NO Kelvin control — warmth comes from Altitude + sky model, or Direct with a warm Color; numeric kelvin lives in post.wb_kelvin. Filter + white color = neutral/physical." },
+      // -- camera ----------------------------------------------------------------------
+      { id: "cam.exposure_mode", ui_path: "Camera tab ▸ Exposure (advanced) ▸ Exposure",
+        kind: "dropdown", unit: "", range: [0, 0], default: "Value", verified: false,
+        notes: "Options: None | Physical | Value (docs). Physical uses ISO/F-Number/Shutter speed; Value uses Exposure Value and greys out ISO. Startup default not stated in current Chaos docs (Value assumed)." },
+      { id: "cam.exposure_value", ui_path: "Camera tab ▸ Exposure (advanced) ▸ Exposure Value (Exposure = Value)",
+        kind: "spinner", unit: "EV", range: [-6, 26], default: 14.0, verified: false,
+        notes: "Photographic EV: HIGHER = darker image. Sunny exterior lands around 14-15, interiors around 8-10; docs' twilight example uses EV 10. Factory default not stated in current Chaos docs (14 assumed)." },
+      { id: "cam.auto_exposure", ui_path: "Viewport bar ▸ Exposure ▸ Toggle auto-exposure",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: false,
+        notes: "Options: on | off. When enabled it IGNORES the set camera exposure (docs) — it must be OFF for a recipe and between attempts, or EV moves do nothing. Startup state not stated in current Chaos docs (off recommended)." },
+      { id: "cam.wb", ui_path: "Camera tab ▸ White balance (color swatch)",
+        kind: "placement", unit: "", range: [0, 0], default: "no correction (white)", verified: "2026-07-02",
+        notes: "Color swatch — no Kelvin field on the camera; objects of the picked color render white (docs). Works only when Exposure = Physical or Value (docs). For numeric kelvin use post.wb_kelvin. Emit as an instruction, e.g. 'pick a pale warm tone to cool the image'." },
+      { id: "cam.dof_note", ui_path: "Camera tab ▸ Depth of field (advanced: Focus distance, Aperture size, Optical vignetting)",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: "2026-07-02",
+        notes: "Options: on | off. Keep DOF off for lighting matches unless the reference clearly shows it. Docs recommend Optical vignetting (advanced DoF) over the plain Vignetting toggle." },
+      // -- post (Color Corrections tab) --------------------------------------------------
+      { id: "post.exposure_corrections", ui_path: "Color Corrections tab ▸ Exposure corrections (toggle)",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: "2026-07-02",
+        notes: "Options: on | off. Master toggle for Exposure bias / Highlight burn / Contrast below; viewport-wide post is also toggled via Viewport bar ▸ Toggle Color Corrections (docs). Neutral = off." },
+      { id: "post.exposure_bias", ui_path: "Color Corrections tab ▸ Exposure corrections ▸ Exposure bias",
+        kind: "spinner", unit: "stops", range: [-5, 5], default: 0, verified: "2026-07-02",
+        notes: "0 = no change; the same control is exposed on the Viewport bar (docs). Practical range; slider bounds not stated in docs." },
+      { id: "post.highlight_burn", ui_path: "Color Corrections tab ▸ Exposure corrections ▸ Highlight burn",
+        kind: "spinner", unit: "", range: [0, 1], default: 1.0, verified: false,
+        notes: "Applies exposure corrections to highlights; hidden while Filmic tonemap is on (docs). Range and neutral value follow the V-Ray burn convention (1.0 = no compression) — not stated in Vantage docs." },
+      { id: "post.contrast", ui_path: "Color Corrections tab ▸ Exposure corrections ▸ Contrast",
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, verified: "2026-07-02",
+        notes: "Positive pushes colors away from mid grey, negative toward it (docs); 0 = no change. Practical range; slider bounds not stated in docs." },
+      { id: "post.tonemap_type", ui_path: "Color Corrections tab ▸ Filmic tonemap ▸ Type",
+        kind: "dropdown", unit: "", range: [0, 0], default: "Hable", verified: false,
+        notes: "Options: Hable | AMPAS (docs — Vantage exposes fewer curve types than the V-Ray VFB). Requires the Filmic tonemap toggle ON; enabling it hides Highlight burn (docs). Default selection not stated in current Chaos docs (Hable assumed)." },
+      { id: "post.saturation", ui_path: "Color Corrections tab ▸ Hue / Saturation ▸ Saturation",
+        kind: "spinner", unit: "", range: [-100, 100], default: 0, verified: "2026-07-02",
+        notes: "Positive = more vibrant, negative = desaturated (docs); 0 = no change. Requires the Hue / Saturation toggle ON. Practical range; slider bounds not stated in docs." },
+      { id: "post.wb_kelvin", ui_path: "Color Corrections tab ▸ White balance ▸ Temperature",
+        kind: "spinner", unit: "K", range: [1000, 20000], default: 6500, verified: "2026-07-02",
+        notes: "Lower = bluer, higher = more amber (docs). 6500 K = neutral (no correction; derived, not doc-stated). Requires the White balance toggle ON. Practical range." },
+      { id: "post.wb_tint", ui_path: "Color Corrections tab ▸ White balance ▸ Magenta-Green tint",
+        kind: "spinner", unit: "", range: [-100, 100], default: 0, verified: "2026-07-02",
+        notes: "Positive = greener, negative = more purple (docs); 0 = neutral. Practical range; slider bounds not stated in docs." },
+      // -- render quality (GI character) -------------------------------------------------
+      { id: "render.quality_preset", ui_path: "Viewport bar ▸ Render ▸ quality preset",
+        kind: "dropdown", unit: "", range: [0, 0], default: "High", verified: false,
+        notes: "Options: Low | Medium | High | Ultra | Custom. The preset drives GI on/off and bounce counts (docs: Low = GI off, Medium = GI on with 2 bounces, ...). Keep the SAME preset across attempts or comparisons are invalid. Startup preset not stated in current Chaos docs (High assumed)." }
+    ]
+  },
+
+  targets() { return ["vray7max", "vantage33"]; },
+
+  lookup(target, id) {
+    const pack = this[target];
+    if (!pack || !Array.isArray(pack.entries)) return null;
+    if (!pack._index) {
+      pack._index = {};
+      for (const e of pack.entries) pack._index[e.id] = e;
+    }
+    return pack._index[id] || null;
+  },
+
+  // Numeric values are clamped into the entry's range; strings and non-range kinds pass through.
+  clamp(target, id, value) {
+    const e = this.lookup(target, id);
+    if (!e || typeof value !== "number" || !Number.isFinite(value) || !(e.range[0] < e.range[1]))
+      return { value, clamped: false };
+    const v = Math.min(e.range[1], Math.max(e.range[0], value));
+    return { value: v, clamped: v !== value };
+  },
+
+  // Compact one-line-per-param listing for the system prompt: id, ui_path, kind, unit, range, default, notes.
+  promptFragment(target) {
+    const pack = this[target];
+    if (!pack || !Array.isArray(pack.entries)) return "";
+    const lines = pack.entries.map(e => {
+      const unit = e.unit ? ` unit:${e.unit}` : "";
+      const range = e.range[0] < e.range[1] ? ` range:[${e.range[0]},${e.range[1]}]` : "";
+      return `${e.id} — ${e.ui_path} — kind:${e.kind}${unit}${range} default:${JSON.stringify(e.default)} — ${e.notes}`;
+    });
+    return `TARGET: ${pack.label}. Allowed parameter ids — choose ONLY from these; numeric values must stay inside the stated ranges:\n` + lines.join("\n");
+  }
+};
 
 /* ===== SECTION: SCHEMAS ===== */
 const SCHEMAS = {};
@@ -44,6 +281,84 @@ const SELFTEST = { fails: [], n: 0,
     const line = this.fails.length ? `SELFTEST: FAIL\n` + this.fails.join("\n") : `SELFTEST: PASS (${this.n} asserts)`;
     document.body.textContent = line; document.title = line.split("\n")[0];
   }, suites: {} };
+
+// -- suite: packs (Task 2) -----------------------------------------------------------
+SELFTEST.suites.packs = async function () {
+  const KINDS = ["spinner", "dropdown", "slot", "placement"];
+  const FIELDS = ["id", "ui_path", "kind", "unit", "range", "default", "notes", "verified"];
+  // ids the plan fixes per pack — drift guard
+  const REQUIRED = {
+    vray7max: ["env.gi_skylight_mult", "dome.texture_slot", "dome.intensity", "dome.rotation_h", "dome.invisible",
+      "sun.placement_azimuth", "sun.placement_elevation", "sun.intensity_mult", "sun.size_mult", "sun.kelvin",
+      "sun.turbidity", "fill.plane_intensity", "fill.plane_kelvin", "fill.sphere_intensity", "fill.key_fill_guidance",
+      "cam.iso", "cam.fnumber", "cam.shutter", "cam.wb_kelvin", "cam.ev_readout",
+      "cm.type", "cm.highlight_burn", "cm.contrast", "cm.saturation", "vfb.exposure", "gi.primary", "gi.secondary"],
+    vantage33: ["env.hdri_slot", "env.intensity", "env.rotation", "env.background_mode",
+      "sun.enabled", "sun.intensity", "sun.azimuth", "sun.elevation", "sun.size",
+      "cam.exposure_value", "cam.wb", "cam.dof_note", "post.tonemap_type", "post.contrast", "post.saturation"]
+  };
+  for (const target of PACKS.targets()) {
+    const pack = PACKS[target];
+    this.ok(pack && Array.isArray(pack.entries), `${target}: pack exists with entries[]`);
+    this.ok(pack.entries.length >= 25, `${target}: at least 25 entries (got ${pack.entries.length})`);
+    for (const id of REQUIRED[target]) this.ok(!!PACKS.lookup(target, id), `${target}: plan-required id ${id} present`);
+    const seen = new Set();
+    for (const e of pack.entries) {
+      const w = `${target}:${e.id}`;
+      this.ok(!seen.has(e.id), `${w}: id unique`); seen.add(e.id);
+      for (const f of FIELDS) this.ok(f in e, `${w}: has field ${f}`);
+      this.ok(KINDS.includes(e.kind), `${w}: legal kind (${e.kind})`);
+      this.ok(Array.isArray(e.range) && e.range.length === 2, `${w}: range is a pair`);
+      this.ok(typeof e.ui_path === "string" && e.ui_path.length > 8, `${w}: ui_path non-trivial`);
+      this.ok(typeof e.notes === "string" && e.notes.length > 0, `${w}: notes non-empty`);
+      this.ok(e.verified === false || e.verified === "2026-07-02", `${w}: verified is check-date or false`);
+      if (e.kind === "spinner") {
+        // value-carrying entries: strictly increasing range, numeric default inside it
+        this.ok(e.range[0] < e.range[1], `${w}: spinner range[0]<range[1]`);
+        this.ok(typeof e.default === "number" && e.default >= e.range[0] && e.default <= e.range[1], `${w}: default inside range`);
+        const hi = PACKS.clamp(target, e.id, 1e9);
+        this.ok(hi.value === e.range[1] && hi.clamped === true, `${w}: clamp(1e9) -> max, flagged`);
+        const lo = PACKS.clamp(target, e.id, -1e9);
+        this.ok(lo.value === e.range[0] && lo.clamped === true, `${w}: clamp(-1e9) -> min, flagged`);
+        const mid = PACKS.clamp(target, e.id, e.default);
+        this.ok(mid.value === e.default && mid.clamped === false, `${w}: clamp(default) unchanged`);
+      } else if (e.kind === "slot") {
+        // spec-fixed slot shape: range [0,0], default "none"
+        this.ok(e.range[0] === 0 && e.range[1] === 0, `${w}: slot range [0,0]`);
+        this.ok(e.default === "none", `${w}: slot default "none"`);
+      } else if (e.kind === "dropdown") {
+        this.ok(e.range[0] === 0 && e.range[1] === 0, `${w}: dropdown range [0,0]`);
+        this.ok(typeof e.default === "string" && e.default.length > 0, `${w}: dropdown string default`);
+        this.ok(e.notes.includes("Options:"), `${w}: dropdown carries option list in notes`);
+        this.ok(e.notes.includes(e.default), `${w}: dropdown default is among the options text`);
+      } else { // placement: instruction rows; numeric ones (angles, kelvin, ratio) keep honest bounds
+        if (typeof e.default === "number") {
+          this.ok(e.range[0] < e.range[1], `${w}: placement numeric range[0]<range[1]`);
+          this.ok(e.default >= e.range[0] && e.default <= e.range[1], `${w}: placement default inside range`);
+        } else {
+          this.ok(typeof e.default === "string" && e.default.length > 0, `${w}: placement string default`);
+        }
+      }
+    }
+  }
+  // lookup contract
+  const sunK = PACKS.lookup("vray7max", "sun.kelvin");
+  this.ok(!!sunK, "lookup finds vray7max sun.kelvin");
+  this.ok(PACKS.lookup("vray7max", "no.such_param") === null, "lookup unknown id -> null");
+  this.ok(PACKS.lookup("corona", "sun.kelvin") === null, "lookup unknown target -> null");
+  // clamp pass-through for strings / non-numeric kinds
+  const str = PACKS.clamp("vray7max", "cm.type", "Reinhard");
+  this.ok(str.value === "Reinhard" && str.clamped === false, "clamp passes string values through unflagged");
+  // promptFragment contract
+  const pf = PACKS.promptFragment("vray7max");
+  this.ok(pf.includes("sun.kelvin"), 'promptFragment("vray7max") contains "sun.kelvin"');
+  this.ok(pf.includes(sunK.ui_path), "promptFragment contains sun.kelvin verbatim ui_path");
+  this.ok(pf.split("\n").length === PACKS.vray7max.entries.length + 1, "promptFragment: one line per param + header");
+  const evEntry = PACKS.lookup("vantage33", "cam.exposure_value");
+  const pf2 = PACKS.promptFragment("vantage33");
+  this.ok(pf2.includes("cam.exposure_value") && pf2.includes(evEntry.ui_path), "vantage33 fragment has cam.exposure_value + verbatim ui_path");
+  this.ok(PACKS.promptFragment("corona") === "", "promptFragment unknown target -> empty string");
+};
 
 addEventListener("DOMContentLoaded", () => {
   if (location.search.includes("selftest")) SELFTEST.run(); else UI.boot();
