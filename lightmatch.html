@@ -1,16 +1,149 @@
 <!DOCTYPE html><html><head><meta charset="utf-8"><title>LightMatch</title>
 <style>
-/* ===== SECTION: STYLE ===== */
+/* ===== SECTION: STYLE =====
+   Task 7a: semantic classes only, clean/readable/minimal placeholder styling — NO
+   decorative effort (colors/spacing/typography are intentionally plain). Task 7b
+   (design-taste pass) restyles this section; do not add polish here. */
 html, body {
   margin: 0;
   padding: 0;
   background: #141414;
   color: #e8e8e8;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
 }
 #app {
   padding: 16px;
+  max-width: 1400px;
+  margin: 0 auto;
 }
+button, select, input {
+  font: inherit;
+  color: inherit;
+}
+a { color: inherit; }
+
+/* -- banners --------------------------------------------------------------------- */
+.banner {
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.banner-warn { border-color: #8a6d1a; background: #2a2410; }
+.banner-error { border-color: #8a2a2a; background: #2a1414; }
+.banner-handoff { border-color: #2a6d4a; background: #10241a; margin-bottom: 8px; }
+.banner .btn-small { margin-left: auto; }
+.raw-details { width: 100%; }
+.raw { white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto; background: #0c0c0c; padding: 8px; border-radius: 4px; font-size: 11px; }
+
+/* -- topbar ------------------------------------------------------------------------ */
+#topbar { border-bottom: 1px solid #2c2c2c; padding-bottom: 12px; margin-bottom: 16px; }
+.topbar-inner { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.brand { font-weight: 600; font-size: 16px; margin-right: 8px; }
+.target-toggle { display: inline-flex; border: 1px solid #3a3a3a; border-radius: 4px; overflow: hidden; }
+.toggle-btn { background: #1c1c1c; border: none; padding: 6px 10px; cursor: pointer; }
+.toggle-btn.active { background: #3a5a7a; color: #fff; }
+.model-picker { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 4px; padding: 6px 8px; }
+.key-area { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.key-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.key-dot-ok { background: #3ea36b; }
+.key-dot-missing { background: #a3603e; }
+.key-field { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 4px; padding: 6px 8px; width: 140px; }
+.privacy-line { color: #8a8a8a; font-size: 11px; margin-top: 6px; }
+
+/* -- main two-column layout -------------------------------------------------------- */
+#main { display: flex; gap: 24px; align-items: flex-start; }
+#leftrail { flex: 0 0 320px; }
+#recipearea { flex: 1 1 auto; min-width: 0; }
+
+/* -- slots -------------------------------------------------------------------------- */
+.slots { display: flex; flex-direction: column; gap: 10px; }
+.slot {
+  border: 1px dashed #3a3a3a;
+  border-radius: 4px;
+  padding: 8px;
+  cursor: pointer;
+}
+.slot-focused { border-color: #6a9ac4; border-style: solid; }
+.slot-label { font-weight: 600; margin-bottom: 6px; }
+.slot-hint { font-weight: 400; color: #8a8a8a; }
+.slot-drop { min-height: 60px; display: flex; align-items: center; justify-content: center; }
+.slot-empty { color: #8a8a8a; text-align: center; font-size: 12px; }
+.slot-thumb { max-width: 100%; max-height: 100px; display: block; }
+.slot-file-input { margin-top: 6px; font-size: 11px; }
+.attempt-hint { color: #8a8a8a; font-size: 11px; margin: 10px 0; }
+
+/* -- chips ---------------------------------------------------------------------------- */
+.chips { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.chip-group-label { font-size: 11px; color: #8a8a8a; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 12px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+.chip-active { background: #3a5a7a; border-color: #6a9ac4; color: #fff; }
+
+/* -- buttons -------------------------------------------------------------------------- */
+.btn-primary { background: #3a5a7a; color: #fff; border: none; border-radius: 4px; padding: 8px 16px; cursor: pointer; width: 100%; }
+.btn-primary:disabled { opacity: 0.4; cursor: default; }
+.btn-secondary { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 4px; padding: 8px 16px; cursor: pointer; width: 100%; margin-top: 8px; }
+.btn-small { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 11px; }
+.spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid #ffffff88; border-top-color: #fff; border-radius: 50%; animation: lm-spin 0.7s linear infinite; }
+@keyframes lm-spin { to { transform: rotate(360deg); } }
+
+/* -- recipe card ------------------------------------------------------------------------ */
+.empty-state { color: #8a8a8a; padding: 40px 0; text-align: center; }
+.recipe-card { border: 1px solid #2c2c2c; border-radius: 4px; padding: 14px; margin-bottom: 14px; }
+.correction-card { background: #1a1a1a; }
+.recipe-card-header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.recipe-card-title { font-weight: 600; }
+.recipe-card-baseline { color: #8a8a8a; font-size: 12px; }
+.recipe-card-actions { margin-left: auto; display: flex; gap: 6px; }
+.score-inline { color: #8a8a8a; font-weight: 400; font-size: 12px; margin-left: 8px; }
+.step-group { margin-bottom: 12px; }
+.step-header { font-weight: 600; font-size: 12px; color: #a8c4e0; margin-bottom: 6px; }
+.rationale-foldout { margin-top: 10px; font-size: 12px; color: #c0c0c0; }
+.rationale-foldout summary { cursor: pointer; color: #8a8a8a; }
+.hdri-mood, .gi-notes { font-size: 12px; color: #a0a0a0; margin-top: 4px; }
+.status-reason { font-size: 12px; color: #a0a0a0; margin-top: 6px; }
+
+/* -- value rows ---------------------------------------------------------------------------- */
+.value-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid #232323;
+}
+.value-row-placement { font-style: italic; }
+.value-row-main { flex: 1 1 auto; min-width: 0; }
+.value-row-label { font-size: 12px; color: #dcdcdc; }
+.value-row-value { font-size: 12px; margin-top: 2px; }
+.from-text { color: #8a8a8a; }
+.value-row-why { color: #8a8a8a; font-size: 11px; margin-top: 2px; }
+.conf-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-top: 4px; flex-shrink: 0; }
+.conf-high { background: #3ea36b; }
+.conf-medium { background: #c4a23e; }
+.conf-low { background: #a3603e; }
+.clamped-flag { color: #c4a23e; font-size: 10px; border: 1px solid #c4a23e; border-radius: 3px; padding: 0 4px; margin-left: 6px; }
+.applied-toggle { font-size: 11px; color: #8a8a8a; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.row-copy-btn { background: none; border: 1px solid #3a3a3a; border-radius: 3px; padding: 2px 6px; cursor: pointer; font-size: 10px; color: #8a8a8a; align-self: flex-start; }
+
+/* -- session strip ------------------------------------------------------------------------ */
+#sessionstrip { margin-top: 20px; border-top: 1px solid #2c2c2c; padding-top: 14px; }
+.session-strip { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.strip-thumb { flex: 0 0 auto; width: 100px; text-align: center; }
+.strip-thumb img { width: 100px; height: 70px; object-fit: cover; border-radius: 3px; display: block; }
+.strip-caption { font-size: 10px; color: #a0a0a0; margin-top: 4px; }
+.strip-caveat { font-size: 11px; color: #8a8a8a; margin-top: 8px; font-style: italic; }
+.trend-up { color: #3ea36b; }
+.trend-down { color: #a3603e; }
+
+/* -- toasts ------------------------------------------------------------------------------- */
+#toasts { position: fixed; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 6px; z-index: 1000; }
+.toast { background: #2c2c2c; border: 1px solid #3a3a3a; border-radius: 4px; padding: 8px 12px; font-size: 12px; }
 </style></head><body>
 <div id="app"></div>
 <script>
@@ -1276,6 +1409,19 @@ const ENGINE = {
     return s;
   },
 
+  // -- setContext(patch): merge-patches session.context (scene/time/rig chips) and
+  // persists — same shape as setActiveTarget's plain-switch-then-persist pattern.
+  // Small, explicitly requested addition (Commit 2's UI wiring: "stored on
+  // session.context via ENGINE — add a small ENGINE.setContext(patch) if missing") so
+  // the UI never mutates session.context directly; every session field change still
+  // flows through one ENGINE action method that owns the persist step. -------------
+  async setContext(patch) {
+    const s = this.session();
+    s.context = Object.assign({}, s.context || {}, patch || {});
+    await this._persist();
+    return s;
+  },
+
   // -- lookup(paramId): UI's display-string API, delegates to PACKS for the ACTIVE
   // target. -----------------------------------------------------------------------
   lookup(paramId) {
@@ -1655,7 +1801,779 @@ const ENGINE = {
 ENGINE._adapter = ADAPTER;
 
 /* ===== SECTION: UI ===== */
-const UI = { boot() {} };
+// DOM rendering + events. UI -> ENGINE only (pack display strings — ui_path, units —
+// arrive through ENGINE.lookup()/activeChain()/attemptInfo(), never by reading PACKS
+// or session().chains[...] directly). Every ENGINE call is awaited, then followed by
+// one UI.render() — no incremental DOM patching; render() is idempotent, rebuilding
+// #app's contents from ENGINE.state()/session()/attemptInfo()/activeChain() each time.
+const UI = {
+  // -- MODELS: the two gateway model picker options. ONE constant (per the task) so
+  // a live-smoke id correction touches exactly one place. Values are the exact
+  // gateway model id strings sent as `model` in every ADAPTER.call; STORE.prefs()'s
+  // own default ("claude-opus-4-8") already matches this list's first entry. ------
+  MODELS: [
+    { value: "claude-opus-4-8", label: "Opus 4.8" },
+    { value: "gpt-5.5", label: "GPT-5.5" }
+  ],
+
+  // -- routePaste(state, focusedSlot, filled) -> slot name | null. Pure decision
+  // function (no DOM) shared by BOTH the Ctrl+V paste handler and the drag/drop
+  // handler (drops never carry a focused slot, so calling this with focusedSlot=null
+  // is exactly "drop mid-session = new attempt", per the task).
+  //   state: "empty"|"ready"|"analyzed"|"refining" (ENGINE.state()'s exact vocabulary)
+  //   focusedSlot: "ref"|"base"|"settings"|"attempt"|null — whichever slot the user
+  //     last clicked to focus, if any; a focused slot ALWAYS wins outright, even over
+  //     an earlier-priority empty slot, since focusing a slot is an explicit target.
+  //   filled: {ref, base, settings} booleans — whether each NAMED slot already holds
+  //     an image (the Attempt "slot" is not part of this map; it is never "empty" in
+  //     the same sense — every paste/drop mid-session creates a brand new attempt).
+  // Priority: focused slot -> first EMPTY named slot in Reference->Base->Settings
+  // order -> (only once every named slot is filled) new attempt IF state is
+  // analyzed/refining -> otherwise null (nothing sensible to route to; caller must
+  // not silently overwrite an anchor slot with an unfocused, unrouted paste). -----
+  routePaste(state, focusedSlot, filled) {
+    if (focusedSlot) return focusedSlot;
+    if (!filled.ref) return "ref";
+    if (!filled.base) return "base";
+    if (!filled.settings) return "settings";
+    if (state === "analyzed" || state === "refining") return "attempt";
+    return null;
+  },
+
+  // -- acceptsFile(file) -> {ok, reason}. Pure function over a File-like object
+  // (reads only .type/.name — works against a real File/Blob or a plain fake object
+  // in tests). Accepts exactly the three types the canvas decoder reliably handles
+  // (image/png, image/jpeg, image/webp); rejects everything else — including a
+  // completely empty type/name — with the spec's exact explanatory message so the
+  // user knows WHY (not a generic "unsupported file" dead end). -------------------
+  ACCEPTED_TYPES: ["image/png", "image/jpeg", "image/webp"],
+  REJECT_MESSAGE: "LightMatch reads display-referred sRGB screenshots/saves — PNG or JPG from the VFB/Vantage, not linear EXR.",
+  acceptsFile(file) {
+    const type = (file && file.type) || "";
+    if (this.ACCEPTED_TYPES.includes(type)) return { ok: true, reason: "" };
+    return { ok: false, reason: this.REJECT_MESSAGE };
+  },
+
+  // -- buildSheet(recipe, target) -> human-readable copy-sheet text. Title line
+  // "<target label> — LightMatch recipe" + a baseline line naming factory defaults
+  // vs the settings screenshot in human words (not the raw enum string) + one
+  // numbered line per value: "N. <ui_path>: <value><unit> (from <from>) — <why>" for
+  // spinner/dropdown/slot rows, or "N. <ui_path>: <set> — <why>" (no unit, no "(from
+  // ...)" pair — kind:"placement" values are instructions, not a baseline-anchored
+  // measurement) for placement rows. Never throws on an unknown target — PACKS.lookup
+  // degrades to null there and this function falls back to the bare param id rather
+  // than dereferencing a null entry's .ui_path. ------------------------------------
+  buildSheet(recipe, target) {
+    const pack = PACKS[target];
+    const label = pack ? pack.label : target;
+    const lines = [`${label} — LightMatch recipe`];
+    const baselineText = recipe.baseline === "settings_screenshot" ? "settings screenshot" : "factory defaults";
+    lines.push(`baseline: ${baselineText}`);
+    lines.push("");
+    const values = Array.isArray(recipe.values) ? recipe.values : (Array.isArray(recipe.moves) ? recipe.moves : []);
+    const valKey = Array.isArray(recipe.moves) ? "to" : "set";
+    values.forEach((v, i) => {
+      const entry = PACKS.lookup(target, v.param);
+      const uiPath = entry ? entry.ui_path : v.param;
+      const isPlacement = entry && entry.kind === "placement";
+      const n = i + 1;
+      const why = v.why ? ` — ${v.why}` : "";
+      if (isPlacement) {
+        lines.push(`${n}. ${uiPath}: ${v[valKey]}${why}`);
+      } else {
+        // Unit appended only for a genuinely numeric value — see the matching guard
+        // in _valueRowHtml (SECTION: UI DOM rendering) for the malformed-model-value
+        // rationale (a spinner-kind entry's value SHOULD always be numeric, but
+        // SCHEMAS.validateRecipe does not itself enforce that by kind).
+        const unit = entry && entry.unit && typeof v[valKey] === "number" ? entry.unit : "";
+        lines.push(`${n}. ${uiPath}: ${v[valKey]}${unit} (from ${v.from})${why}`);
+      }
+    });
+    return lines.join("\n");
+  },
+
+  // -- transient (non-persisted) UI-only state: which slot is currently focused
+  // (click-to-focus, per spec) and whether an ENGINE action is in flight (drives the
+  // Analyze button's spinner/disabled state — separate from ENGINE._inFlight, which
+  // UI has no business reading directly; UI tracks its OWN "am I awaiting a call"
+  // flag around every action it initiates). -----------------------------------------
+  _focusedSlot: null,
+  _busy: false,
+  _els: {},
+
+  // -- XSS discipline for this module: every render*Html()/*Html() helper below
+  // builds markup via template strings (no DOM sanitizer dependency is allowed —
+  // "no frameworks, no external assets"). ANY value that did not originate as a
+  // hardcoded string literal in THIS file (model output: ui_path text passed through
+  // is pack data so it's safe, but why/rationale/hdri_mood/gi_notes/status_reason/
+  // param/value/unit ARE model output and MUST be escaped) is passed through
+  // this.esc() before interpolation. Exceptions, documented at each call site:
+  // dataUrl attributes (img src) are produced by THIS app's own canvas pipeline
+  // (METRICS.downscaleForSend), never taken verbatim from an external source, so a
+  // data: URL string is not attacker-controllable content here. ---------------------
+  esc(s) {
+    return String(s === undefined || s === null ? "" : s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+    }[c]));
+  },
+  fmtVal(v) {
+    if (typeof v === "number") return Number.isInteger(v) ? String(v) : String(Math.round(v * 1000) / 1000);
+    return String(v);
+  },
+
+  // -- JSON copy: the raw validated object for the active chain's recipe/latest
+  // correction, exactly as stored (no reshaping) — "Copy JSON" per the task. -------
+  buildJSON(obj) {
+    return JSON.stringify(obj, null, 2);
+  },
+
+  // -- copyText(text): navigator.clipboard when available (https/localhost), with a
+  // synchronous textarea+execCommand fallback for file:// origins where
+  // navigator.clipboard is frequently unavailable/blocked. Never throws past the
+  // caller — a clipboard failure is a minor annoyance, not a crash. ----------------
+  async copyText(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) { /* fall through to legacy path */ }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // -- toast(msg): brief, auto-dismissing notice (used for the busy toast and copy
+  // confirmations) — appended to #toasts, removed after a short delay. -------------
+  toast(msg) {
+    const host = this._els.toasts;
+    if (!host) return;
+    const el = document.createElement("div");
+    el.className = "toast";
+    el.textContent = msg;
+    host.appendChild(el);
+    setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 2600);
+  },
+
+  // ===================================================================================
+  // BOOT: build the static shell once, wire every event listener, then load the
+  // session and render.
+  // ===================================================================================
+  async boot() {
+    const app = document.getElementById("app");
+    app.innerHTML = `
+      <div id="banners"></div>
+      <div id="topbar"></div>
+      <div id="main">
+        <div id="leftrail"></div>
+        <div id="recipearea"></div>
+      </div>
+      <div id="sessionstrip"></div>
+      <div id="toasts"></div>
+    `;
+    this._els = {
+      banners: document.getElementById("banners"),
+      topbar: document.getElementById("topbar"),
+      leftrail: document.getElementById("leftrail"),
+      recipearea: document.getElementById("recipearea"),
+      sessionstrip: document.getElementById("sessionstrip"),
+      toasts: document.getElementById("toasts")
+    };
+
+    // -- global paste routing: Ctrl+V anywhere in the document. ----------------------
+    document.addEventListener("paste", (ev) => this._onPaste(ev));
+
+    await ENGINE.boot();
+    this.render();
+  },
+
+  // ===================================================================================
+  // ACTIONS: thin wrappers around ENGINE calls — await, handle typed errors, render.
+  // ===================================================================================
+
+  // -- _runAction(fn): runs an ENGINE-calling async fn() with the shared busy/error
+  // handling every action needs (spinner, error banner population, always re-render
+  // at the end). Centralizes the try/catch so individual action methods stay short. -
+  async _runAction(fn) {
+    if (this._busy) { this.toast("Already working — one moment."); return; }
+    this._busy = true;
+    this.render();
+    try {
+      await fn();
+    } catch (e) {
+      if (e && e.kind === "busy") {
+        this.toast("Already working — one moment.");
+      }
+      // Any other error is already recorded on ENGINE.lastError by _annotateError();
+      // the banner renders from that on the next render() call below. A raw Error
+      // ENGINE did not annotate (defensive) still gets a visible trace via lastError
+      // being left as whatever it previously was — acceptable, since every ENGINE
+      // action method in this codebase routes failures through _annotateError().
+    } finally {
+      this._busy = false;
+      this.render();
+    }
+  },
+
+  async ingestFile(slot, file) {
+    const check = this.acceptsFile(file);
+    if (!check.ok) {
+      ENGINE.lastError = { kind: "ingest", name: "IngestRejected", message: check.reason, at: new Date().toISOString() };
+      this.render();
+      return;
+    }
+    if (slot === "attempt") {
+      await this._runAction(() => ENGINE.addAttempt(file));
+    } else {
+      await this._runAction(() => ENGINE.setImage(slot, file));
+    }
+  },
+
+  async doAnalyze() {
+    await this._runAction(() => ENGINE.analyze());
+  },
+
+  async doReanalyzeOther() {
+    await this._runAction(() => ENGINE.reanalyzeOtherTarget());
+  },
+
+  // -- setTarget: STORE.setPrefs is deliberately INSIDE the guarded callback, not
+  // before it (code review finding) — _runAction's busy-guard can skip the actual
+  // ENGINE.setActiveTarget call (toast-and-return) while leaving a caller-visible
+  // side effect behind if the pref write happened unconditionally first; that would
+  // desync STORE.prefs().target from ENGINE.activeTarget() until the next successful
+  // switch. Writing the pref only once the guard has let the call through keeps both
+  // in lockstep. --------------------------------------------------------------------
+  async setTarget(target) {
+    await this._runAction(async () => {
+      STORE.setPrefs({ target });
+      await ENGINE.setActiveTarget(target);
+    });
+  },
+
+  async setModel(model) {
+    STORE.setPrefs({ model });
+    this.render();
+  },
+
+  async setKey(key) {
+    STORE.setKey(key);
+    this.render();
+  },
+
+  // -- setContextChip(group, value): single-select-per-group toggle (clicking the
+  // already-active chip in a group clears it back to ""). Routes through
+  // ENGINE.setContext(patch), the small addition this task explicitly calls for so
+  // the UI never mutates session.context directly. The typeof guard is cheap
+  // defensive insurance only — ENGINE.setContext always exists in this build. -----
+  async setContextChip(group, value) {
+    const s = ENGINE.session();
+    const current = s.context || {};
+    const next = { [group]: current[group] === value ? "" : value };
+    if (typeof ENGINE.setContext === "function") {
+      await this._runAction(async () => { await ENGINE.setContext(next); });
+    } else {
+      s.context = Object.assign({}, current, next);
+      await STORE.saveSession(s);
+      this.render();
+    }
+  },
+
+  async toggleApplied(attemptIndex, param) {
+    const chain = ENGINE.activeChain();
+    if (!chain || !chain.attempts[attemptIndex]) return;
+    const att = chain.attempts[attemptIndex];
+    att.appliedParams = att.appliedParams || {};
+    att.appliedParams[param] = att.appliedParams[param] === false ? true : false;
+    await STORE.saveSession(ENGINE.session());
+    this.render();
+  },
+
+  async doExportSession() {
+    const json = await STORE.exportJSON(ENGINE.session());
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `lightmatch-session-${ENGINE.session().id}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    this.toast("Session exported.");
+  },
+
+  doImportSessionClick() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json";
+    input.onchange = async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        await STORE.importJSON(text);
+        await ENGINE.boot();
+        this.toast("Session imported.");
+      } catch (e) {
+        this.toast("Import failed: " + (e && e.message));
+      }
+      this.render();
+    };
+    input.click();
+  },
+
+  // ===================================================================================
+  // PASTE / DROP wiring
+  // ===================================================================================
+  _onPaste(ev) {
+    const items = (ev.clipboardData && ev.clipboardData.items) || [];
+    let file = null;
+    for (const it of items) {
+      if (it.kind === "file") { file = it.getAsFile(); break; }
+    }
+    if (!file) return;
+    ev.preventDefault();
+    const state = ENGINE.state();
+    const s = ENGINE.session();
+    const filled = { ref: !!s.ref, base: !!s.base, settings: !!s.settingsShot };
+    const slot = this.routePaste(state, this._focusedSlot, filled);
+    if (!slot) { this.toast("Nowhere to paste that yet — fill Reference and Base first."); return; }
+    this.ingestFile(slot, file);
+  },
+
+  _onDrop(ev, dropSlotHint) {
+    ev.preventDefault();
+    const file = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+    if (!file) return;
+    const state = ENGINE.state();
+    const s = ENGINE.session();
+    const filled = { ref: !!s.ref, base: !!s.base, settings: !!s.settingsShot };
+    // A drop ONTO a specific slot element focuses that slot for routing purposes
+    // (dropping directly on the Base slot should fill Base, not follow the generic
+    // priority order) — dropSlotHint plays the same role focusedSlot does for paste.
+    const slot = this.routePaste(state, dropSlotHint || null, filled);
+    if (!slot) { this.toast("Nowhere to drop that yet — fill Reference and Base first."); return; }
+    this.ingestFile(slot, file);
+  },
+
+  // ===================================================================================
+  // RENDER: one idempotent pass. Rebuilds every dynamic region from
+  // ENGINE.state()/session()/attemptInfo()/activeChain(). No incremental patching.
+  // ===================================================================================
+  render() {
+    const state = ENGINE.state();
+    const session = ENGINE.session();
+    const info = ENGINE.attemptInfo();
+    const chain = ENGINE.activeChain();
+
+    this._renderBanners(state, session);
+    this._renderTopbar(session);
+    this._renderLeftRail(state, session, info);
+    this._renderRecipeArea(state, session, chain);
+    this._renderSessionStrip(state, session, chain);
+  },
+
+  // -- banners: typed-error banners + persistence warning. Rendered FIRST/topmost. --
+  // Every interpolated value below is either a hardcoded string literal or passed
+  // through this.esc() first (err.message/err.raw are attacker-influenceable in
+  // principle — err.raw is a raw gateway response body — so both are escaped).
+  _renderBanners(state, session) {
+    const host = this._els.banners;
+    const parts = [];
+
+    if (!STORE.persistent) {
+      parts.push(`
+        <div class="banner banner-warn">
+          <span>Sessions cannot be saved persistently in this browser (IndexedDB unavailable) — export your session before closing the tab.</span>
+          <button class="btn-small" data-action="export-session">Export session</button>
+          <button class="btn-small" data-action="import-session">Import session</button>
+        </div>
+      `);
+    }
+
+    const err = ENGINE.lastError;
+    if (err) {
+      if (err.kind === "auth") {
+        parts.push(`<div class="banner banner-error" data-error-kind="auth">Key rejected (401). Check your oc_ key.</div>`);
+      } else if (err.name === "DecodeError") {
+        parts.push(`<div class="banner banner-error" data-error-kind="decode">${this.esc(err.message || "LightMatch reads display-referred sRGB screenshots/saves — PNG or JPG from the VFB/Vantage, not linear EXR.")}</div>`);
+      } else if (err.kind === "ingest") {
+        parts.push(`<div class="banner banner-error" data-error-kind="ingest">${this.esc(err.message)}</div>`);
+      } else if (err.kind === "network") {
+        parts.push(`<div class="banner banner-error" data-error-kind="network">Gateway unreachable or timed out — retried 3×.</div>`);
+      } else if (err.kind === "shape") {
+        parts.push(`
+          <div class="banner banner-error" data-error-kind="shape">
+            <div>The gateway returned a non-recipe response.</div>
+            <details class="raw-details"><summary>Show raw response</summary><pre class="raw">${this.esc(err.raw || "")}</pre></details>
+          </div>
+        `);
+      } else if (err.kind === "busy") {
+        // busy is surfaced as a toast (see _runAction), not a persistent banner.
+      } else if (err.kind === "other") {
+        parts.push(`<div class="banner banner-error" data-error-kind="other">${this.esc(err.message || "Something went wrong.")}</div>`);
+      }
+    }
+
+    host.innerHTML = parts.join("\n");
+    const exportBtn = host.querySelector('[data-action="export-session"]');
+    if (exportBtn) exportBtn.onclick = () => this.doExportSession();
+    const importBtn = host.querySelector('[data-action="import-session"]');
+    if (importBtn) importBtn.onclick = () => this.doImportSessionClick();
+    if (err && err.kind === "auth") {
+      // focus the key field, per the task ("with key field focus")
+      setTimeout(() => { const kf = document.getElementById("key-field"); if (kf) kf.focus(); }, 0);
+    }
+  },
+
+  // -- topbar: title, target toggle, model picker, key status + field. Every
+  // interpolated value is a hardcoded label/constant or this.esc()'d; the key value
+  // itself is set via the DOM .value property in the wiring below, never interpolated
+  // into the template string (a pasted key could contain HTML-special characters). --
+  _renderTopbar(session) {
+    const prefs = STORE.prefs();
+    const hasKey = !!STORE.key();
+    const host = this._els.topbar;
+    host.innerHTML = `
+      <div class="topbar-inner">
+        <div class="brand">LightMatch</div>
+        <div class="target-toggle" role="group" aria-label="Target renderer">
+          <button class="toggle-btn ${prefs.target === "vray7max" ? "active" : ""}" data-target="vray7max">V-Ray 7</button>
+          <button class="toggle-btn ${prefs.target === "vantage33" ? "active" : ""}" data-target="vantage33">Vantage 3.3</button>
+        </div>
+        <select id="model-picker" class="model-picker" aria-label="Model">
+          ${UI.MODELS.map(m => `<option value="${this.esc(m.value)}" ${m.value === prefs.model ? "selected" : ""}>${this.esc(m.label)}</option>`).join("")}
+        </select>
+        <div class="key-area">
+          <span class="key-dot ${hasKey ? "key-dot-ok" : "key-dot-missing"}" title="${hasKey ? "Key stored" : "No key set"}"></span>
+          <input id="key-field" class="key-field" type="password" placeholder="oc_..." />
+        </div>
+      </div>
+      <div class="privacy-line">Stored only in this browser.</div>
+    `;
+
+    host.querySelectorAll("[data-target]").forEach(btn => {
+      btn.onclick = () => this.setTarget(btn.getAttribute("data-target"));
+    });
+    const picker = host.querySelector("#model-picker");
+    if (picker) picker.onchange = () => this.setModel(picker.value);
+    const keyField = host.querySelector("#key-field");
+    if (keyField) {
+      // Set via .value (a DOM property assignment, never HTML interpolation) so a
+      // pasted key with special characters can never be misparsed as markup.
+      keyField.value = hasKey ? "••••••••••••" : "";
+      keyField.onfocus = () => { if (keyField.value.startsWith("••")) keyField.value = ""; };
+      keyField.onblur = () => { if (keyField.value.trim()) this.setKey(keyField.value); else this.render(); };
+    }
+  },
+
+  // -- left rail: 3 named slots + attempt slot (once state >= analyzed), context
+  // chips, Analyze/Re-analyze buttons, notices. -------------------------------------
+  SLOT_DEFS: [
+    { key: "ref", label: "Reference" },
+    { key: "base", label: "Base render" },
+    { key: "settings", label: "Settings screenshot", hint: "optional anchor" }
+  ],
+  CHIP_GROUPS: [
+    { key: "scene", label: "Scene", options: ["interior", "exterior", "product"] },
+    { key: "time", label: "Time", options: ["day", "dusk", "night"] },
+    { key: "rig", label: "Rig", options: ["HDRI dome", "sun", "both"] }
+  ],
+  _renderLeftRail(state, session, info) {
+    const host = this._els.leftrail;
+    const slotsHtml = this.SLOT_DEFS.map(def => this._slotHtml(def, session)).join("");
+    const attemptSlotHtml = state === "analyzed" || state === "refining" ? this._attemptSlotHtml(info) : "";
+
+    const chipsHtml = this.CHIP_GROUPS.map(group => `
+      <div class="chip-group" data-chip-group="${group.key}">
+        <div class="chip-group-label">${this.esc(group.label)}</div>
+        <div class="chip-row">
+          ${group.options.map(opt => `<button class="chip ${session.context && session.context[group.key] === opt ? "chip-active" : ""}" data-chip-group="${group.key}" data-chip-value="${this.esc(opt)}">${this.esc(opt)}</button>`).join("")}
+        </div>
+      </div>
+    `).join("");
+
+    const chain = ENGINE.activeChain();
+    const hasRecipe = !!(chain && chain.recipe);
+    const analyzeReady = state !== "empty";
+    const analyzeLabel = this._busy ? "Analyzing…" : (hasRecipe ? "Re-analyze" : "Analyze");
+    const otherTarget = STORE.prefs().target === "vray7max" ? "Chaos Vantage 3.3" : "V-Ray 7";
+
+    host.innerHTML = `
+      <div class="slots">
+        ${slotsHtml}
+        ${attemptSlotHtml}
+      </div>
+      <div class="attempt-hint">Same VFB display settings every attempt.</div>
+      <div class="chips">${chipsHtml}</div>
+      <button id="analyze-btn" class="btn-primary" ${analyzeReady ? "" : "disabled"}>${this._busy ? '<span class="spinner"></span> ' : ""}${this.esc(analyzeLabel)}</button>
+      ${state === "analyzed" || state === "refining" ? `<button id="reanalyze-other-btn" class="btn-secondary">Re-analyze for ${this.esc(otherTarget)}</button>` : ""}
+    `;
+
+    this.SLOT_DEFS.forEach(def => this._wireSlot(host, def.key));
+    if (state === "analyzed" || state === "refining") this._wireSlot(host, "attempt");
+
+    host.querySelectorAll("[data-chip-group][data-chip-value]").forEach(btn => {
+      btn.onclick = () => this.setContextChip(btn.getAttribute("data-chip-group"), btn.getAttribute("data-chip-value"));
+    });
+
+    const analyzeBtn = host.querySelector("#analyze-btn");
+    if (analyzeBtn) analyzeBtn.onclick = () => this.doAnalyze();
+    const reanalyzeBtn = host.querySelector("#reanalyze-other-btn");
+    if (reanalyzeBtn) reanalyzeBtn.onclick = () => this.doReanalyzeOther();
+  },
+
+  // dataUrl is produced ONLY by THIS app's own METRICS.downscaleForSend (canvas ->
+  // toDataURL), never taken from an external source verbatim — safe to interpolate
+  // as an img src without escaping (escaping would corrupt the base64 payload).
+  _slotHtml(def, session) {
+    const val = def.key === "ref" ? session.ref : def.key === "base" ? session.base : session.settingsShot;
+    const thumb = val && val.dataUrl ? `<img class="slot-thumb" src="${val.dataUrl}" alt="${this.esc(def.label)}" />` : "";
+    const focused = this._focusedSlot === def.key ? "slot-focused" : "";
+    return `
+      <div class="slot ${focused}" data-slot="${def.key}" tabindex="0">
+        <div class="slot-label">${this.esc(def.label)}${def.hint ? ` <span class="slot-hint">(${this.esc(def.hint)})</span>` : ""}</div>
+        <div class="slot-drop">
+          ${thumb || '<div class="slot-empty">Drop, click to focus + paste, or choose a file</div>'}
+        </div>
+        <input type="file" class="slot-file-input" accept="image/png,image/jpeg,image/webp" />
+      </div>
+    `;
+  },
+
+  _attemptSlotHtml(info) {
+    const focused = this._focusedSlot === "attempt" ? "slot-focused" : "";
+    return `
+      <div class="slot slot-attempt ${focused}" data-slot="attempt" tabindex="0">
+        <div class="slot-label">Attempt <span class="slot-hint">(${info.n} so far, last ${info.stored} kept)</span></div>
+        <div class="slot-drop"><div class="slot-empty">Drop, click to focus + paste, or choose a file — becomes attempt ${info.n + 1}</div></div>
+        <input type="file" class="slot-file-input" accept="image/png,image/jpeg,image/webp" />
+      </div>
+    `;
+  },
+
+  _wireSlot(host, slotKey) {
+    const el = host.querySelector(`[data-slot="${slotKey}"]`);
+    if (!el) return;
+    el.addEventListener("click", () => { this._focusedSlot = slotKey; this.render(); });
+    el.addEventListener("focus", () => { this._focusedSlot = slotKey; });
+    el.addEventListener("dragover", (ev) => { ev.preventDefault(); });
+    el.addEventListener("drop", (ev) => this._onDrop(ev, slotKey));
+    const input = el.querySelector(".slot-file-input");
+    if (input) {
+      input.addEventListener("click", (ev) => ev.stopPropagation());
+      input.addEventListener("change", () => {
+        const file = input.files && input.files[0];
+        if (file) this.ingestFile(slotKey, file);
+      });
+    }
+  },
+
+  // -- recipe area: grouped-by-5-steps recipe card, or correction cards for attempts,
+  // or an empty-state message. -------------------------------------------------------
+  STEP_HEADERS: {
+    1: "1 · Lock exposure & white balance",
+    2: "2 · Sun / key",
+    3: "3 · Environment / dome",
+    4: "4 · Fills & rim",
+    5: "5 · Color mapping"
+  },
+  _renderRecipeArea(state, session, chain) {
+    const host = this._els.recipearea;
+    if (state === "empty" || state === "ready" || !chain || !chain.recipe) {
+      host.innerHTML = `<div class="empty-state">Drop a Reference and a Base render, then Analyze to get a recipe.</div>`;
+      return;
+    }
+
+    const target = session.activeTarget;
+    const targetLabel = (PACKS[target] && PACKS[target].label) || target;
+    const recipe = chain.recipe;
+    const baselineText = recipe.baseline === "settings_screenshot" ? "settings screenshot" : "factory defaults";
+
+    const stepGroups = [1, 2, 3, 4, 5].map(step => {
+      const rows = (recipe.values || []).filter(v => v.step === step);
+      if (!rows.length) return "";
+      return `
+        <div class="step-group" data-step="${step}">
+          <div class="step-header">${this.esc(this.STEP_HEADERS[step])}</div>
+          ${rows.map(v => this._valueRowHtml(v, target, "recipe", null)).join("")}
+        </div>
+      `;
+    }).join("");
+
+    const correctionsHtml = (chain.attempts || []).map((att, idx) => this._correctionCardHtml(att, idx, target)).join("");
+
+    host.innerHTML = `
+      <div class="recipe-card">
+        <div class="recipe-card-header">
+          <div class="recipe-card-title">Recipe — ${this.esc(targetLabel)}</div>
+          <div class="recipe-card-baseline">baseline: ${this.esc(baselineText)}</div>
+          <div class="recipe-card-actions">
+            <button class="btn-small" data-action="copy-sheet">Copy sheet</button>
+            <button class="btn-small" data-action="copy-json">Copy JSON</button>
+          </div>
+        </div>
+        ${stepGroups}
+        <details class="rationale-foldout">
+          <summary>Rationale</summary>
+          <p>${this.esc(recipe.rationale)}</p>
+        </details>
+        <div class="hdri-mood">HDRI mood: ${this.esc(recipe.hdri_mood)}</div>
+        <div class="gi-notes">${this.esc(recipe.gi_notes)}</div>
+      </div>
+      ${correctionsHtml}
+    `;
+
+    const copySheetBtn = host.querySelector('[data-action="copy-sheet"]');
+    if (copySheetBtn) copySheetBtn.onclick = async () => { await this.copyText(this.buildSheet(recipe, target)); this.toast("Sheet copied."); };
+    const copyJsonBtn = host.querySelector('[data-action="copy-json"]');
+    if (copyJsonBtn) copyJsonBtn.onclick = async () => { await this.copyText(this.buildJSON(recipe)); this.toast("JSON copied."); };
+
+    this._wireValueRowCopyButtons(host);
+    this._wireAppliedToggles(host);
+  },
+
+  // -- one value row: verbatim ui_path as the PRIMARY label (never model text), value
+  // + unit + "(from X)", confidence dot, clamped flag, applied toggle (default
+  // checked; recipe rows write to appliedParams via the correction-row path only —
+  // a fresh recipe row has no chain entry yet to toggle against, so its checkbox is
+  // display-only until the first addAttempt() creates appliedParams to toggle),
+  // copy button. kind:"placement" rows render as an instruction line: the string
+  // `set`/`to` IS the placement text, no unit/(from) pair (per the task). All model-
+  // sourced text (why, value when it's a placement string, ui_path is PACK data —
+  // trusted — but included via esc() anyway for defense in depth) is escaped. -----
+  _valueRowHtml(v, target, mode, attemptIndex) {
+    const entry = PACKS.lookup(target, v.param);
+    const uiPath = entry ? entry.ui_path : v.param;
+    const isPlacement = entry && entry.kind === "placement";
+    const valKey = mode === "correction" ? "to" : "set";
+    const value = v[valKey];
+    // Unit is appended only when the value is actually numeric — a spinner/dropdown
+    // entry's `set`/`to` SHOULD always be the kind-appropriate type, but
+    // SCHEMAS.validateRecipe does not itself reject a string on a spinner-kind entry
+    // (only clamps numbers; strings pass through unflagged regardless of kind), so
+    // this guards against a malformed model value producing nonsense like "40degdeg".
+    const unit = entry && entry.unit && typeof value === "number" ? entry.unit : "";
+    const confDot = `<span class="conf-dot conf-${this.esc(v.confidence)}" title="confidence: ${this.esc(v.confidence)}"></span>`;
+    const clampedFlag = v.clamped ? `<span class="clamped-flag" title="Clamped to the parameter's legal range">clamped</span>` : "";
+    const copyText = isPlacement ? `${uiPath} → ${value}` : `${uiPath} → ${value}${unit}`;
+
+    let appliedHtml = "";
+    if (mode === "recipe") {
+      appliedHtml = `<label class="applied-toggle"><input type="checkbox" checked data-applied-param="${this.esc(v.param)}" /> applied</label>`;
+    } else if (mode === "correction") {
+      const chain = ENGINE.activeChain();
+      const att = chain && chain.attempts[attemptIndex];
+      const appliedFalse = !!(att && att.appliedParams && att.appliedParams[v.param] === false);
+      appliedHtml = `<label class="applied-toggle"><input type="checkbox" ${appliedFalse ? "" : "checked"} data-applied-param="${this.esc(v.param)}" data-attempt-index="${attemptIndex}" /> applied</label>`;
+    }
+
+    const valueDisplay = isPlacement
+      ? `<span class="value-text">${this.esc(value)}</span>`
+      : `<span class="value-text">${this.esc(value)}${this.esc(unit)}</span> <span class="from-text">(from ${this.esc(v.from)})</span>`;
+
+    return `
+      <div class="value-row ${isPlacement ? "value-row-placement" : ""}" data-param="${this.esc(v.param)}">
+        ${confDot}
+        <div class="value-row-main">
+          <div class="value-row-label">${this.esc(uiPath)}</div>
+          <div class="value-row-value">${valueDisplay} ${clampedFlag}</div>
+          <div class="value-row-why">${this.esc(v.why)}</div>
+        </div>
+        ${appliedHtml}
+        <button class="row-copy-btn" data-copy-text="${this.esc(copyText)}" title="Copy">copy</button>
+      </div>
+    `;
+  },
+
+  // -- correction card: same row treatment as recipe rows, from correction.moves
+  // (from -> to), plus status_reason. The task-mandated handoff banner (text: "...
+  // take it to REFGRADE") is rendered exactly ONCE, in _renderSessionStrip (the
+  // spec's named location, "bottom (session strip): ... plateau state renders the
+  // REFGRADE handoff message") — not duplicated here, even though this card also
+  // knows c.status; status_reason alone (no banner) is enough context on the card
+  // itself, since the banner already carries the full REFGRADE sentence. ----------
+  _correctionCardHtml(att, idx, target) {
+    if (!att.correction) return "";
+    const c = att.correction;
+    const movesHtml = (c.moves || []).map(m => this._valueRowHtml(m, target, "correction", idx)).join("");
+    return `
+      <div class="recipe-card correction-card" data-attempt-index="${idx}">
+        <div class="recipe-card-header">
+          <div class="recipe-card-title">Correction — attempt ${idx + 1} <span class="score-inline">look distance ${Math.round(att.score)}</span></div>
+        </div>
+        ${movesHtml}
+        <div class="status-reason">${this.esc(c.status_reason || "")}</div>
+      </div>
+    `;
+  },
+
+  _wireValueRowCopyButtons(host) {
+    host.querySelectorAll(".row-copy-btn").forEach(btn => {
+      btn.onclick = async () => { await this.copyText(btn.getAttribute("data-copy-text")); this.toast("Copied."); };
+    });
+  },
+
+  _wireAppliedToggles(host) {
+    host.querySelectorAll("[data-applied-param][data-attempt-index]").forEach(cb => {
+      cb.onchange = () => {
+        const idx = parseInt(cb.getAttribute("data-attempt-index"), 10);
+        const param = cb.getAttribute("data-applied-param");
+        this.toggleApplied(idx, param);
+      };
+    });
+  },
+
+  // -- session strip: ref thumb + per-attempt thumbs, score labeled "look distance
+  // (0–100)", trend arrow vs previous, verbatim caveat text, handoff banner. Thumb
+  // src values are dataUrls from this app's own pipeline (see _slotHtml's comment). -
+  _renderSessionStrip(state, session, chain) {
+    const host = this._els.sessionstrip;
+    if (state === "empty" || !session.ref) { host.innerHTML = ""; return; }
+
+    const attempts = (chain && chain.attempts) || [];
+    const refThumb = `<div class="strip-thumb strip-ref"><img src="${session.ref.dataUrl}" alt="Reference" /><div class="strip-caption">Reference</div></div>`;
+
+    const attemptThumbs = attempts.map((att, idx) => {
+      const prev = idx > 0 ? attempts[idx - 1] : null;
+      let trend = "";
+      if (prev) {
+        trend = att.score < prev.score ? '<span class="trend trend-up" title="Closer to reference">▲</span>'
+          : att.score > prev.score ? '<span class="trend trend-down" title="Further from reference">▼</span>'
+          : '<span class="trend trend-flat">–</span>';
+      }
+      return `
+        <div class="strip-thumb" data-attempt-index="${idx}">
+          <img src="${att.dataUrl}" alt="Attempt ${idx + 1}" />
+          <div class="strip-caption">look distance (0–100): ${Math.round(att.score)} ${trend}</div>
+        </div>
+      `;
+    }).join("");
+
+    const latestAtt = attempts.length ? attempts[attempts.length - 1] : null;
+    const handoff = latestAtt && latestAtt.correction && latestAtt.correction.status === "handoff_to_grade";
+
+    host.innerHTML = `
+      ${handoff ? `<div class="banner banner-handoff">${this.esc(latestAtt.correction.status_reason || "")} — lighting is within noise of the reference — the rest is a grade; take it to REFGRADE.</div>` : ""}
+      <div class="session-strip">
+        ${refThumb}
+        ${attemptThumbs}
+      </div>
+      <div class="strip-caveat">trust your eyes first, the numbers second</div>
+    `;
+  }
+};
 
 /* ===== SECTION: SELFTEST ===== */
 const SELFTEST = { fails: [], n: 0,
@@ -2886,6 +3804,163 @@ SELFTEST.suites.engineRetention = async function () {
     for (const id of ids) { try { await STORE.deleteSession(id); } catch (e) {} }
     ENGINE.reset();
   }
+};
+
+// -- suite: ui (Task 7a UI structure) -- PURE-LOGIC ONLY, no DOM simulation. Exercises
+// UI.routePaste, UI.acceptsFile, UI.buildSheet (the copy-sheet text builder), and the
+// UI.MODELS constant. Anything DOM-dependent (rendering, event wiring, drag/drop) is
+// verified separately by the Task 7.3 screenshot smoke, per the task's own scoping —
+// this suite must never call document.querySelector or construct real DOM nodes.
+SELFTEST.suites.ui = async function () {
+  // -- UI.MODELS: exactly the two entries, value strings match STORE.PREFS_DEFAULTS'
+  // model default and the plan's memory-recorded gateway ids. One constant so the
+  // picker options and any future correction (live-smoke id drift) happen in ONE
+  // place. --------------------------------------------------------------------------
+  this.ok(Array.isArray(UI.MODELS), "UI.MODELS is an array");
+  this.ok(UI.MODELS.length === 2, `UI.MODELS has exactly 2 entries (got ${UI.MODELS.length})`);
+  const opusEntry = UI.MODELS.find(m => m.value === "claude-opus-4-8");
+  this.ok(!!opusEntry, 'UI.MODELS contains {value:"claude-opus-4-8"}');
+  this.ok(!!opusEntry && /opus/i.test(opusEntry.label) && /4\.8/.test(opusEntry.label), `UI.MODELS: Opus entry label mentions "Opus" and "4.8" (got ${opusEntry && opusEntry.label})`);
+  const gptEntry = UI.MODELS.find(m => m.value === "gpt-5.5");
+  this.ok(!!gptEntry, 'UI.MODELS contains {value:"gpt-5.5"}');
+  this.ok(!!gptEntry && /gpt/i.test(gptEntry.label) && /5\.5/.test(gptEntry.label), `UI.MODELS: GPT entry label mentions "GPT" and "5.5" (got ${gptEntry && gptEntry.label})`);
+  this.ok(UI.MODELS.every(m => typeof m.value === "string" && typeof m.label === "string"), "UI.MODELS: every entry has string value+label");
+
+  // -- UI.routePaste(state, focusedSlot, filled) -> slot name. Pure decision function,
+  // no DOM. Contract: a focused slot always wins outright; otherwise the first EMPTY
+  // named slot in Reference -> Base -> Settings order; otherwise, if the session is
+  // analyzed/refining (a recipe already exists for the active target), route to a
+  // NEW ATTEMPT; otherwise (nothing focused, no empty named slot, not yet analyzed)
+  // there is nowhere sensible to route the paste, so it returns null (caller drops
+  // the paste rather than silently overwriting an anchor slot). >=6 cases required
+  // by the task; this suite has more to pin down every branch precisely. -----------
+  this.ok(typeof UI.routePaste === "function", "UI.routePaste is a function");
+
+  // (1) focused slot wins outright, even over an empty earlier-priority slot.
+  this.ok(UI.routePaste("empty", "base", { ref: false, base: false, settings: false }) === "base",
+    "routePaste: a focused slot wins even when Reference (earlier in priority order) is still empty");
+
+  // (2) focused "attempt" wins too (the Attempt slot is click-to-focus per spec).
+  this.ok(UI.routePaste("analyzed", "attempt", { ref: true, base: true, settings: false }) === "attempt",
+    "routePaste: focused \"attempt\" slot wins outright");
+
+  // (3) no focus, empty state: first empty slot is "ref".
+  this.ok(UI.routePaste("empty", null, { ref: false, base: false, settings: false }) === "ref",
+    "routePaste: no focus, nothing filled -> routes to \"ref\" (first in Reference->Base->Settings order)");
+
+  // (4) no focus, ref filled: next empty is "base".
+  this.ok(UI.routePaste("ready", null, { ref: true, base: false, settings: false }) === "base",
+    "routePaste: no focus, ref filled -> routes to \"base\"");
+
+  // (5) no focus, ref+base filled, settings still empty, NOT yet analyzed: routes to
+  // "settings" (the empty named slot), NOT to attempt (state is only "ready").
+  this.ok(UI.routePaste("ready", null, { ref: true, base: true, settings: false }) === "settings",
+    "routePaste: ref+base filled but not analyzed -> routes to the empty \"settings\" slot, not attempt");
+
+  // (6) THE key "mid-session -> attempt" case: no focus, ref+base+settings all
+  // filled, state is analyzed -> routes to a NEW ATTEMPT. This is the case the task
+  // explicitly calls out ("paste becomes a new attempt").
+  this.ok(UI.routePaste("analyzed", null, { ref: true, base: true, settings: true }) === "attempt",
+    "routePaste: mid-session (analyzed), all named slots filled, no focus -> routes to a new attempt");
+
+  // (7) same as (6) but "refining" (attempts already exist) -- still routes to attempt.
+  this.ok(UI.routePaste("refining", null, { ref: true, base: true, settings: true }) === "attempt",
+    "routePaste: refining state, all named slots filled, no focus -> still routes to a new attempt");
+
+  // (8) mid-session but settings is STILL empty and unfocused: the empty named slot
+  // takes priority over the attempt fallback, even though state >= analyzed.
+  this.ok(UI.routePaste("analyzed", null, { ref: true, base: true, settings: false }) === "settings",
+    "routePaste: analyzed state but settings still empty, no focus -> fills settings BEFORE falling to attempt");
+
+  // (9) DROP mid-session = new attempt, same routing function, drop has no focused
+  // slot (drops are never focus-tracked) -- identical call shape to case (6)/(7),
+  // proving drop and paste share one decision function per the task.
+  this.ok(UI.routePaste("refining", null, { ref: true, base: true, settings: true }) === "attempt",
+    "routePaste: DROP mid-session (no focus) routes to attempt exactly like paste does (same pure function)");
+
+  // (10) edge: nothing focused, all named slots filled, but NOT yet analyzed (state
+  // "ready") -- no empty slot, no attempt available yet -> null (nowhere sensible to
+  // route; caller must not silently overwrite an anchor).
+  this.ok(UI.routePaste("ready", null, { ref: true, base: true, settings: true }) === null,
+    "routePaste: ready state (not analyzed), all slots filled, no focus -> null (nothing sensible to route to)");
+
+  // -- UI.acceptsFile(file) -> {ok, reason}. Pure function over a File-like object
+  // (only .type/.name are read — works against a real File or a plain fake object,
+  // so this suite never needs to construct a real Blob/File). ----------------------
+  this.ok(typeof UI.acceptsFile === "function", "UI.acceptsFile is a function");
+  const REJECT_MSG = "LightMatch reads display-referred sRGB screenshots/saves — PNG or JPG from the VFB/Vantage, not linear EXR.";
+
+  for (const type of ["image/png", "image/jpeg", "image/webp"]) {
+    const r = UI.acceptsFile({ name: "shot." + type.split("/")[1], type });
+    this.ok(r.ok === true, `UI.acceptsFile: accepts ${type} (got ${JSON.stringify(r)})`);
+  }
+
+  // the task's exact selftest assert: a fake File name "x.exr" type "" -> rejected
+  const rExr = UI.acceptsFile({ name: "x.exr", type: "" });
+  this.ok(rExr.ok === false, 'UI.acceptsFile: fake File name "x.exr" type "" is rejected (task-mandated case)');
+  this.ok(rExr.reason === REJECT_MSG, `UI.acceptsFile: rejection reason matches the spec message verbatim (got ${JSON.stringify(rExr.reason)})`);
+
+  const rHdr = UI.acceptsFile({ name: "sky.hdr", type: "" });
+  this.ok(rHdr.ok === false, "UI.acceptsFile: .hdr rejected");
+  const rTif = UI.acceptsFile({ name: "render.tif", type: "image/tiff" });
+  this.ok(rTif.ok === false, "UI.acceptsFile: .tif (image/tiff mime) rejected");
+  const rHeic = UI.acceptsFile({ name: "photo.heic", type: "image/heic" });
+  this.ok(rHeic.ok === false, "UI.acceptsFile: HEIC rejected");
+  const rEmpty = UI.acceptsFile({ name: "", type: "" });
+  this.ok(rEmpty.ok === false, "UI.acceptsFile: completely empty name+type rejected, does not crash");
+  this.ok(rEmpty.reason === REJECT_MSG, "UI.acceptsFile: empty-type rejection carries the same spec message");
+
+  // -- UI.buildSheet(recipe, targetLabel) -> exact copy-sheet text. Title line +
+  // numbered steps: "N. <ui_path>: <value><unit> (from <from>) — <why>" for normal
+  // rows; a kind:"placement" row omits unit AND "(from ...)" entirely, per the task
+  // ("the string `set` as placement text, no unit/(from) pair"). -------------------
+  this.ok(typeof UI.buildSheet === "function", "UI.buildSheet is a function");
+  const fakeRecipe = {
+    baseline: "factory_defaults",
+    values: [
+      { param: "cam.iso", set: 400, from: 100, step: 1, confidence: "high", why: "brighten the plate" },
+      { param: "sun.placement_azimuth", set: "swing the sun to face camera-left", from: 135, step: 2, confidence: "medium", why: "match the reference's key direction" }
+    ],
+    rationale: "test", hdri_mood: "soft overcast", gi_notes: "brute force is fine",
+    status: "continue", status_reason: ""
+  };
+  const isoEntry = PACKS.lookup("vray7max", "cam.iso");
+  const azEntry = PACKS.lookup("vray7max", "sun.placement_azimuth");
+  const sheet = UI.buildSheet(fakeRecipe, "vray7max");
+  this.ok(typeof sheet === "string" && sheet.length > 0, "UI.buildSheet: returns a non-empty string");
+  const sheetLines = sheet.split("\n");
+  this.ok(sheetLines[0] === `${PACKS.vray7max.label} — LightMatch recipe`, `UI.buildSheet: title line is "<target label> — LightMatch recipe" (got ${JSON.stringify(sheetLines[0])})`);
+  this.ok(sheet.includes(isoEntry.ui_path), "UI.buildSheet: contains the spinner row's verbatim ui_path");
+  this.ok(sheet.includes(azEntry.ui_path), "UI.buildSheet: contains the placement row's verbatim ui_path");
+  const isoLine = sheetLines.find(l => l.includes(isoEntry.ui_path));
+  this.ok(!!isoLine && /^1\./.test(isoLine), `UI.buildSheet: the ISO row is numbered "1." (got ${JSON.stringify(isoLine)})`);
+  this.ok(!!isoLine && isoLine.includes("400"), "UI.buildSheet: spinner row shows its set value (400)");
+  this.ok(!!isoLine && isoLine.includes(isoEntry.unit), `UI.buildSheet: spinner row shows its unit (${isoEntry.unit})`);
+  this.ok(!!isoLine && /\(from 100\)/.test(isoLine), "UI.buildSheet: spinner row shows \"(from 100)\"");
+  this.ok(!!isoLine && isoLine.includes("brighten the plate"), "UI.buildSheet: spinner row includes its why");
+  const azLine = sheetLines.find(l => l.includes(azEntry.ui_path));
+  this.ok(!!azLine && /^2\./.test(azLine), `UI.buildSheet: the placement row is numbered "2." (got ${JSON.stringify(azLine)})`);
+  this.ok(!!azLine && azLine.includes("swing the sun to face camera-left"), "UI.buildSheet: placement row shows its set text verbatim");
+  this.ok(!!azLine && !/\(from/.test(azLine), 'UI.buildSheet: placement row has NO "(from ...)" pair (task-mandated)');
+  this.ok(!!azLine && azLine.includes("match the reference's key direction"), "UI.buildSheet: placement row includes its why");
+
+  // baseline label appears somewhere in the sheet (human-readable, not the raw enum
+  // string) -- exact wording is a UI/copy decision, so this checks for the
+  // human-facing phrase rather than the literal "factory_defaults" token.
+  this.ok(/factory defaults/i.test(sheet), 'UI.buildSheet: mentions "factory defaults" in human-readable form for baseline:"factory_defaults"');
+
+  const fakeRecipeScreenshot = Object.assign({}, fakeRecipe, { baseline: "settings_screenshot" });
+  const sheetScreenshot = UI.buildSheet(fakeRecipeScreenshot, "vray7max");
+  this.ok(/settings screenshot/i.test(sheetScreenshot), 'UI.buildSheet: mentions "settings screenshot" in human-readable form for baseline:"settings_screenshot"');
+
+  // unknown target: must not throw, degrades gracefully (empty-ish output rather
+  // than a crash -- pack lookups return null and buildSheet must not dereference
+  // ui_path off a null entry).
+  let threwUnknownTarget = null;
+  let sheetUnknown = null;
+  try { sheetUnknown = UI.buildSheet(fakeRecipe, "corona"); } catch (e) { threwUnknownTarget = e; }
+  this.ok(threwUnknownTarget === null, `UI.buildSheet: unknown target does not throw (got ${threwUnknownTarget && threwUnknownTarget.message})`);
+  this.ok(typeof sheetUnknown === "string", "UI.buildSheet: unknown target still returns a string");
 };
 
 addEventListener("DOMContentLoaded", () => {
