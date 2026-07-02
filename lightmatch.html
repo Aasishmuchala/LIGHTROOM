@@ -759,7 +759,8 @@ const METRICS = {
 // through. Task 6 builds prefs/session storage around this same pair unchanged.
 const STORE = {
   key: () => localStorage.getItem("lm_key") || "",
-  setKey: k => localStorage.setItem("lm_key", k)
+  // trim: pasted keys carry trailing newlines/spaces and produce mystifying 401s.
+  setKey: k => localStorage.setItem("lm_key", (k || "").trim())
 };
 
 /* ===== SECTION: ADAPTER ===== */
@@ -785,6 +786,15 @@ const ADAPTER = {
   // directly assertable in a selftest without calling fetch. 3 entries = 3 retry
   // attempts after the first try, per the plan's "3 attempts, backoff 2s/6s/15s". --
   BACKOFF_MS: [2000, 6000, 15000],
+
+  // -- per-attempt fetch timeout (ms): a gateway that accepts the socket but never
+  // responds would otherwise wedge `await fetch` forever and the retry loop would
+  // never trigger. A constant on ADAPTER (like BACKOFF_MS) so tests can override it;
+  // an abort is treated exactly like a network reject (retryable with backoff). ----
+  TIMEOUT_MS: 120000,
+
+  // -- _sleep(ms): promise-wrapped setTimeout, used for the backoff waits. ----------
+  _sleep(ms) { return new Promise(r => setTimeout(r, ms)); },
 
   // -- classify(status): pure function, no fetch, no `this`. Maps an HTTP status code
   // to one of three retry-loop actions:
@@ -849,7 +859,10 @@ const ADAPTER = {
       "linearized 0-1 (not sRGB 0-255); warmth* is (R-B)/(R+B) computed on linear channel means, positive = " +
       "warmer, negative = cooler, roughly +-0.05 ~= a few hundred kelvin; tint is positive = green, negative = " +
       "magenta.";
-    content.push({ type: "text", text: `${legend}\n${JSON.stringify(metricsBundle)}` });
+    // Token precision: 4 decimals is well past the metrics' meaningful resolution;
+    // full float64 digit-runs only burn tokens and invite false precision.
+    const round4 = (k, v) => typeof v === "number" && Number.isFinite(v) ? Math.round(v * 1e4) / 1e4 : v;
+    content.push({ type: "text", text: `${legend}\n${JSON.stringify(metricsBundle, round4)}` });
 
     if (context && Object.keys(context).length) {
       const chips = Object.entries(context).map(([k, v]) => `${k}: ${v}`).join(", ");
@@ -877,19 +890,27 @@ const ADAPTER = {
   //                forced via tool_choice so the model cannot answer in prose.
   //   validate:    optional (toolInput) => {ok, errors[], cleaned} — when provided
   //                and the first response fails validation, call() re-asks ONCE by
-  //                appending a user turn naming the errors, then re-validates the
-  //                second response. A second failure surfaces the validation error
-  //                to the caller (throws) rather than looping again.
-  // Retries (429/5xx/network): up to 3 attempts total, backoff BACKOFF_MS[attempt-1]
-  // between attempts. 401 throws AuthError immediately, no retry. A response with no
-  // tool_use block throws ShapeError carrying the raw response text. -----------------
+  //                appending the assistant turn plus a wire-valid user turn whose
+  //                content is a tool_result block (matching tool_use_id,
+  //                is_error:true) naming the errors, then re-validates the second
+  //                response. A second failure surfaces the validation error to the
+  //                caller (throws) rather than looping again.
+  // Retries (429/5xx/network/timeout): up to 3 retry attempts after the first try,
+  // backoff BACKOFF_MS[attempt] between attempts. Each attempt is bounded by
+  // TIMEOUT_MS via an AbortController; an abort is treated exactly like a network
+  // reject (retryable). 401 throws AuthError immediately, no retry. A response with
+  // no tool_use block throws ShapeError carrying the raw response text.
+  // Note: this gateway family can return pseudo-errors as HTTP 200 — those surface
+  // as ShapeError with .raw for the caller to inspect. -------------------------------
   async call({ model, system, userContent, tool, validate }) {
     const messages = [{ role: "user", content: userContent }];
 
     const send = async () => {
       let lastErr = null;
       for (let attempt = 0; attempt < this.BACKOFF_MS.length + 1; attempt++) {
-        let res;
+        let res = null;
+        const ac = new AbortController();
+        const t = setTimeout(() => ac.abort(), this.TIMEOUT_MS);
         try {
           res = await fetch("https://omega.kesarcloud.in/v1/messages", {
             method: "POST",
@@ -901,15 +922,21 @@ const ADAPTER = {
             body: JSON.stringify({
               model, max_tokens: 4096, stream: false, system, messages,
               tools: [tool], tool_choice: { type: "tool", name: tool.name }
-            })
+            }),
+            signal: ac.signal
           });
         } catch (networkErr) {
-          // fetch itself rejected (offline, DNS, CORS preflight failure, etc.) — no
-          // status code to classify, but this IS the "network" case in the plan's
-          // "429/5xx/network" retry list, so it is treated exactly like "retry".
+          // fetch rejected (offline, DNS, CORS preflight failure, ...) OR our
+          // TIMEOUT_MS abort fired (gateway accepted the socket, never answered).
+          // No status code to classify in either case, but both ARE the "network"
+          // case in the plan's "429/5xx/network" retry list — treated as retryable.
           lastErr = networkErr;
-          if (attempt < this.BACKOFF_MS.length) { await new Promise(r => setTimeout(r, this.BACKOFF_MS[attempt])); continue; }
-          throw networkErr;
+        } finally {
+          clearTimeout(t);
+        }
+        if (res === null) {
+          if (attempt < this.BACKOFF_MS.length) { await this._sleep(this.BACKOFF_MS[attempt]); continue; }
+          throw lastErr;
         }
 
         if (res.ok) {
@@ -922,12 +949,13 @@ const ADAPTER = {
           throw new this.AuthError(`Gateway returned 401 — the API key is missing or invalid.`);
         }
         if (action === "retry" && attempt < this.BACKOFF_MS.length) {
-          await new Promise(r => setTimeout(r, this.BACKOFF_MS[attempt]));
+          await this._sleep(this.BACKOFF_MS[attempt]);
           continue;
         }
         const bodyText = await res.text().catch(() => "");
         throw new Error(`Gateway request failed: HTTP ${res.status}${bodyText ? " — " + bodyText : ""}`);
       }
+      // Defensive: the loop always returns or throws earlier; unreachable in practice.
       throw lastErr || new Error("Gateway request failed after retries.");
     };
 
@@ -943,8 +971,16 @@ const ADAPTER = {
     if (typeof validate === "function") {
       const result = validate(toolInput);
       if (!result.ok) {
+        // Wire-valid re-ask: on the Anthropic Messages wire an assistant tool_use
+        // turn MUST be answered by a user turn whose content holds a tool_result
+        // block with the matching tool_use_id — a bare text turn is a 400
+        // ("tool_use ids were found without tool_result blocks").
+        const toolUse = first.content.find(b => b.type === "tool_use");
         messages.push({ role: "assistant", content: first.content });
-        messages.push({ role: "user", content: `Your emit was invalid: ${JSON.stringify(result.errors)}. Re-emit the full corrected tool call.` });
+        messages.push({ role: "user", content: [{
+          type: "tool_result", tool_use_id: toolUse.id, is_error: true,
+          content: `Your emit was invalid: ${JSON.stringify(result.errors)}. Re-emit the full corrected tool call.`
+        }]});
         const second = await send();
         toolInput = extractToolInput(second);
         const secondResult = validate(toolInput);
@@ -1234,11 +1270,12 @@ SELFTEST.suites.schemas = async function () {
   this.ok(rUnknownTarget.ok === false, "validateRecipe: unknown target -> ok===false (no params resolve)");
 };
 
-// -- suite: adapter (Task 5) -- NO NETWORK CALLS. Only the pure parts (classify(),
-// BACKOFF_MS, buildUserContent()) are exercised here; ADAPTER.call()'s fetch/retry
-// wiring is verified by structure (function exists, throws the right error types on
-// its own inputs where that's reachable without a network) and by the live smoke
-// test in Task 8, per the plan's "do NOT make live network calls in selftests" rule.
+// -- suite: adapter (Task 5) -- NO LIVE NETWORK CALLS. Pure parts (classify(),
+// BACKOFF_MS/TIMEOUT_MS, buildUserContent()) are exercised directly; ADAPTER.call()'s
+// retry/timeout/re-ask wiring is exercised against a STUBBED globalThis.fetch
+// (saved and restored in try/finally, backoff shrunk to 1ms) — no socket is ever
+// opened, honoring the plan's "do NOT make live network calls in selftests" rule.
+// Live gateway behavior is separately verified by Task 8's smoke test.
 SELFTEST.suites.adapter = async function () {
   // -- retry classifier: pure function, no fetch -------------------------------------
   this.ok(typeof ADAPTER.classify === "function", "ADAPTER.classify is a function");
@@ -1253,9 +1290,11 @@ SELFTEST.suites.adapter = async function () {
   this.ok(ADAPTER.classify(404) === "fatal", "classify(404) -> fatal");
   this.ok(ADAPTER.classify(200) === "fatal", "classify(200) -> fatal (success status never reaches the classifier in practice, but must not read as retry/auth)");
 
-  // -- backoff schedule: a constant, not a function — testable without fetch ---------
+  // -- backoff schedule + per-attempt timeout: constants, not functions — testable
+  // without fetch ---------------------------------------------------------------------
   this.ok(Array.isArray(ADAPTER.BACKOFF_MS), "ADAPTER.BACKOFF_MS is an array");
   this.ok(JSON.stringify(ADAPTER.BACKOFF_MS) === JSON.stringify([2000, 6000, 15000]), `ADAPTER.BACKOFF_MS is [2000,6000,15000] (got ${JSON.stringify(ADAPTER.BACKOFF_MS)})`);
+  this.ok(ADAPTER.TIMEOUT_MS === 120000, `ADAPTER.TIMEOUT_MS is 120000 (got ${ADAPTER.TIMEOUT_MS})`);
 
   // -- error types: constructible and distinguishable without a network call ---------
   this.ok(typeof ADAPTER.AuthError === "function", "ADAPTER.AuthError is a constructor");
@@ -1353,6 +1392,121 @@ SELFTEST.suites.adapter = async function () {
   // -- call/buildUserContent structural checks (no network) --------------------------
   this.ok(typeof ADAPTER.call === "function", "ADAPTER.call is a function");
   this.ok(typeof ADAPTER.buildUserContent === "function", "ADAPTER.buildUserContent is a function");
+
+  // -- STORE.setKey trims pasted whitespace/newlines (mystifying-401 guard) ----------
+  // Restores whatever key was there before, so a real user key survives a ?selftest run.
+  const priorKey = localStorage.getItem("lm_key");
+  try {
+    STORE.setKey("  oc_padded\n");
+    this.ok(STORE.key() === "oc_padded", `STORE.setKey trims whitespace/newlines (got ${JSON.stringify(STORE.key())})`);
+  } finally {
+    if (priorKey === null) localStorage.removeItem("lm_key"); else localStorage.setItem("lm_key", priorKey);
+  }
+
+  // -- evidence precision: numbers in the metrics bundle serialize at 4 decimals -----
+  const contentPrecision = ADAPTER.buildUserContent({
+    mode: "recipe",
+    images: [],
+    metricsBundle: { diff: { "lum.p50": 0.123456789012345, "wb.tint": -0.0333333333333333 } },
+    context: {}
+  });
+  const evPrec = contentPrecision.find(b => b.type === "text" && /COMPUTED EVIDENCE/.test(b.text));
+  this.ok(!!evPrec && !/\.\d{9,}/.test(evPrec.text), "evidence text carries no digit-run longer than 8 after a decimal point");
+  this.ok(evPrec.text.includes("0.1235"), `long-precision number rounded to 4 decimals in evidence text (got: ${evPrec.text.slice(evPrec.text.indexOf("{"))})`);
+
+  // -- mocked-fetch coverage of ADAPTER.call's retry / auth / shape / re-ask / timeout
+  // paths. globalThis.fetch is stubbed (no socket ever opens) and restored in finally,
+  // as are BACKOFF_MS (→1ms so retries don't stall the suite) and TIMEOUT_MS. --------
+  const realFetch = globalThis.fetch;
+  const realBackoff = ADAPTER.BACKOFF_MS;
+  const realTimeout = ADAPTER.TIMEOUT_MS;
+  try {
+    ADAPTER.BACKOFF_MS = [1, 1, 1];
+    let calls = [];
+    let queue = [];
+    globalThis.fetch = (url, opts) => {
+      calls.push({ url, opts, body: JSON.parse(opts.body) });
+      const next = queue.shift();
+      if (!next) return Promise.reject(new Error("fetch stub queue exhausted"));
+      return next(url, opts);
+    };
+    const res200 = json => () => Promise.resolve({ ok: true, status: 200, json: async () => json, text: async () => JSON.stringify(json) });
+    const resStatus = status => () => Promise.resolve({ ok: false, status, json: async () => ({}), text: async () => "" });
+    const TOOL = { name: "emit_recipe" };
+    const okBody = { content: [{ type: "tool_use", id: "tu_ok1", name: "emit_recipe", input: { fine: true } }] };
+
+    // (a) 429 then 200-with-tool_use -> resolves; exactly 2 fetch calls
+    calls = []; queue = [resStatus(429), res200(okBody)];
+    const rA = await ADAPTER.call({ model: "m", system: "s", userContent: [], tool: TOOL });
+    this.ok(rA.fine === true, "mocked (a): 429 then 200 resolves with the tool input");
+    this.ok(calls.length === 2, `mocked (a): exactly 2 fetch calls (got ${calls.length})`);
+
+    // (b) 401 -> AuthError; exactly 1 call
+    calls = []; queue = [resStatus(401)];
+    let threwB = null;
+    try { await ADAPTER.call({ model: "m", system: "s", userContent: [], tool: TOOL }); } catch (e) { threwB = e; }
+    this.ok(threwB instanceof ADAPTER.AuthError, "mocked (b): 401 throws ADAPTER.AuthError");
+    this.ok(calls.length === 1, `mocked (b): exactly 1 fetch call, no retry (got ${calls.length})`);
+
+    // (c) 200 with no tool_use block -> ShapeError carrying .raw
+    calls = []; queue = [res200({ content: [{ type: "text", text: "prose answer, no tool call" }] })];
+    let threwC = null;
+    try { await ADAPTER.call({ model: "m", system: "s", userContent: [], tool: TOOL }); } catch (e) { threwC = e; }
+    this.ok(threwC instanceof ADAPTER.ShapeError, "mocked (c): 200 without tool_use throws ShapeError");
+    this.ok(!!threwC && typeof threwC.raw === "string" && threwC.raw.includes("prose answer"), "mocked (c): ShapeError carries .raw with the response text");
+
+    // (d) validate-fail then valid: second request body must be WIRE-VALID — the
+    // assistant tool_use turn answered by a user turn whose content[0] is a
+    // tool_result with the matching tool_use_id, is_error true, and the mandated
+    // sentence; returns cleaned; exactly 2 calls.
+    const badBody = { content: [{ type: "tool_use", id: "tu_bad1", name: "emit_recipe", input: { bad: true } }] };
+    const validateFn = inp => inp.bad ? { ok: false, errors: ["values[0]: nonsense"], cleaned: null } : { ok: true, errors: [], cleaned: { cleaned: true } };
+    calls = []; queue = [res200(badBody), res200(okBody)];
+    const rD = await ADAPTER.call({ model: "m", system: "s", userContent: [], tool: TOOL, validate: validateFn });
+    this.ok(rD.cleaned === true, "mocked (d): re-ask returns the validated cleaned object");
+    this.ok(calls.length === 2, `mocked (d): exactly 2 fetch calls (got ${calls.length})`);
+    const secondMsgs = calls[1] ? calls[1].body.messages : [];
+    this.ok(secondMsgs.length === 3, `mocked (d): second request has 3 messages (got ${secondMsgs.length})`);
+    this.ok(secondMsgs[1] && secondMsgs[1].role === "assistant" && Array.isArray(secondMsgs[1].content) && secondMsgs[1].content.some(b => b.type === "tool_use" && b.id === "tu_bad1"), "mocked (d): second request carries the assistant turn with the original tool_use block");
+    const reAskTurn = secondMsgs[2] || {};
+    this.ok(reAskTurn.role === "user" && Array.isArray(reAskTurn.content), "mocked (d): final turn is a user turn with array content");
+    const toolResult = Array.isArray(reAskTurn.content) ? reAskTurn.content[0] : null;
+    this.ok(!!toolResult && toolResult.type === "tool_result", "mocked (d): user turn content[0] is a tool_result block (wire-valid re-ask)");
+    this.ok(!!toolResult && toolResult.tool_use_id === "tu_bad1", `mocked (d): tool_result.tool_use_id matches the assistant tool_use id (got ${toolResult && toolResult.tool_use_id})`);
+    this.ok(!!toolResult && toolResult.is_error === true, "mocked (d): tool_result.is_error === true");
+    this.ok(!!toolResult && typeof toolResult.content === "string" && toolResult.content.includes("Your emit was invalid") && toolResult.content.includes("Re-emit the full corrected tool call."), "mocked (d): tool_result content carries the mandated re-ask sentence");
+
+    // (e) validate fails twice -> throws; exactly 2 calls, never a third
+    calls = []; queue = [res200(badBody), res200(badBody)];
+    let threwE = null;
+    try { await ADAPTER.call({ model: "m", system: "s", userContent: [], tool: TOOL, validate: validateFn }); } catch (e) { threwE = e; }
+    this.ok(!!threwE, "mocked (e): double validate-fail throws");
+    this.ok(calls.length === 2, `mocked (e): exactly 2 fetch calls, never a third (got ${calls.length})`);
+
+    // (f) hung fetch: never resolves on its own, rejects with AbortError when the
+    // per-attempt TIMEOUT_MS AbortController fires -> treated as retryable, then a
+    // 200 succeeds on attempt 2.
+    ADAPTER.TIMEOUT_MS = 50;
+    calls = [];
+    queue = [
+      (url, opts) => new Promise((resolve, reject) => {
+        opts.signal.addEventListener("abort", () => {
+          const e = new Error("The operation was aborted.");
+          e.name = "AbortError";
+          reject(e);
+        });
+      }),
+      res200(okBody)
+    ];
+    const rF = await ADAPTER.call({ model: "m", system: "s", userContent: [], tool: TOOL });
+    this.ok(rF.fine === true, "mocked (f): hung fetch aborts at TIMEOUT_MS, retries, succeeds on attempt 2");
+    this.ok(calls.length === 2, `mocked (f): exactly 2 fetch calls (got ${calls.length})`);
+    this.ok(calls[0].opts.signal instanceof AbortSignal, "mocked (f): fetch receives a per-attempt AbortSignal");
+  } finally {
+    globalThis.fetch = realFetch;
+    ADAPTER.BACKOFF_MS = realBackoff;
+    ADAPTER.TIMEOUT_MS = realTimeout;
+  }
 };
 
 // -- suite: metrics (Task 3) ---------------------------------------------------------
