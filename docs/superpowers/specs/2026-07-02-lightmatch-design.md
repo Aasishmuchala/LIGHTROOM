@@ -34,7 +34,7 @@ Four internal modules with hard boundaries:
 
 | Module | One job | Depends on |
 |---|---|---|
-| `ui` | Drop zones, context pickers, recipe/correction card rendering, session strip | `engine` only |
+| `ui` | Drop zones, context pickers, recipe/correction card rendering, session strip | `engine` only (pack display strings — `ui_path`, units — arrive through `engine`'s lookup API) |
 | `metrics` | Canvas photometry: image → measurement vector; vector diffs. Pure functions, no DOM, no network | nothing |
 | `packs` | Data: V-Ray 7 (Max) and Vantage 3.3 parameter universes + prompt-fragment builder | nothing |
 | `engine` | Orchestration: image downscale, prompt assembly, gateway call, schema validation, session state | `metrics`, `packs` |
@@ -88,18 +88,18 @@ For any two images the engine computes a **diff vector** — e.g. "reference sha
 
 ## Refine loop
 
-- **Session model:** one session = reference + base + target + context + a chain of attempts. Each attempt stores its image, metric vector, and the recipe/corrections that produced it. Session strip renders the chain with a score under each thumbnail.
+- **Session model:** one session = reference + base + context + **per-target attempt chains**. Each attempt stores its image, metric vector, and the recipe/corrections that produced it. Switching target (or one-click re-analyze) produces a fresh recipe for the new target and starts that target's own chain; the session strip always shows the active target's chain. Session strip renders the chain with a score under each thumbnail.
 - **Convergence score:** weighted, normalized distance between attempt and reference metric vectors (luminance/contrast weighted heaviest, saturation lightest), shown as 0–100 "look distance" with a trend arrow. Honest caveat inherited from REFGRADE verbatim: *trust your eyes first, the numbers second.* Its one job: answer "did that round move me closer?"
 - **Correction rounds:** on attempt N the model receives reference + attempt images, the computed diff, full move history, and which steps the user applied. It returns a **correction card, not a new recipe**: 3–5 prioritized moves max, each `{param, from, to, why}` referencing pack IDs. Small trims beat re-matching.
 - **Oscillation guard:** prompt includes the last two rounds of moves plus the rule: never reverse a prior move by more than half; if a metric ping-pongs, name the exposure/light degeneracy to the user instead of chasing it.
-- **Handoff criterion:** when the score plateaus and the residual diff is dominated by chromatic/tonal terms rather than luminance-structure terms, the model must say: *"lighting is within noise of the reference — the rest is a grade; take it to REFGRADE."* Knowing when to stop re-rendering is a feature.
+- **Handoff criterion:** when the score plateaus and the residual diff is dominated by chromatic/tonal terms rather than luminance-structure terms, the model must declare it. The `emit_correction` schema carries `status: "continue" | "handoff_to_grade"` plus a one-line reason; the UI renders the handoff state ("lighting is within noise of the reference — the rest is a grade; take it to REFGRADE") from this **structured field, never by parsing prose**. Knowing when to stop re-rendering is a feature.
 
 ## UI
 
 Two-column layout inside one window (mockup approved in brainstorm):
 
-- **Left (inputs):** three slots — Reference, Base render, Settings screenshot (optional, labeled as anchor) — all accepting drag-drop **and Ctrl+V paste** (paste is the primary path); context chips; target toggle (V-Ray 7 | Vantage 3.3); model picker (Opus 4.8 / GPT-5.5); key status; Analyze button; the line "Images stay in your browser. One call goes to your gateway."
-- **Right (recipe card):** grouped by the five fixed steps. Each row: verbatim `ui_path` from the pack as the primary label, value with "(from baseline)", confidence dot, per-row copy (copies "VRaySun ▸ … ▸ Color temperature → 4300 K"). Header: copy-sheet (human text) and copy-JSON buttons, plus a one-click **"Re-analyze for Vantage 3.3 / V-Ray 7"** action reusing the session. Rationale foldout below the rows.
+- **Left (inputs):** three slots — Reference, Base render, Settings screenshot (optional, labeled as anchor) — all accepting drag-drop **and Ctrl+V paste** (paste is the primary path; it routes to the focused slot — click a slot to focus — else to the first empty slot in Reference → Base → Settings order, and to a **new attempt** once the session is active); context chips; target toggle (V-Ray 7 | Vantage 3.3); model picker (Opus 4.8 / GPT-5.5); key status; Analyze button; the line "Images stay in your browser. One call goes to your gateway."
+- **Right (recipe card):** grouped by the five fixed steps. Each row: verbatim `ui_path` from the pack as the primary label, value with "(from baseline)", confidence dot, per-row copy (copies "VRaySun ▸ … ▸ Color temperature → 4300 K"), and an **applied** toggle (default on) — untoggle anything you skipped; correction calls receive the applied set. Header: copy-sheet (human text) and copy-JSON buttons, plus a one-click **"Re-analyze for Vantage 3.3 / V-Ray 7"** action reusing the session. Rationale foldout below the rows.
 - **Bottom (session strip):** reference thumb + attempt thumbs with scores and trend; plateau state renders the REFGRADE handoff message.
 - Dropping a new render into an active session automatically enters refine mode (correction card instead of full recipe).
 - A fixed hint near the attempt slot: **"same VFB display settings every attempt"** — changed display correction between attempts makes metrics compare apples to oranges.
@@ -111,7 +111,7 @@ Two-column layout inside one window (mockup approved in brainstorm):
 - Endpoint hardcoded: `https://omega.kesarcloud.in/v1/messages`, Anthropic Messages wire format, `oc_` key sent as Bearer (`Authorization: Bearer`, not `x-api-key`).
 - Non-streaming always (recipes are 1–2 k tokens; the user's Anthropic-wire proxies have streaming quirks; nothing to gain).
 - Model picker: Opus 4.8 and GPT-5.5. Exact model ID strings are read from the gateway's model list during implementation and hardcoded as the two options.
-- Images: client-side downscale to ≤1568 px long edge, JPEG ~0.85, before base64 — bounds token cost and upload size.
+- Images: client-side downscale to ≤1568 px long edge, JPEG ~0.85, before base64 — bounds token cost and upload size. **Exception:** the settings screenshot is sent lossless (PNG, long edge up to 2048 px) — it is the one image the model must read small spinner text from.
 - Structured output: one tool (`emit_recipe` / `emit_correction`) with `strict` JSON schema; `tool_choice` forced.
 - Retries: up to 3 with exponential backoff on 429/5xx/network errors. A schema-violating response is re-asked once with the validation error appended; second failure surfaces to the user.
 
@@ -142,6 +142,7 @@ Two-column layout inside one window (mockup approved in brainstorm):
 | Pack accuracy (V-Ray 7.x UI paths, Vantage 3.3 panels) | Dedicated verification task against current Chaos docs; every entry carries `verified` date. |
 | Metrics content-blindness skews evidence | Prompt frames metrics as evidence, model arbitrates; caveat rendered in UI ("look distance"). |
 | Session images exceed IndexedDB comfort | Store downscaled JPEGs only (≤1568 px), cap session history at last 8 attempts. |
+| IndexedDB behavior on `file://` origins varies by browser | Verify hour one in the user's daily browser, alongside CORS. If unsupported there, sessions fall back to in-memory plus a manual export/import JSON file, with a visible warning. |
 
 ## Build staging (informative — the implementation plan governs)
 
