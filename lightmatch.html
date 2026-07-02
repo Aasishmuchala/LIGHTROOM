@@ -753,10 +753,212 @@ const METRICS = {
 };
 
 /* ===== SECTION: STORE ===== */
-const STORE = {};
+// Full IndexedDB session persistence lands in Task 6. This task (5) adds ONLY the
+// minimal key accessor pair ADAPTER.call needs — localStorage, not IndexedDB, since
+// the key is a short string well under the 5 MB cap Task 6's session data would blow
+// through. Task 6 builds prefs/session storage around this same pair unchanged.
+const STORE = {
+  key: () => localStorage.getItem("lm_key") || "",
+  setKey: k => localStorage.setItem("lm_key", k)
+};
 
 /* ===== SECTION: ADAPTER ===== */
-const ADAPTER = {};
+// Omega gateway client (Anthropic Messages wire, non-streaming, forced tool_choice).
+// ADAPTER→STORE (key read only, via STORE.key()); nothing else. ADAPTER does NOT call
+// METRICS.downscaleForSend itself — buildUserContent works on already-downscaled
+// {dataUrl, mediaType} pairs, so the decode-reject path documented on
+// downscaleForSend (SECTION: METRICS) is ENGINE's responsibility to try/catch when it
+// downscales images before calling ADAPTER.buildUserContent/ADAPTER.call (Task 6).
+const ADAPTER = {
+  // -- error types: thrown by call(), never returned as a value, so a caller can
+  // `catch (e) { if (e instanceof ADAPTER.AuthError) ... }` without inspecting a
+  // status code again. Attached to ADAPTER (not module-private) so selftests and
+  // ENGINE can both construct/instanceof-check them without a network call. --------
+  AuthError: class AuthError extends Error {
+    constructor(message) { super(message); this.name = "AuthError"; }
+  },
+  ShapeError: class ShapeError extends Error {
+    constructor(message, raw) { super(message); this.name = "ShapeError"; this.raw = raw; }
+  },
+
+  // -- backoff schedule: a CONSTANT (not a function of attempt number), so it is
+  // directly assertable in a selftest without calling fetch. 3 entries = 3 retry
+  // attempts after the first try, per the plan's "3 attempts, backoff 2s/6s/15s". --
+  BACKOFF_MS: [2000, 6000, 15000],
+
+  // -- classify(status): pure function, no fetch, no `this`. Maps an HTTP status code
+  // to one of three retry-loop actions:
+  //   "retry" — 429 (rate limit) or any 5xx (server error): try again with backoff.
+  //   "auth"  — 401: the key is wrong/expired; caller throws AuthError, no retry.
+  //   "fatal" — everything else (400, 403, 404, ... and any 2xx/3xx that should never
+  //             reach this classifier in practice): do not retry, surface the error.
+  // Network errors (fetch rejects, no status at all) are classified as "retry" by the
+  // caller directly — see call()'s catch block — since there is no status code to
+  // pass here. -----------------------------------------------------------------------
+  classify(status) {
+    if (status === 429) return "retry";
+    if (status >= 500 && status <= 599) return "retry";
+    if (status === 401) return "auth";
+    return "fatal";
+  },
+
+  // -- buildUserContent({mode, images, metricsBundle, context, history}): assembles
+  // the single user-turn `content` array for the Messages API. Pure/no network.
+  //   mode: "recipe" (initial analysis) | "correction" (refine round) — only gates
+  //         whether the move-history block is included; image labeling is driven by
+  //         each image's own `role`/`n`, not by `mode`, so a settings screenshot can
+  //         appear in either mode.
+  //   images: [{ role: "reference"|"base"|"settings"|"attempt", n, dataUrl, mediaType }]
+  //         — dataUrl is a full `data:<mediaType>;base64,<data>` string as returned by
+  //         METRICS.downscaleForSend (ENGINE's job to produce; this function does not
+  //         downscale or decode anything itself, so it never touches ImageBitmap and
+  //         has no decode-reject path of its own).
+  //   metricsBundle: any JSON-serializable object — whatever measurements+diff shape
+  //         ENGINE assembled (kept opaque here; SCHEMAS/ENGINE own that shape).
+  //   context: plain object of scene chips (scene/time/rig/etc.) rendered as a line.
+  //   history: (correction mode only) array of prior rounds' moves + applied state.
+  // Documented block order (alternating text/image; every image is immediately
+  // preceded by its own labeling text block):
+  //   [label, image]* for every entry in `images`, in array order
+  //   -> evidence text block (units legend + JSON.stringify(metricsBundle))
+  //   -> context chips text block
+  //   -> (correction mode only) move-history + applied-set text block
+  // -----------------------------------------------------------------------------------
+  buildUserContent({ mode, images, metricsBundle, context, history }) {
+    const content = [];
+
+    const LABELS = {
+      reference: "REFERENCE:",
+      base: "BASE RENDER:",
+      settings: "SETTINGS SCREENSHOT (baseline):",
+      attempt: n => `ATTEMPT ${n}:`
+    };
+
+    for (const img of (images || [])) {
+      const label = img.role === "attempt" ? LABELS.attempt(img.n) : (LABELS[img.role] || `IMAGE (${img.role}):`);
+      content.push({ type: "text", text: label });
+      const base64 = img.dataUrl.includes(",") ? img.dataUrl.slice(img.dataUrl.indexOf(",") + 1) : img.dataUrl;
+      content.push({ type: "image", source: { type: "base64", media_type: img.mediaType, data: base64 } });
+    }
+
+    // Units legend prefixes the raw JSON so the model does not have to guess what a
+    // bare "0.211" or "-0.03" means — see METRICS section header for the same facts
+    // from the producer's side (lum linearized 0..1; warmth = (R-B)/(R+B) on linear
+    // means; tint = G-(R+B)/2, positive = green).
+    const legend = "COMPUTED EVIDENCE — deterministic, trust for magnitude. Units: luminance values are " +
+      "linearized 0-1 (not sRGB 0-255); warmth* is (R-B)/(R+B) computed on linear channel means, positive = " +
+      "warmer, negative = cooler, roughly +-0.05 ~= a few hundred kelvin; tint is positive = green, negative = " +
+      "magenta.";
+    content.push({ type: "text", text: `${legend}\n${JSON.stringify(metricsBundle)}` });
+
+    if (context && Object.keys(context).length) {
+      const chips = Object.entries(context).map(([k, v]) => `${k}: ${v}`).join(", ");
+      content.push({ type: "text", text: `SCENE CONTEXT — ${chips}` });
+    }
+
+    if (mode === "correction" && Array.isArray(history) && history.length) {
+      const lines = ["MOVE HISTORY (prior rounds — do not reverse any move here by more than half; applied=false means the user skipped that row when re-rendering):"];
+      for (const round of history) {
+        for (const mv of (round.moves || [])) {
+          lines.push(`  round ${round.round}: ${mv.param} ${mv.from} -> ${mv.to} (applied: ${mv.applied}) — ${mv.why || ""}`.trimEnd());
+        }
+      }
+      content.push({ type: "text", text: lines.join("\n") });
+    }
+
+    return content;
+  },
+
+  // -- call({model, system, userContent, tool, validate}) -> Promise<toolInput>
+  //   model:       exact gateway model id string (ADAPTER hardcodes none of these).
+  //   system:      system prompt string (SCHEMAS.systemPrompt(...) output).
+  //   userContent: the content array from buildUserContent(...).
+  //   tool:        one SCHEMAS.emit_recipe / SCHEMAS.emit_correction object; also
+  //                forced via tool_choice so the model cannot answer in prose.
+  //   validate:    optional (toolInput) => {ok, errors[], cleaned} — when provided
+  //                and the first response fails validation, call() re-asks ONCE by
+  //                appending a user turn naming the errors, then re-validates the
+  //                second response. A second failure surfaces the validation error
+  //                to the caller (throws) rather than looping again.
+  // Retries (429/5xx/network): up to 3 attempts total, backoff BACKOFF_MS[attempt-1]
+  // between attempts. 401 throws AuthError immediately, no retry. A response with no
+  // tool_use block throws ShapeError carrying the raw response text. -----------------
+  async call({ model, system, userContent, tool, validate }) {
+    const messages = [{ role: "user", content: userContent }];
+
+    const send = async () => {
+      let lastErr = null;
+      for (let attempt = 0; attempt < this.BACKOFF_MS.length + 1; attempt++) {
+        let res;
+        try {
+          res = await fetch("https://omega.kesarcloud.in/v1/messages", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "authorization": "Bearer " + STORE.key(),
+              "anthropic-version": "2023-06-01"
+            },
+            body: JSON.stringify({
+              model, max_tokens: 4096, stream: false, system, messages,
+              tools: [tool], tool_choice: { type: "tool", name: tool.name }
+            })
+          });
+        } catch (networkErr) {
+          // fetch itself rejected (offline, DNS, CORS preflight failure, etc.) — no
+          // status code to classify, but this IS the "network" case in the plan's
+          // "429/5xx/network" retry list, so it is treated exactly like "retry".
+          lastErr = networkErr;
+          if (attempt < this.BACKOFF_MS.length) { await new Promise(r => setTimeout(r, this.BACKOFF_MS[attempt])); continue; }
+          throw networkErr;
+        }
+
+        if (res.ok) {
+          const json = await res.json();
+          return json;
+        }
+
+        const action = this.classify(res.status);
+        if (action === "auth") {
+          throw new this.AuthError(`Gateway returned 401 — the API key is missing or invalid.`);
+        }
+        if (action === "retry" && attempt < this.BACKOFF_MS.length) {
+          await new Promise(r => setTimeout(r, this.BACKOFF_MS[attempt]));
+          continue;
+        }
+        const bodyText = await res.text().catch(() => "");
+        throw new Error(`Gateway request failed: HTTP ${res.status}${bodyText ? " — " + bodyText : ""}`);
+      }
+      throw lastErr || new Error("Gateway request failed after retries.");
+    };
+
+    const extractToolInput = (json) => {
+      const block = Array.isArray(json.content) ? json.content.find(b => b.type === "tool_use") : null;
+      if (!block) throw new this.ShapeError("Response contained no tool_use block.", JSON.stringify(json));
+      return block.input;
+    };
+
+    const first = await send();
+    let toolInput = extractToolInput(first);
+
+    if (typeof validate === "function") {
+      const result = validate(toolInput);
+      if (!result.ok) {
+        messages.push({ role: "assistant", content: first.content });
+        messages.push({ role: "user", content: `Your emit was invalid: ${JSON.stringify(result.errors)}. Re-emit the full corrected tool call.` });
+        const second = await send();
+        toolInput = extractToolInput(second);
+        const secondResult = validate(toolInput);
+        if (!secondResult.ok) {
+          throw new Error(`Gateway response failed validation twice: ${JSON.stringify(secondResult.errors)}`);
+        }
+        return secondResult.cleaned;
+      }
+      return result.cleaned;
+    }
+
+    return toolInput;
+  }
+};
 
 /* ===== SECTION: ENGINE ===== */
 const ENGINE = {};
@@ -1030,6 +1232,127 @@ SELFTEST.suites.schemas = async function () {
   // unknown target: every param lookup fails -> every value errors
   const rUnknownTarget = SCHEMAS.validateRecipe(baseRecipe(), "corona");
   this.ok(rUnknownTarget.ok === false, "validateRecipe: unknown target -> ok===false (no params resolve)");
+};
+
+// -- suite: adapter (Task 5) -- NO NETWORK CALLS. Only the pure parts (classify(),
+// BACKOFF_MS, buildUserContent()) are exercised here; ADAPTER.call()'s fetch/retry
+// wiring is verified by structure (function exists, throws the right error types on
+// its own inputs where that's reachable without a network) and by the live smoke
+// test in Task 8, per the plan's "do NOT make live network calls in selftests" rule.
+SELFTEST.suites.adapter = async function () {
+  // -- retry classifier: pure function, no fetch -------------------------------------
+  this.ok(typeof ADAPTER.classify === "function", "ADAPTER.classify is a function");
+  this.ok(ADAPTER.classify(429) === "retry", "classify(429) -> retry");
+  this.ok(ADAPTER.classify(500) === "retry", "classify(500) -> retry");
+  this.ok(ADAPTER.classify(502) === "retry", "classify(502) -> retry (5xx family)");
+  this.ok(ADAPTER.classify(503) === "retry", "classify(503) -> retry (5xx family)");
+  this.ok(ADAPTER.classify(599) === "retry", "classify(599) -> retry (5xx family upper bound)");
+  this.ok(ADAPTER.classify(401) === "auth", "classify(401) -> auth");
+  this.ok(ADAPTER.classify(400) === "fatal", "classify(400) -> fatal");
+  this.ok(ADAPTER.classify(403) === "fatal", "classify(403) -> fatal (not 401, not retryable)");
+  this.ok(ADAPTER.classify(404) === "fatal", "classify(404) -> fatal");
+  this.ok(ADAPTER.classify(200) === "fatal", "classify(200) -> fatal (success status never reaches the classifier in practice, but must not read as retry/auth)");
+
+  // -- backoff schedule: a constant, not a function — testable without fetch ---------
+  this.ok(Array.isArray(ADAPTER.BACKOFF_MS), "ADAPTER.BACKOFF_MS is an array");
+  this.ok(JSON.stringify(ADAPTER.BACKOFF_MS) === JSON.stringify([2000, 6000, 15000]), `ADAPTER.BACKOFF_MS is [2000,6000,15000] (got ${JSON.stringify(ADAPTER.BACKOFF_MS)})`);
+
+  // -- error types: constructible and distinguishable without a network call ---------
+  this.ok(typeof ADAPTER.AuthError === "function", "ADAPTER.AuthError is a constructor");
+  this.ok(typeof ADAPTER.ShapeError === "function", "ADAPTER.ShapeError is a constructor");
+  const authErr = new ADAPTER.AuthError("bad key");
+  this.ok(authErr instanceof Error && authErr.name === "AuthError", "AuthError instance: is an Error, name===AuthError");
+  const shapeErr = new ADAPTER.ShapeError("no tool_use", "raw text here");
+  this.ok(shapeErr instanceof Error && shapeErr.name === "ShapeError", "ShapeError instance: is an Error, name===ShapeError");
+  this.ok(shapeErr.raw === "raw text here", "ShapeError carries the raw response text");
+
+  // -- buildUserContent: 1x1 PNG data URLs (tiny, no network, no image decode needed
+  // since buildUserContent works on already-downscaled {dataUrl, mediaType} pairs — it
+  // does NOT call downscaleForSend itself; ENGINE calls that upstream) --------------
+  const PNG1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  const JPG1 = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/wAALCAABAAEBAREA/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAA/AJ8=";
+
+  function findTextBlocks(content) { return content.filter(b => b.type === "text"); }
+  function findImageBlocks(content) { return content.filter(b => b.type === "image"); }
+
+  // -- analyze mode (initial): reference + base, no settings screenshot --------------
+  const contentAnalyze = ADAPTER.buildUserContent({
+    mode: "recipe",
+    images: [
+      { role: "reference", dataUrl: PNG1, mediaType: "image/png" },
+      { role: "base", dataUrl: JPG1, mediaType: "image/jpeg" }
+    ],
+    metricsBundle: { ref: { lum: { p50: 0.2 } }, base: { lum: { p50: 0.3 } }, diff: { "lum.p50": 0.1 } },
+    context: { scene: "exterior", time: "golden hour", rig: "sun+dome" }
+  });
+  this.ok(Array.isArray(contentAnalyze), "buildUserContent returns an array of blocks");
+  // documented order: [text(REFERENCE label), image, text(BASE RENDER label), image, text(evidence+legend), text(context)]
+  this.ok(contentAnalyze[0].type === "text" && /REFERENCE:/.test(contentAnalyze[0].text), "block 0: REFERENCE: label text");
+  this.ok(contentAnalyze[1].type === "image", "block 1: reference image");
+  this.ok(contentAnalyze[1].source.type === "base64" && contentAnalyze[1].source.media_type === "image/png", "block 1: image source is base64/image-png shaped");
+  this.ok(contentAnalyze[2].type === "text" && /BASE RENDER:/.test(contentAnalyze[2].text), "block 2: BASE RENDER: label text");
+  this.ok(contentAnalyze[3].type === "image" && contentAnalyze[3].source.media_type === "image/jpeg", "block 3: base render image, media_type image/jpeg");
+  const evidenceBlock = contentAnalyze.find(b => b.type === "text" && /COMPUTED EVIDENCE/.test(b.text));
+  this.ok(!!evidenceBlock, "an evidence block with the COMPUTED EVIDENCE marker exists");
+  this.ok(/linearized 0.?.?1|0.?.?1.*linear/i.test(evidenceBlock.text) || /luminance values are linearized/i.test(evidenceBlock.text), "evidence block: units legend mentions linearized 0-1 luminance");
+  this.ok(/\(R.?.?B\)\/\(R\+B\)|warmth.*R.*B.*R.*B/i.test(evidenceBlock.text), "evidence block: units legend states warmth* = (R-B)/(R+B)");
+  this.ok(/positive = warmer/i.test(evidenceBlock.text), "evidence block: units legend states positive=warmer");
+  this.ok(/few hundred kelvin|hundred kelvin/i.test(evidenceBlock.text), "evidence block: units legend gives the +-0.05 ~ a few hundred kelvin approximation");
+  this.ok(/tint.*positive.*green|positive = green/i.test(evidenceBlock.text), "evidence block: units legend states tint positive=green");
+  this.ok(evidenceBlock.text.includes(JSON.stringify({ ref: { lum: { p50: 0.2 } }, base: { lum: { p50: 0.3 } }, diff: { "lum.p50": 0.1 } })), "evidence block contains JSON.stringify of the metricsBundle verbatim");
+  const contextBlock = contentAnalyze.find(b => b.type === "text" && /exterior/.test(b.text) && /golden hour/.test(b.text));
+  this.ok(!!contextBlock, "a context-chips block mentioning scene/time/rig exists");
+  // evidence block must come after both images (documented order: images labeled first, then evidence)
+  const evidenceIdx = contentAnalyze.indexOf(evidenceBlock);
+  this.ok(evidenceIdx > 3, "evidence block appears after both labeled images");
+
+  // -- analyze mode with settings screenshot: baseline label present, 3rd image -----
+  const contentWithSettings = ADAPTER.buildUserContent({
+    mode: "recipe",
+    images: [
+      { role: "reference", dataUrl: PNG1, mediaType: "image/png" },
+      { role: "base", dataUrl: JPG1, mediaType: "image/jpeg" },
+      { role: "settings", dataUrl: PNG1, mediaType: "image/png" }
+    ],
+    metricsBundle: { ref: {}, base: {}, diff: {} },
+    context: { scene: "interior", time: "midday", rig: "dome only" }
+  });
+  const settingsLabelBlock = contentWithSettings.find(b => b.type === "text" && /SETTINGS SCREENSHOT \(baseline\):/.test(b.text));
+  this.ok(!!settingsLabelBlock, "settings-screenshot label block present verbatim: 'SETTINGS SCREENSHOT (baseline):'");
+  this.ok(findImageBlocks(contentWithSettings).length === 3, "3 images produce 3 image blocks (ref, base, settings)");
+
+  // -- refine mode: attempt image labeled "ATTEMPT N:", move history + applied set --
+  const contentRefine = ADAPTER.buildUserContent({
+    mode: "correction",
+    images: [
+      { role: "reference", dataUrl: PNG1, mediaType: "image/png" },
+      { role: "attempt", n: 2, dataUrl: JPG1, mediaType: "image/jpeg" }
+    ],
+    metricsBundle: { ref: {}, attempt: {}, diff: {} },
+    context: { scene: "exterior", time: "dusk", rig: "sun+dome" },
+    history: [
+      { round: 1, moves: [{ param: "sun.kelvin", from: 6500, to: 5200, applied: true }] }
+    ]
+  });
+  const attemptLabelBlock = contentRefine.find(b => b.type === "text" && /ATTEMPT 2:/.test(b.text));
+  this.ok(!!attemptLabelBlock, "attempt label block present verbatim: 'ATTEMPT 2:'");
+  const historyBlock = contentRefine.find(b => b.type === "text" && /sun\.kelvin/.test(b.text) && /5200/.test(b.text));
+  this.ok(!!historyBlock, "refine mode: move history block present and mentions a prior move's param/value");
+  this.ok(/applied/i.test(historyBlock.text), "refine mode: history block mentions the applied set");
+  // recipe (non-refine) mode must NOT include a history block, even if history were accidentally passed
+  this.ok(!contentAnalyze.some(b => b.type === "text" && /round.*1.*moves|move history/i.test(b.text)), "recipe mode: no move-history block appears");
+
+  // -- alternating text/image order contract: every image block is immediately
+  // preceded by a text block (the label) --------------------------------------------
+  for (const content of [contentAnalyze, contentWithSettings, contentRefine]) {
+    for (let i = 0; i < content.length; i++) {
+      if (content[i].type === "image") this.ok(content[i - 1] && content[i - 1].type === "text", `image block at index ${i} is immediately preceded by a text block`);
+    }
+  }
+
+  // -- call/buildUserContent structural checks (no network) --------------------------
+  this.ok(typeof ADAPTER.call === "function", "ADAPTER.call is a function");
+  this.ok(typeof ADAPTER.buildUserContent === "function", "ADAPTER.buildUserContent is a function");
 };
 
 // -- suite: metrics (Task 3) ---------------------------------------------------------
