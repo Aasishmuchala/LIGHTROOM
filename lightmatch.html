@@ -489,6 +489,39 @@ const METRICS = {
     }
     const raw = 100 * Math.sqrt(wdsum / wsum) / 0.35;
     return Math.min(100, raw);
+  },
+
+  // -- downscale a File/Blob/canvas/ImageBitmap for sending to the model; never
+  //    upscales (scale = min(1, maxEdge / longEdge), same rule as thumb()). Two call
+  //    shapes cover the plan: lossy default (1568, image/jpeg, q=0.85) and a lossless
+  //    variant for the settings screenshot (2048, image/png — q is ignored by PNG
+  //    encoders but accepted here for a uniform signature). -----------------------
+  async downscaleForSend(fileOrBlobOrCanvas, maxEdge, type, q) {
+    maxEdge = maxEdge === undefined ? 1568 : maxEdge;
+    type = type === undefined ? "image/jpeg" : type;
+    q = q === undefined ? 0.85 : q;
+
+    let source = fileOrBlobOrCanvas;
+    const isCanvasLike = source && typeof source.getContext === "function"
+      && typeof source.width === "number" && typeof source.height === "number";
+    const isBitmapLike = typeof ImageBitmap !== "undefined" && source instanceof ImageBitmap;
+    if (!isCanvasLike && !isBitmapLike) {
+      // File or Blob: decode to an ImageBitmap first.
+      source = await createImageBitmap(fileOrBlobOrCanvas);
+    }
+    const sw = source.width, sh = source.height;
+
+    const longEdge = Math.max(sw, sh);
+    const scale = longEdge > maxEdge ? maxEdge / longEdge : 1;
+    const w = Math.max(1, Math.round(sw * scale));
+    const h = Math.max(1, Math.round(sh * scale));
+
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(source, 0, 0, w, h);
+    const dataUrl = c.toDataURL(type, q);
+    return { dataUrl, w, h };
   }
 };
 
@@ -676,6 +709,26 @@ SELFTEST.suites.metrics = async function () {
   const big = solidCanvas(4000, 2000, 200, 150, 100);
   const th = METRICS.thumb(big, 256);
   this.ok(th.width === 256 && th.height === 128, `thumb(4000x2000,256): width===256 && height===128 (got ${th.width}x${th.height})`);
+
+  // -- downscaleForSend: lossy default (maxEdge=1568, image/jpeg) ---------------------
+  const lossy = await METRICS.downscaleForSend(big, 1568, "image/jpeg", 0.85);
+  this.ok(lossy.w === 1568 && lossy.h === 784, `downscaleForSend lossy: w===1568 && h===784 (got ${lossy.w}x${lossy.h})`);
+  this.ok(typeof lossy.dataUrl === "string" && lossy.dataUrl.startsWith("data:image/jpeg"), "downscaleForSend lossy: dataUrl prefix matches image/jpeg");
+
+  // -- downscaleForSend: lossless variant (maxEdge=2048, image/png) for the settings screenshot --
+  const lossless = await METRICS.downscaleForSend(big, 2048, "image/png", 1.0);
+  this.ok(lossless.w === 2048 && lossless.h === 1024, `downscaleForSend lossless: w===2048 && h===1024 (got ${lossless.w}x${lossless.h})`);
+  this.ok(typeof lossless.dataUrl === "string" && lossless.dataUrl.startsWith("data:image/png"), "downscaleForSend lossless: dataUrl prefix matches image/png");
+
+  // -- downscaleForSend: default args (no maxEdge/type/q passed) behave like the lossy defaults --
+  const defaults = await METRICS.downscaleForSend(big);
+  this.ok(defaults.w === 1568 && defaults.h === 784, `downscaleForSend defaults: w===1568 && h===784 (got ${defaults.w}x${defaults.h})`);
+  this.ok(defaults.dataUrl.startsWith("data:image/jpeg"), "downscaleForSend defaults: dataUrl prefix image/jpeg");
+
+  // -- downscaleForSend never upscales a source already <= maxEdge --------------------
+  const small = solidCanvas(64, 48, 10, 20, 30);
+  const notUpscaled = await METRICS.downscaleForSend(small, 1568, "image/jpeg", 0.85);
+  this.ok(notUpscaled.w === 64 && notUpscaled.h === 48, `downscaleForSend: source <= maxEdge is not upscaled (got ${notUpscaled.w}x${notUpscaled.h})`);
 };
 
 addEventListener("DOMContentLoaded", () => {
