@@ -1422,6 +1422,28 @@ const ENGINE = {
     return s;
   },
 
+  // -- setRecipeApplied(param, applied): records the recipe-row applied toggle on the
+  // ACTIVE chain as chain.recipeApplied[param] = bool ({param -> bool} map; absent or
+  // true = applied), then persists — same shape as setContext (Task 7a follow-up;
+  // spec: "untoggle anything you skipped; correction calls receive the applied set").
+  // _historyForActiveChain()'s round-0 moves read this map, so the first correction
+  // call genuinely receives which recipe rows the user skipped. Busy discipline
+  // matches setImage: a typed BusyError while _inFlight — flipping the applied set
+  // mid-addAttempt would change session state out from under the history the
+  // in-flight call already assembled. The map is cleared by a fresh analyze() (a new
+  // recipe's rows default back to applied; see _analyzeImpl). -----------------------
+  async setRecipeApplied(param, applied) {
+    if (this._inFlight) {
+      throw this._annotateError(new this.BusyError("ENGINE.setRecipeApplied(): an analyze/attempt/reanalyze call is already in flight — wait for it to finish before changing the applied set."));
+    }
+    const chain = this.activeChain();
+    if (!chain) return null;
+    if (!chain.recipeApplied || typeof chain.recipeApplied !== "object") chain.recipeApplied = {};
+    chain.recipeApplied[param] = !!applied;
+    await this._persist();
+    return chain.recipeApplied;
+  },
+
   // -- lookup(paramId): UI's display-string API, delegates to PACKS for the ACTIVE
   // target. -----------------------------------------------------------------------
   lookup(paramId) {
@@ -1629,6 +1651,10 @@ const ENGINE = {
     }
 
     s.chains[target].recipe = cleaned;
+    // A fresh recipe resets the applied-toggle map: its rows default back to applied
+    // (checked). Without this, an untick recorded against the PREVIOUS recipe would
+    // silently leak onto a same-named param in the new one (Task 7a follow-up).
+    s.chains[target].recipeApplied = null;
     await this._persist();
     return cleaned;
   },
@@ -1641,10 +1667,21 @@ const ENGINE = {
   // reach the reference"), sends history = every prior round's moves (recipe's
   // values[] normalized into the same {param,from,to,applied,why} shape as a "round 0"
   // entry, then each stored attempt's correction.moves as subsequent rounds) with
-  // appliedParams defaulting to true for every move (no per-row UI toggle wired yet —
-  // "applied_assumed" is the model's own flag in its OUTPUT, not an input we set).
+  // per-move `applied` flags read from the real toggle maps (chain.recipeApplied for
+  // round 0, att.appliedParams for correction rounds; absent map = all-true defaults,
+  // and the round is then marked applied_assumed:true — see _historyForActiveChain).
+  // "applied_assumed" also exists as the model's own flag in its OUTPUT schema; the
+  // input-side round marker here is the honest mirror of it.
   // Stores {dataUrl, metrics, score, correction, appliedParams} in the chain, caps at
   // ATTEMPTS_CAP (oldest dataUrl dropped, its score retained — see _pushAttempt). ----
+  // Round shape: {round, applied_assumed, moves[]}. `applied_assumed` is the honest
+  // input-side marker (Task 7a follow-up): true ONLY when that round's backing map
+  // (chain.recipeApplied for round 0, att.appliedParams for correction rounds) is
+  // absent — its all-true applied flags are then defaults/assumptions, not
+  // user-confirmed toggle state. When a map exists, applied_assumed is false and the
+  // per-move `applied` values are the user's real toggle state. ADAPTER's history
+  // text renders the per-move applied flags (the part the model acts on);
+  // applied_assumed rides on the round object for tests/consumers of the structure.
   _historyForActiveChain() {
     const s = this.session();
     const chain = s.chains[s.activeTarget];
@@ -1652,13 +1689,19 @@ const ENGINE = {
     if (chain.recipe && Array.isArray(chain.recipe.values)) {
       rounds.push({
         round: 0,
-        moves: chain.recipe.values.map(v => ({ param: v.param, from: v.from, to: v.set, applied: true, why: v.why }))
+        applied_assumed: !chain.recipeApplied,
+        moves: chain.recipe.values.map(v => ({
+          param: v.param, from: v.from, to: v.set,
+          applied: chain.recipeApplied ? chain.recipeApplied[v.param] !== false : true,
+          why: v.why
+        }))
       });
     }
     chain.attempts.forEach((att, idx) => {
       if (att.correction && Array.isArray(att.correction.moves)) {
         rounds.push({
           round: idx + 1,
+          applied_assumed: !att.appliedParams,
           moves: att.correction.moves.map(m => ({
             param: m.param, from: m.from, to: m.to,
             applied: !att.appliedParams || att.appliedParams[m.param] !== false,
@@ -1733,8 +1776,9 @@ const ENGINE = {
       throw this._annotateError(e);
     }
 
-    // appliedParams: default all-applied (no per-row UI toggle wired yet in this task;
-    // the UI will overwrite this map later once it has real checkbox state).
+    // appliedParams: created all-applied for the NEW attempt's own moves — the user
+    // hasn't re-rendered against this correction yet, so "applied" is the truthful
+    // starting state; UI.toggleApplied() updates individual entries afterward.
     const appliedParams = {};
     for (const mv of cleaned.moves) appliedParams[mv.param] = true;
 
@@ -1852,6 +1896,16 @@ const UI = {
     const type = (file && file.type) || "";
     if (this.ACCEPTED_TYPES.includes(type)) return { ok: true, reason: "" };
     return { ok: false, reason: this.REJECT_MESSAGE };
+  },
+
+  // -- isRecipeApplied(chain, param) -> bool. Pure init-state helper for the
+  // recipe-row applied checkboxes (Task 7a follow-up): checked unless the chain's
+  // recipeApplied map explicitly records false for this param. Deliberately the SAME
+  // "absent/true = applied" rule ENGINE._historyForActiveChain applies to round-0
+  // moves, so what the checkbox shows and what the next correction call sends can
+  // never disagree. --------------------------------------------------------------
+  isRecipeApplied(chain, param) {
+    return !(chain && chain.recipeApplied && chain.recipeApplied[param] === false);
   },
 
   // -- buildSheet(recipe, target) -> human-readable copy-sheet text. Title line
@@ -2446,13 +2500,15 @@ const UI = {
 
   // -- one value row: verbatim ui_path as the PRIMARY label (never model text), value
   // + unit + "(from X)", confidence dot, clamped flag, applied toggle (default
-  // checked; recipe rows write to appliedParams via the correction-row path only —
-  // a fresh recipe row has no chain entry yet to toggle against, so its checkbox is
-  // display-only until the first addAttempt() creates appliedParams to toggle),
-  // copy button. kind:"placement" rows render as an instruction line: the string
-  // `set`/`to` IS the placement text, no unit/(from) pair (per the task). All model-
-  // sourced text (why, value when it's a placement string, ui_path is PACK data —
-  // trusted — but included via esc() anyway for defense in depth) is escaped. -----
+  // checked; recipe rows carry data-recipe-applied and feed chain.recipeApplied via
+  // ENGINE.setRecipeApplied so the FIRST correction call receives the real applied
+  // set — init state comes from UI.isRecipeApplied(chain, param); correction rows
+  // carry data-attempt-index and feed that attempt's appliedParams via
+  // toggleApplied), copy button. kind:"placement" rows render as an instruction
+  // line: the string `set`/`to` IS the placement text, no unit/(from) pair (per the
+  // task). All model-sourced text (why, value when it's a placement string, ui_path
+  // is PACK data — trusted — but included via esc() anyway for defense in depth) is
+  // escaped. ------------------------------------------------------------------------
   _valueRowHtml(v, target, mode, attemptIndex) {
     const entry = PACKS.lookup(target, v.param);
     const uiPath = entry ? entry.ui_path : v.param;
@@ -2471,7 +2527,8 @@ const UI = {
 
     let appliedHtml = "";
     if (mode === "recipe") {
-      appliedHtml = `<label class="applied-toggle"><input type="checkbox" checked data-applied-param="${this.esc(v.param)}" /> applied</label>`;
+      const recipeChecked = this.isRecipeApplied(ENGINE.activeChain(), v.param);
+      appliedHtml = `<label class="applied-toggle"><input type="checkbox" ${recipeChecked ? "checked" : ""} data-recipe-applied data-applied-param="${this.esc(v.param)}" /> applied</label>`;
     } else if (mode === "correction") {
       const chain = ENGINE.activeChain();
       const att = chain && chain.attempts[attemptIndex];
@@ -2526,11 +2583,26 @@ const UI = {
   },
 
   _wireAppliedToggles(host) {
+    // Correction-row toggles: [data-attempt-index] -> that attempt's appliedParams.
     host.querySelectorAll("[data-applied-param][data-attempt-index]").forEach(cb => {
       cb.onchange = () => {
         const idx = parseInt(cb.getAttribute("data-attempt-index"), 10);
         const param = cb.getAttribute("data-applied-param");
         this.toggleApplied(idx, param);
+      };
+    });
+    // Recipe-row toggles: [data-recipe-applied] -> chain.recipeApplied via ENGINE
+    // (Task 7a follow-up: the first correction call receives this applied set).
+    // setRecipeApplied throws BusyError while an op is in flight; the render() in
+    // either path snaps the checkbox back to the stored (unchanged) state.
+    host.querySelectorAll("[data-recipe-applied]").forEach(cb => {
+      cb.onchange = async () => {
+        try {
+          await ENGINE.setRecipeApplied(cb.getAttribute("data-applied-param"), cb.checked);
+        } catch (e) {
+          if (e && e.kind === "busy") this.toast("Already working — one moment.");
+        }
+        this.render();
       };
     });
   },
@@ -3731,6 +3803,94 @@ SELFTEST.suites.engine = async function () {
     }
   }
 
+  // -- setRecipeApplied + recipe-round applied history (Task 7a follow-up; spec:
+  // "untoggle anything you skipped; correction calls receive the applied set").
+  // chain.recipeApplied is a {param -> bool} map on the ACTIVE chain, absent/true =
+  // applied. _historyForActiveChain()'s round-0 moves must consult it, and every
+  // history round carries applied_assumed: true ONLY when its backing map is absent
+  // (all-true applied flags are then assumptions, not user-confirmed toggle state).
+  {
+    const raTestId = "selftest-" + Date.now() + "-recipeapplied";
+    ENGINE._testSessionId = raTestId;
+    try {
+      ENGINE.reset();
+      const stubRA = { async call({ tool }) {
+        const isCorrection = tool.name === "emit_correction";
+        return isCorrection
+          ? { moves: [{ param: "cam.iso", to: 210, from: 200, step: 1, confidence: "high", why: "x" }], rationale: "r", status: "continue", status_reason: "", applied_assumed: true }
+          : { baseline: "factory_defaults", hdri_mood: "m", values: [
+              { param: "cam.iso", set: 200, from: 100, step: 1, confidence: "high", why: "stub brighten" },
+              { param: "cm.contrast", set: 0.1, from: 0, step: 5, confidence: "high", why: "x" },
+              { param: "cam.fnumber", set: 5.6, from: 8, step: 1, confidence: "high", why: "x" },
+              { param: "vfb.exposure", set: 0.2, from: 0, step: 1, confidence: "high", why: "x" }
+            ], rationale: "r", gi_notes: "g", status: "continue", status_reason: "" };
+      } };
+      ENGINE._adapter = stubRA;
+      await ENGINE.setImage("ref", solidCanvas(8, 8, 200, 180, 150));
+      await ENGINE.setImage("base", solidCanvas(8, 8, 120, 130, 140));
+      await ENGINE.analyze();
+
+      // (pre) no map yet: round-0 all-applied AND honestly flagged as assumed.
+      const hist0 = ENGINE._historyForActiveChain();
+      this.ok(hist0.length === 1 && hist0[0].round === 0, "recipeApplied: sanity — history is just round 0 right after analyze()");
+      this.ok(hist0[0].moves.every(m => m.applied === true), "recipeApplied: with no map, every round-0 move defaults to applied:true");
+      this.ok(hist0[0].applied_assumed === true, `recipeApplied: with no map, round-0 carries applied_assumed:true (got ${JSON.stringify(hist0[0].applied_assumed)})`);
+
+      // (a) setRecipeApplied(param,false) -> round-0 applied:false for that param only.
+      this.ok(typeof ENGINE.setRecipeApplied === "function", "ENGINE.setRecipeApplied is a function");
+      await ENGINE.setRecipeApplied("cam.iso", false);
+      const hist1 = ENGINE._historyForActiveChain();
+      const isoMove = hist1[0].moves.find(m => m.param === "cam.iso");
+      this.ok(!!isoMove && isoMove.applied === false, `recipeApplied: untoggled param's round-0 move is applied:false (got ${JSON.stringify(isoMove)})`);
+      this.ok(hist1[0].moves.filter(m => m.param !== "cam.iso").every(m => m.applied === true), "recipeApplied: every OTHER round-0 move stays applied:true");
+
+      // (b) with a real map present, round-0 applied_assumed is false (honest flag).
+      this.ok(hist1[0].applied_assumed === false, `recipeApplied: with a map present, round-0 applied_assumed:false (got ${JSON.stringify(hist1[0].applied_assumed)})`);
+
+      // re-toggling back to true keeps the map (still user-confirmed, not assumed).
+      await ENGINE.setRecipeApplied("cam.iso", true);
+      const hist2 = ENGINE._historyForActiveChain();
+      this.ok(hist2[0].moves.find(m => m.param === "cam.iso").applied === true, "recipeApplied: re-toggling a param back to true reads applied:true again");
+      this.ok(hist2[0].applied_assumed === false, "recipeApplied: applied_assumed stays false once the user has touched the toggles (map exists)");
+
+      // persistence: the map round-trips through STORE.
+      await ENGINE.setRecipeApplied("cm.contrast", false);
+      const persisted = await STORE.loadLatest();
+      this.ok(!!persisted && !!persisted.chains[persisted.activeTarget].recipeApplied && persisted.chains[persisted.activeTarget].recipeApplied["cm.contrast"] === false, "recipeApplied: the map persists through STORE (loadLatest sees the untoggle)");
+
+      // correction rounds share the same absent-map-means-assumed rule: every stored
+      // attempt gets an appliedParams map at creation, so round 1 reads false.
+      await ENGINE.addAttempt(solidCanvas(8, 8, 190, 175, 145));
+      const hist3 = ENGINE._historyForActiveChain();
+      const round1 = hist3.find(r => r.round === 1);
+      this.ok(!!round1 && round1.applied_assumed === false, `recipeApplied: correction round with an appliedParams map is applied_assumed:false (got ${round1 && JSON.stringify(round1.applied_assumed)})`);
+
+      // busy guard: matches setImage's discipline — BusyError while _inFlight is held.
+      let releaseRA;
+      const gateRA = new Promise(r => { releaseRA = r; });
+      ENGINE._adapter = { async call() { await gateRA; return { moves: [{ param: "cam.iso", to: 220, from: 210, step: 1, confidence: "high", why: "x" }], rationale: "r", status: "continue", status_reason: "", applied_assumed: false }; } };
+      const pRA = ENGINE.addAttempt(solidCanvas(8, 8, 185, 170, 140));
+      let busyRA = null;
+      try { await ENGINE.setRecipeApplied("cam.iso", false); } catch (e) { busyRA = e; }
+      this.ok(busyRA instanceof ENGINE.BusyError, `recipeApplied: setRecipeApplied throws BusyError while an op is in flight (got ${busyRA && busyRA.name})`);
+      releaseRA();
+      await pRA;
+
+      // a fresh analyze() resets the map: a NEW recipe's rows default back to checked
+      // (stale unticks from the previous recipe must not leak onto the new one).
+      ENGINE._adapter = stubRA;
+      await ENGINE.analyze();
+      const chainAfterReanalyze = ENGINE.activeChain();
+      this.ok(!chainAfterReanalyze.recipeApplied, `recipeApplied: a fresh analyze() clears the map (got ${JSON.stringify(chainAfterReanalyze.recipeApplied)})`);
+      this.ok(ENGINE._historyForActiveChain()[0].applied_assumed === true, "recipeApplied: after the reset, round-0 is back to applied_assumed:true");
+    } finally {
+      ENGINE._adapter = ADAPTER;
+      delete ENGINE._testSessionId;
+      ENGINE.reset();
+      try { await STORE.deleteSession(raTestId); } catch (e) {}
+    }
+  }
+
   // -- STORE.importJSON: normalizes/validates `created` — missing or non-ISO becomes
   // "now" rather than silently storing garbage that later breaks loadLatest()'s
   // lexical-ISO-comparison sort.
@@ -3961,6 +4121,19 @@ SELFTEST.suites.ui = async function () {
   try { sheetUnknown = UI.buildSheet(fakeRecipe, "corona"); } catch (e) { threwUnknownTarget = e; }
   this.ok(threwUnknownTarget === null, `UI.buildSheet: unknown target does not throw (got ${threwUnknownTarget && threwUnknownTarget.message})`);
   this.ok(typeof sheetUnknown === "string", "UI.buildSheet: unknown target still returns a string");
+
+  // -- UI.isRecipeApplied(chain, param): pure init-state helper for the recipe-row
+  // applied checkboxes (Task 7a follow-up). Absent chain / absent map / absent key /
+  // explicit true => applied (checked); ONLY an explicit false reads as unchecked —
+  // exactly the same "absent/true = applied" rule ENGINE._historyForActiveChain uses
+  // for round-0 moves, so checkbox state and sent history can never disagree.
+  this.ok(typeof UI.isRecipeApplied === "function", "UI.isRecipeApplied is a function");
+  this.ok(UI.isRecipeApplied(null, "cam.iso") === true, "isRecipeApplied: null chain -> true (default checked)");
+  this.ok(UI.isRecipeApplied({}, "cam.iso") === true, "isRecipeApplied: chain without a recipeApplied map -> true");
+  this.ok(UI.isRecipeApplied({ recipeApplied: {} }, "cam.iso") === true, "isRecipeApplied: map present but param absent -> true");
+  this.ok(UI.isRecipeApplied({ recipeApplied: { "cam.iso": true } }, "cam.iso") === true, "isRecipeApplied: explicit true -> true");
+  this.ok(UI.isRecipeApplied({ recipeApplied: { "cam.iso": false } }, "cam.iso") === false, "isRecipeApplied: explicit false -> false (the only unchecked case)");
+  this.ok(UI.isRecipeApplied({ recipeApplied: { "cam.iso": false } }, "cm.contrast") === true, "isRecipeApplied: one param's false does not leak onto other params");
 };
 
 addEventListener("DOMContentLoaded", () => {
