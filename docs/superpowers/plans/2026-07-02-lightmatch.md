@@ -6,7 +6,7 @@
 
 **Architecture:** Split-brain: deterministic canvas photometry (`METRICS`) measures images; the model (via the user's omega gateway, Anthropic wire, non-streaming, strict tool schema) translates evidence into parameter moves; display names render only from pack data (`PACKS`), never model prose. Session state (per-target attempt chains) persists to IndexedDB. Spec: `docs/superpowers/specs/2026-07-02-lightmatch-design.md` — read it before starting any task.
 
-**Tech Stack:** Vanilla HTML/CSS/JS in one file. No libraries, no build. Tests = in-page `?selftest` harness run headless via Edge/Chrome `--headless=new --dump-dom`. Git for every step.
+**Tech Stack:** Vanilla HTML/CSS/JS in one file. No libraries, no build. Tests = in-page `?selftest` harness run in real Chrome via the title-poll runner `probes/run-selftest.ps1` (never `--headless --dump-dom` — see canonical-command block). Git for every step.
 
 **File layout inside the single file** (section markers, in this order):
 
@@ -23,7 +23,7 @@
 /* ===== SECTION: ADAPTER ===== */    // gateway fetch, retries, schema re-ask
 /* ===== SECTION: ENGINE ===== */     // orchestration + session state machine
 /* ===== SECTION: UI ===== */         // DOM rendering + events
-/* ===== SECTION: SELFTEST ===== */   // ?selftest harness (asserts over PACKS+METRICS)
+/* ===== SECTION: SELFTEST ===== */   // ?selftest harness (asserts over all modules)
 </script></body></html>
 ```
 
@@ -46,14 +46,14 @@ This launches real Chrome (own profile) on `lightmatch.html?selftest`, polls the
 
 **Files:** Create: `probes/results.md`, `probes/idb-probe.html`
 
-- [ ] **Step 0.1: CORS preflight against the gateway** (no key needed)
+- [x] **Step 0.1: CORS preflight against the gateway** (no key needed) — ✅ PASS, see `probes/results.md`
 
 ```powershell
 try { $r = Invoke-WebRequest -Method Options -Uri "https://omega.kesarcloud.in/v1/messages" -Headers @{ "Origin"="null"; "Access-Control-Request-Method"="POST"; "Access-Control-Request-Headers"="authorization, content-type" } -UseBasicParsing; $r.Headers.GetEnumerator() | Where-Object { $_.Key -like "Access-Control*" } } catch { $_.Exception.Response.Headers["Access-Control-Allow-Origin"]; $_.Exception.Message }
 ```
 Expected: `Access-Control-Allow-Origin: *` (or `null`) AND `Access-Control-Allow-Headers` containing `authorization`. Record verbatim output in `probes/results.md`. **If absent: STOP and report — the user owns the gateway and must enable CORS before the app can work. Do not silently build a relay.** Note: a page opened from disk sends `Origin: null`, so `*` or `null` is required; a specific-domain allowlist won't work.
 
-- [ ] **Step 0.2: Locate the `oc_` key**
+- [x] **Step 0.2: Locate the `oc_` key** — done: not on disk; paste-at-runtime (0.3/0.4 deferred to Task 8)
 
 Check in order: `Get-ChildItem env: | Where-Object Name -match "OMEGA|OC_|KESAR"`; then `Grep` for `oc_` in `C:\Users\aasis\DavinciPlugin` (REFGRADE is wired to the same gateway — look for its config file, not source). If found, note WHERE it lives (do not copy it into the repo). If not found, continue building — the app takes a pasted key at runtime; mark Steps 0.3–0.4 as deferred-to-first-run.
 
@@ -68,7 +68,7 @@ Expected: list containing an Opus 4.8 id (memory says `claude-opus-4-8`) and a G
 
 POST `/v1/messages` per model: one 64×64 red PNG (base64), one tool `{"name":"echo_color","strict":true,"input_schema":{"type":"object","properties":{"color":{"type":"string"}},"required":["color"],"additionalProperties":false}}`, `tool_choice:{"type":"tool","name":"echo_color"}`, `"stream":false`, `max_tokens:200`. Expected per model: `stop_reason:"tool_use"` and input `{"color":"red"}`-ish. If GPT-5.5 fails tool-forcing through the gateway: record it; the picker ships Opus-only and the ADAPTER's re-ask path is the GPT fallback (spec risk table).
 
-- [ ] **Step 0.5: IndexedDB on `file://`** — ✅ DONE 2026-07-02, see `probes/results.md`
+- [x] **Step 0.5: IndexedDB on `file://`** — ✅ DONE 2026-07-02, see `probes/results.md`
 
 `probes/idb-probe.html` writes/reads DB `lm-probe` and sets the verdict in `document.title`. Executed in real Chrome (own profile, title-poll method — headless `--virtual-time-budget` starves IDB callbacks and must not be used). Result: `IDB OK prev=none` then `IDB OK prev=<run-1 timestamp>` → **persistence across launches confirmed**; no export/import fallback needed on this machine.
 
@@ -99,7 +99,7 @@ const SELFTEST = { fails: [], n: 0,
   }, suites: {} };
 ```
 
-- [ ] **Step 1.3:** Run the canonical headless command. Expected: `SELFTEST: PASS (0 asserts)`.
+- [ ] **Step 1.3:** Run the canonical runner. Expected: `SELFTEST: PASS (0 asserts)`.
 - [ ] **Step 1.4:** `README.md`: what it is, how to open, `?selftest`, key handling one-liner, pointer to spec. Commit: `feat: skeleton with selftest harness`.
 
 ### Task 2: Target packs (the exactness asset)
@@ -118,7 +118,7 @@ Pack entry shape (spec-fixed):
 - [ ] **Step 2.3: DOC-GROUND every entry.** WebFetch Chaos docs (`docs.chaos.com` — "V-Ray 7 for 3ds Max" help + "Chaos Vantage" help/changelog for 3.3) and verify each `ui_path`, range, default. Fix drafts; set `verified:"2026-07-02"` per entry ONLY after checking. Log each verification (entry → doc URL) in `docs/pack-verification.md`. Entries that cannot be confirmed get `verified:false` + a conservative range and MUST be listed in the commit message.
 - [ ] **Step 2.4:** Implement `PACKS.lookup(target,id)`, `PACKS.clamp(target,id,value)` → `{value,clamped}`, `PACKS.promptFragment(target)` (compact one-line-per-param listing: id, ui_path, unit, range, default, kind, notes).
 - [ ] **Step 2.5: Selftest suite `packs`:** unique ids per pack; every entry has all fields; every `range[0]<range[1]`; every `default` inside range; `clamp` clamps 1e9 to max and flags; `promptFragment("vray7max")` contains `"sun.kelvin"` and its verbatim ui_path.
-- [ ] **Step 2.6:** Headless run → PASS. Commit: `feat: doc-grounded V-Ray 7 + Vantage 3.3 packs with lookup/clamp/prompt-fragment`.
+- [ ] **Step 2.6:** Runner → PASS. Commit: `feat: doc-grounded V-Ray 7 + Vantage 3.3 packs with lookup/clamp/prompt-fragment`.
 
 ### Task 3: Metrics engine (pure functions, TDD)
 
@@ -154,10 +154,10 @@ Linearize: `c<=0.04045 ? c/12.92 : ((c+0.055)/1.055)**2.4`; lum = `0.2126R+0.715
   - green image: `wb.tint>0`.
   - `diff(m,m)` all-zero; `score(m,m)===0`; `score(gray128, gradient) > 10`.
   - `METRICS.thumb(canvas4000x2000, 256)` returns a canvas with `width===256 && height===128`.
-- [ ] **Step 3.2:** Headless run → expect `SELFTEST: FAIL` listing metrics asserts (functions missing).
+- [ ] **Step 3.2:** Runner → expect `SELFTEST: FAIL` listing metrics asserts (functions missing).
 - [ ] **Step 3.3:** Implement METRICS to the contract. No DOM reads; input canvas/bitmap only.
-- [ ] **Step 3.4:** Headless run → PASS. Commit: `feat: canvas photometry engine (measure/diff/score)`.
-- [ ] **Step 3.5:** Add `METRICS.downscaleForSend(fileOrBlob, maxEdge=1568, type="image/jpeg", q=0.85) -> {dataUrl, w, h}` and lossless variant `(maxEdge=2048, "image/png")` for the settings screenshot. Selftest: a 4000×2000 synthetic canvas downsizes to 1568×784 and dataUrl prefix matches type. Headless PASS → commit.
+- [ ] **Step 3.4:** Runner → PASS. Commit: `feat: canvas photometry engine (measure/diff/score)`.
+- [ ] **Step 3.5:** Add `METRICS.downscaleForSend(fileOrBlob, maxEdge=1568, type="image/jpeg", q=0.85) -> {dataUrl, w, h}` and lossless variant `(maxEdge=2048, "image/png")` for the settings screenshot. Selftest: a 4000×2000 synthetic canvas downsizes to 1568×784 and dataUrl prefix matches type. Runner PASS → commit.
 
 **Chunk 1 exit criteria:** probes recorded; selftest green (~35+ asserts); packs doc-grounded; 3 commits minimum.
 
@@ -194,7 +194,7 @@ Linearize: `c<=0.04045 ? c/12.92 : ((c+0.055)/1.055)**2.4`; lum = `0.2126R+0.715
 **Deliberate deviation from the spec's grouped schema** (`environment`/`sun`/`fills[]`/`exposure`/`color_mapping`/`step_order[]`): the flat `values[]` with per-value `step: 1..5` plus `hdri_mood` is information-equivalent (fills placement and key:fill ratio live as placement-kind pack entries; `step_order` is redundant given the fixed order) and far easier to validate parametrically. Do not "fix" this back to the grouped shape.
 
 - [ ] **Step 4.2:** `SCHEMAS.systemPrompt(target, mode)` — full text, verbatim requirements: lighting-TD persona; "you do not measure — measurements are provided; trust your eyes for direction, the numbers for magnitude"; "choose ONLY param ids from the pack below; values inside ranges"; baseline convention; fixed step order 1 exposure/WB → 2 sun → 3 dome/environment → 4 fills/rim → 5 color mapping with the degeneracy rationale in one line; exactness goal "the user requires a ~99% match — be surgical, not tasteful"; correction mode adds: full move history provided, never reverse a prior move by more than half, 3–5 moves max, **if a metric ping-pongs across rounds, name the exposure/light degeneracy to the user in `status_reason` instead of chasing it**, declare `handoff_to_grade` when residual diff is chromatic/tonal rather than light-transport. Ends with `PACKS.promptFragment(target)`.
-- [ ] **Step 4.3:** Local validator `SCHEMAS.validateRecipe(obj, target)` → `{ok, errors[], cleaned}`: every `param` exists in pack (unknown → error), every numeric `set` clamped via `PACKS.clamp` (clamped → warning flag on the value, kept), steps within 1..5. Selftest suite `schemas`: valid object passes; unknown param fails; out-of-range 40000K comes back clamped to 20000 with `clamped:true`. Headless PASS → commit `feat: recipe/correction schemas, system prompts, local validation`.
+- [ ] **Step 4.3:** Local validator `SCHEMAS.validateRecipe(obj, target)` → `{ok, errors[], cleaned}`: every `param` exists in pack (unknown → error), every numeric `set` clamped via `PACKS.clamp` (clamped → warning flag on the value, kept), steps within 1..5. Selftest suite `schemas`: valid object passes; unknown param fails; out-of-range 40000K comes back clamped to 20000 with `clamped:true`. Runner PASS → commit `feat: recipe/correction schemas, system prompts, local validation`.
 
 ### Task 5: Gateway adapter (SECTION: ADAPTER)
 
@@ -205,7 +205,7 @@ Linearize: `c<=0.04045 ? c/12.92 : ((c+0.055)/1.055)**2.4`; lum = `0.2126R+0.715
   - Retries: on 429/5xx/network — 3 attempts, backoff 2s/6s/15s. On HTTP 401 throw `AuthError`. Extract the `tool_use` block's `input`; if response has none, throw `ShapeError` with raw text.
   - Schema re-ask: caller passes `validate`; on `{ok:false}` ADAPTER re-sends ONCE appending a user turn: `"Your emit was invalid: <errors>. Re-emit the full corrected tool call."` Second failure → surface error.
 - [ ] **Step 5.2:** `ADAPTER.buildUserContent({mode, images, metricsBundle, context, history})` — assembles image blocks (`{type:"image",source:{type:"base64",media_type,data}}`) labeled by preceding text blocks ("REFERENCE:", "BASE RENDER:", "SETTINGS SCREENSHOT (baseline):", "ATTEMPT N:"), then a text block with `JSON.stringify` of measurements + diff ("COMPUTED EVIDENCE — deterministic, trust for magnitude") **prefixed by a one-line units legend** (luminance values are linearized 0–1; `warmth*` is `(R−B)/(R+B)` on linear means, positive = warmer, ±0.05 ≈ a few hundred kelvin; `tint` positive = green), context chips, and in refine mode the move history + applied set.
-- [ ] **Step 5.3:** Selftest suite `adapter` (no network): `buildUserContent` produces alternating text/image blocks in the documented order; retry classifier maps {429:"retry", 500:"retry", 401:"auth", 400:"fatal"}. Headless PASS → commit `feat: omega gateway adapter with retries and schema re-ask`.
+- [ ] **Step 5.3:** Selftest suite `adapter` (no network): `buildUserContent` produces alternating text/image blocks in the documented order; retry classifier maps {429:"retry", 500:"retry", 401:"auth", 400:"fatal"}. Runner PASS → commit `feat: omega gateway adapter with retries and schema re-ask`.
 
 ### Task 6: Session engine + persistence (SECTIONS: STORE, ENGINE)
 
