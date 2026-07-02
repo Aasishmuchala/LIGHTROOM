@@ -1,0 +1,33 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>idb probe</title></head><body>
+<div id="r">RESULT|PENDING</div>
+<script>
+(function () {
+  var status = null;
+  var set = function (msg) { status = msg; };
+  var t0 = Date.now();
+  var tick = function () {
+    if (status) { document.getElementById("r").textContent = "RESULT|" + status; document.title = status; return; }
+    if (Date.now() - t0 > 3000) { document.getElementById("r").textContent = "RESULT|IDB TIMEOUT - callbacks never fired"; return; }
+    setTimeout(tick, 100);
+  };
+  setTimeout(tick, 100);
+  try {
+    var req = indexedDB.open("lm-probe", 1);
+    req.onupgradeneeded = function (e) { e.target.result.createObjectStore("kv", { keyPath: "k" }); };
+    req.onerror = function () { set("IDB FAIL open " + req.error); };
+    req.onsuccess = function () {
+      var db = req.result;
+      var tx = db.transaction("kv", "readwrite");
+      var st = tx.objectStore("kv");
+      var get = st.get(1);
+      get.onsuccess = function () {
+        var prev = get.result ? get.result.t : "none";
+        st.put({ k: 1, t: new Date().toISOString() });
+        tx.oncomplete = function () { set("IDB OK prev=" + prev); };
+        tx.onerror = function () { set("IDB FAIL write " + tx.error); };
+      };
+      get.onerror = function () { set("IDB FAIL read " + get.error); };
+    };
+  } catch (e) { set("IDB FAIL " + e.message); }
+})();
+</script></body></html>
