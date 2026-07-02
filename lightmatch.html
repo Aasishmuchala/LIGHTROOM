@@ -258,7 +258,239 @@ const PACKS = {
 const SCHEMAS = {};
 
 /* ===== SECTION: METRICS ===== */
-const METRICS = {};
+// Pure canvas photometry: measure/diff/score a rendered image against a reference.
+// No DOM reads beyond canvas creation + 2d context + createImageBitmap; no globals
+// mutated. All functions accept a canvas, ImageBitmap, File, or Blob where noted.
+const METRICS = {
+  // -- constants -------------------------------------------------------------------
+  HIST_BINS: 1024,
+  CLIP_HI_THRESH: 250, // sRGB 0..255: a pixel counts toward clip.hi when max(r,g,b) >= this
+  CLIP_LO_THRESH: 5,   // sRGB 0..255: a pixel counts toward clip.lo when max(r,g,b) <= this
+  // Rationale for CLIP thresholds: max(r,g,b) (not min, not "all channels") is the
+  // sRGB proxy used because it is monotone under a uniform exposure push (raising
+  // exposure only ever raises max(r,g,b), never lowers it) and it satisfies the
+  // three fixed points the contract requires: solid-255 -> hi===1 (max=255>=250 for
+  // every pixel), solid-0 -> lo===1 (max=0<=5 for every pixel), solid-128 -> 0/0
+  // (max=128 is on neither side). "All channels >=250" would under-count colored
+  // highlights (e.g. blown-out warm sky where B never reaches 250); max(r,g,b) does
+  // not have that blind spot.
+
+  // -- linearize a single sRGB channel (0..1 in, 0..1 out) --------------------------
+  _linearize(c) {
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  },
+
+  // -- linear luminance from sRGB 0..1 channels --------------------------------------
+  _lumLinear(r, g, b) {
+    return 0.2126 * this._linearize(r) + 0.7152 * this._linearize(g) + 0.0722 * this._linearize(b);
+  },
+
+  // -- percentile bin INDICES via a fixed-bin histogram (0..nBins-1) ----------------
+  // values: array-like of numbers already in [0,1]. ps: array of percentiles in [0,100].
+  // Returns bin indices aligned with `ps`. Kept separate from the bin-center value
+  // conversion below because shadow/highlight membership needs to compare each
+  // pixel's OWN bin index against the cutoff bin index (self-consistent in the same
+  // discretized space) rather than against the rounded bin-center value — comparing
+  // a raw lum against a bin-center number can land it on the wrong side of <=/>= for
+  // solid-color / low-cardinality inputs, since the bin center is a rounded stand-in
+  // for the whole bin's value range, not the true percentile-rank value.
+  _percentileBins(values, ps, nBins) {
+    const bins = nBins || this.HIST_BINS;
+    const hist = new Uint32Array(bins);
+    const n = values.length;
+    for (let i = 0; i < n; i++) {
+      let idx = Math.floor(values[i] * bins);
+      if (idx < 0) idx = 0; else if (idx >= bins) idx = bins - 1;
+      hist[idx]++;
+    }
+    const out = new Array(ps.length);
+    for (let pi = 0; pi < ps.length; pi++) {
+      const target = (ps[pi] / 100) * n;
+      let cum = 0, bin = bins - 1;
+      for (let b = 0; b < bins; b++) {
+        cum += hist[b];
+        if (cum >= target) { bin = b; break; }
+      }
+      out[pi] = bin;
+    }
+    return out;
+  },
+
+  // -- percentile via a fixed-bin histogram; returns the bin-CENTER value -----------
+  // Same binning as _percentileBins, converted to a representative 0..1 value.
+  _percentiles(values, ps, nBins) {
+    const bins = nBins || this.HIST_BINS;
+    const binIdx = this._percentileBins(values, ps, bins);
+    return binIdx.map(bin => (bin + 0.5) / bins);
+  },
+
+  // -- draw any supported source onto a canvas sized to fit within maxEdge, never
+  //    upscaling (scale = min(1, maxEdge / longEdge)). Accepts a canvas or an
+  //    ImageBitmap-like object (anything with width/height drawable via drawImage).
+  thumb(source, maxEdge) {
+    const sw = source.width, sh = source.height;
+    const longEdge = Math.max(sw, sh);
+    const scale = longEdge > maxEdge ? maxEdge / longEdge : 1;
+    const w = Math.max(1, Math.round(sw * scale));
+    const h = Math.max(1, Math.round(sh * scale));
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(source, 0, 0, w, h);
+    return c;
+  },
+
+  // -- core measurement --------------------------------------------------------------
+  measure(imageBitmapOrCanvas) {
+    const th = this.thumb(imageBitmapOrCanvas, 256);
+    const ctx = th.getContext("2d");
+    const w = th.width, h = th.height;
+    const { data } = ctx.getImageData(0, 0, w, h);
+    const n = w * h;
+
+    const lumArr = new Float64Array(n);
+    const satArr = new Float64Array(n);
+    let clipHiCount = 0, clipLoCount = 0;
+    let satSum = 0;
+
+    for (let i = 0, p = 0; i < n; i++, p += 4) {
+      const r255 = data[p], g255 = data[p + 1], b255 = data[p + 2];
+      const r = r255 / 255, g = g255 / 255, b = b255 / 255;
+      const lum = this._lumLinear(r, g, b);
+      lumArr[i] = lum;
+
+      const maxc = Math.max(r255, g255, b255);
+      if (maxc >= this.CLIP_HI_THRESH) clipHiCount++;
+      if (maxc <= this.CLIP_LO_THRESH) clipLoCount++;
+
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      const s = mx === 0 ? 0 : (mx - mn) / mx;
+      satArr[i] = s;
+      satSum += s;
+    }
+
+    // -- luminance percentiles (bin-center values, for the returned lum object) -------
+    const [p1, p5, p25, p50, p75, p95, p99] = this._percentiles(lumArr, [1, 5, 25, 50, 75, 95, 99]);
+    // -- same cutoffs as BIN INDICES, for robust shadow/highlight membership below.
+    // See _percentileBins doc comment: comparing raw lum against the rounded
+    // bin-center number can put every pixel of a solid-color / low-cardinality image
+    // on the wrong side of <=/>= (e.g. solid red's true lum 0.2126 sits above its own
+    // bin's center 0.21240..., so `lum <= p25(center)` is false for all pixels even
+    // though the whole image IS the 25th percentile). Comparing bin index to bin
+    // index is self-consistent and has no such rounding gap.
+    const [p25Bin, p75Bin] = this._percentileBins(lumArr, [25, 75]);
+    let lumSum = 0;
+    for (let i = 0; i < n; i++) lumSum += lumArr[i];
+    const lumMean = lumSum / n;
+
+    // -- clip fractions ---------------------------------------------------------------
+    const clip = { hi: clipHiCount / n, lo: clipLoCount / n };
+
+    // -- contrast -----------------------------------------------------------------------
+    const contrast = { spread: p95 - p5, midSlope: (p75 - p25) / 0.5 };
+
+    // -- white balance: shadow = lum-bin<=p25-bin, highlight = lum-bin>=p75-bin,
+    //    mean LINEAR channels over each set ------------------------------------------
+    let shR = 0, shG = 0, shB = 0, shN = 0;
+    let hiR = 0, hiG = 0, hiB = 0, hiN = 0;
+    for (let i = 0, p = 0; i < n; i++, p += 4) {
+      let binIdx = Math.floor(lumArr[i] * this.HIST_BINS);
+      if (binIdx < 0) binIdx = 0; else if (binIdx >= this.HIST_BINS) binIdx = this.HIST_BINS - 1;
+      const r = this._linearize(data[p] / 255), g = this._linearize(data[p + 1] / 255), b = this._linearize(data[p + 2] / 255);
+      if (binIdx <= p25Bin) { shR += r; shG += g; shB += b; shN++; }
+      if (binIdx >= p75Bin) { hiR += r; hiG += g; hiB += b; hiN++; }
+    }
+    // shN/hiN are always >=1 for any non-empty image: p25Bin/p75Bin are themselves
+    // bin indices occupied by at least one real pixel, so at least the pixel(s) that
+    // produced that bin satisfy the corresponding inequality (guards against
+    // div-by-zero on degenerate 1-pixel inputs).
+    const shadow = { r: shN ? shR / shN : 0, g: shN ? shG / shN : 0, b: shN ? shB / shN : 0 };
+    const highlight = { r: hiN ? hiR / hiN : 0, g: hiN ? hiG / hiN : 0, b: hiN ? hiB / hiN : 0 };
+    const warmthShadow = (shadow.r - shadow.b) / (shadow.r + shadow.b + 1e-9);
+    const warmthHighlight = (highlight.r - highlight.b) / (highlight.r + highlight.b + 1e-9);
+    const tint = highlight.g - (highlight.r + highlight.b) / 2;
+    const wb = { shadow, highlight, warmthShadow, warmthHighlight, tint };
+
+    // -- saturation ---------------------------------------------------------------------
+    const satMean = satSum / n;
+    const [satP95] = this._percentiles(satArr, [95]);
+    const sat = { mean: satMean, p95: satP95 };
+
+    // -- 4x4 grid: mean linear luminance per cell, row-major -----------------------------
+    const grid = new Array(16).fill(0);
+    const gridCount = new Array(16).fill(0);
+    for (let y = 0; y < h; y++) {
+      let gy = Math.floor((y / h) * 4); if (gy > 3) gy = 3;
+      for (let x = 0; x < w; x++) {
+        let gx = Math.floor((x / w) * 4); if (gx > 3) gx = 3;
+        const cell = gy * 4 + gx;
+        grid[cell] += lumArr[y * w + x];
+        gridCount[cell]++;
+      }
+    }
+    for (let i = 0; i < 16; i++) grid[i] = gridCount[i] ? grid[i] / gridCount[i] : 0;
+
+    return {
+      lum: { p1, p5, p25, p50, p75, p95, p99, mean: lumMean },
+      clip,
+      contrast,
+      wb,
+      sat,
+      grid
+    };
+  },
+
+  // -- flat diff: (b - a) per scalar, plus grid.0..grid.15 ---------------------------
+  diff(a, b) {
+    const out = {
+      "lum.p1": b.lum.p1 - a.lum.p1,
+      "lum.p5": b.lum.p5 - a.lum.p5,
+      "lum.p25": b.lum.p25 - a.lum.p25,
+      "lum.p50": b.lum.p50 - a.lum.p50,
+      "lum.p75": b.lum.p75 - a.lum.p75,
+      "lum.p95": b.lum.p95 - a.lum.p95,
+      "lum.p99": b.lum.p99 - a.lum.p99,
+      "lum.mean": b.lum.mean - a.lum.mean,
+      "clip.hi": b.clip.hi - a.clip.hi,
+      "clip.lo": b.clip.lo - a.clip.lo,
+      "contrast.spread": b.contrast.spread - a.contrast.spread,
+      "contrast.midSlope": b.contrast.midSlope - a.contrast.midSlope,
+      "wb.warmthShadow": b.wb.warmthShadow - a.wb.warmthShadow,
+      "wb.warmthHighlight": b.wb.warmthHighlight - a.wb.warmthHighlight,
+      "wb.tint": b.wb.tint - a.wb.tint,
+      "sat.mean": b.sat.mean - a.sat.mean,
+      "sat.p95": b.sat.p95 - a.sat.p95
+    };
+    for (let i = 0; i < 16; i++) out[`grid.${i}`] = b.grid[i] - a.grid[i];
+    return out;
+  },
+
+  // -- deterministic 0..100 look-distance score --------------------------------------
+  // score = min(100, 100 * sqrt( Σ w_i·d_i² / Σ w_i ) / 0.35)
+  // Uses exactly the diff keys + weights below; d_i are diff(refM, attemptM) values.
+  SCORE_WEIGHTS: {
+    "lum.p5": 3, "lum.p50": 3, "lum.p95": 3,
+    "contrast.spread": 2, "contrast.midSlope": 2,
+    "wb.warmthShadow": 2, "wb.warmthHighlight": 2, "wb.tint": 2,
+    "clip.hi": 1.5, "clip.lo": 1.5,
+    "sat.mean": 1,
+    "grid.0": 0.5, "grid.1": 0.5, "grid.2": 0.5, "grid.3": 0.5,
+    "grid.4": 0.5, "grid.5": 0.5, "grid.6": 0.5, "grid.7": 0.5,
+    "grid.8": 0.5, "grid.9": 0.5, "grid.10": 0.5, "grid.11": 0.5,
+    "grid.12": 0.5, "grid.13": 0.5, "grid.14": 0.5, "grid.15": 0.5
+  },
+  score(refM, attemptM) {
+    const d = this.diff(refM, attemptM);
+    let wsum = 0, wdsum = 0;
+    for (const [key, w] of Object.entries(this.SCORE_WEIGHTS)) {
+      const di = d[key] || 0;
+      wsum += w;
+      wdsum += w * di * di;
+    }
+    const raw = 100 * Math.sqrt(wdsum / wsum) / 0.35;
+    return Math.min(100, raw);
+  }
+};
 
 /* ===== SECTION: STORE ===== */
 const STORE = {};
@@ -358,6 +590,92 @@ SELFTEST.suites.packs = async function () {
   const pf2 = PACKS.promptFragment("vantage33");
   this.ok(pf2.includes("cam.exposure_value") && pf2.includes(evEntry.ui_path), "vantage33 fragment has cam.exposure_value + verbatim ui_path");
   this.ok(PACKS.promptFragment("corona") === "", "promptFragment unknown target -> empty string");
+};
+
+// -- suite: metrics (Task 3) ---------------------------------------------------------
+SELFTEST.suites.metrics = async function () {
+  // -- synthetic canvas builders --------------------------------------------------
+  function solidCanvas(w, h, r, g, b) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(0, 0, w, h);
+    return c;
+  }
+  // Held-black / ramp / held-white: flat margins guarantee the tail percentiles land
+  // in the flat regions regardless of gamma compression (a plain 2-stop 0->255 ramp
+  // asymptotically caps its linear-luminance p95 near 0.89 because of the sRGB gamma
+  // curve — see docs/superpowers/plans note; this 4-stop shape is still an honest
+  // "horizontal black->white gradient" test strip).
+  function hGradientCanvas(w, h) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    const grad = ctx.createLinearGradient(0, 0, w, 0);
+    grad.addColorStop(0, "rgb(0,0,0)");
+    grad.addColorStop(0.15, "rgb(0,0,0)");
+    grad.addColorStop(0.85, "rgb(255,255,255)");
+    grad.addColorStop(1, "rgb(255,255,255)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    return c;
+  }
+
+  // -- solid gray 128 ---------------------------------------------------------------
+  const gray = solidCanvas(64, 64, 128, 128, 128);
+  const mGray = METRICS.measure(gray);
+  this.close(mGray.lum.p50, 0.2159, 0.01, "gray128: lum.p50");
+  this.ok(mGray.clip.hi === 0 && mGray.clip.lo === 0, "gray128: clip.hi===0 && clip.lo===0");
+  this.close(mGray.sat.mean, 0, 0.001, "gray128: sat.mean≈0");
+  for (let i = 0; i < 16; i++) this.close(mGray.grid[i], mGray.grid[0], 0.001, `gray128: grid[${i}] equals grid[0]`);
+
+  // -- solid 255 / solid 0 ------------------------------------------------------------
+  const white = solidCanvas(32, 32, 255, 255, 255);
+  const mWhite = METRICS.measure(white);
+  this.ok(mWhite.clip.hi === 1, "white255: clip.hi===1");
+  this.ok(mWhite.clip.lo === 0, "white255: clip.lo===0 (sanity)");
+
+  const black = solidCanvas(32, 32, 0, 0, 0);
+  const mBlack = METRICS.measure(black);
+  this.ok(mBlack.clip.lo === 1, "black0: clip.lo===1");
+  this.ok(mBlack.clip.hi === 0, "black0: clip.hi===0 (sanity)");
+
+  // -- horizontal black->white gradient ------------------------------------------------
+  const grad = hGradientCanvas(256, 64);
+  const mGrad = METRICS.measure(grad);
+  this.ok(mGrad.grid[0] < mGrad.grid[3], "gradient: grid[0] < grid[3] (darker left, brighter right)");
+  this.ok(mGrad.lum.p5 < 0.02, `gradient: lum.p5 < 0.02 (got ${mGrad.lum.p5})`);
+  this.ok(mGrad.lum.p95 > 0.9, `gradient: lum.p95 > 0.9 (got ${mGrad.lum.p95})`);
+  this.ok(mGrad.contrast.spread > 0.9, `gradient: contrast.spread > 0.9 (got ${mGrad.contrast.spread})`);
+
+  // -- red vs blue: warmth sign -------------------------------------------------------
+  const red = solidCanvas(32, 32, 255, 0, 0);
+  const mRed = METRICS.measure(red);
+  this.ok(mRed.wb.warmthShadow > 0, `red: wb.warmthShadow > 0 (got ${mRed.wb.warmthShadow})`);
+
+  const blue = solidCanvas(32, 32, 0, 0, 255);
+  const mBlue = METRICS.measure(blue);
+  this.ok(mBlue.wb.warmthShadow < 0, `blue: wb.warmthShadow < 0 (got ${mBlue.wb.warmthShadow})`);
+
+  // -- green: tint sign ---------------------------------------------------------------
+  const green = solidCanvas(32, 32, 0, 255, 0);
+  const mGreen = METRICS.measure(green);
+  this.ok(mGreen.wb.tint > 0, `green: wb.tint > 0 (got ${mGreen.wb.tint})`);
+
+  // -- diff / score identities ---------------------------------------------------------
+  const dSelf = METRICS.diff(mGray, mGray);
+  let allZero = true;
+  for (const k of Object.keys(dSelf)) if (Math.abs(dSelf[k]) > 1e-9) allZero = false;
+  this.ok(allZero, "diff(m,m) is all-zero");
+  this.ok(METRICS.score(mGray, mGray) === 0, "score(m,m) === 0");
+  const s = METRICS.score(mGray, mGrad);
+  this.ok(s > 10, `score(gray128, gradient) > 10 (got ${s})`);
+
+  // -- thumb contract ------------------------------------------------------------------
+  const big = solidCanvas(4000, 2000, 200, 150, 100);
+  const th = METRICS.thumb(big, 256);
+  this.ok(th.width === 256 && th.height === 128, `thumb(4000x2000,256): width===256 && height===128 (got ${th.width}x${th.height})`);
 };
 
 addEventListener("DOMContentLoaded", () => {
