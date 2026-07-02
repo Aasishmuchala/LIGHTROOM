@@ -884,7 +884,13 @@ const STORE = {
   // "current" notion (the latest SAVED session) when called with no argument, per the
   // plan's "exportJSON() returns a JSON string of the current session". importJSON
   // does minimal shape validation — must be a parseable object with a string `id` and
-  // a `chains` object — then saves it. -------------------------------------------------
+  // a `chains` object — then saves it. `created` is normalized (Task 7a hardening):
+  // missing or non-ISO-parseable becomes "now", since STORE.loadLatest() sorts
+  // sessions by a lexical comparison of `created` — a garbage or absent value would
+  // either crash that comparison's assumptions or silently sort the imported session
+  // to the wrong end of "latest". A VALID ISO `created` is preserved verbatim (an
+  // imported session should keep its true original timestamp, not be stamped as if
+  // freshly created). -------------------------------------------------------------
   async exportJSON(session) {
     const s = session !== undefined ? session : await this.loadLatest();
     return JSON.stringify(s);
@@ -897,6 +903,9 @@ const STORE = {
     }
     if (!obj.chains || typeof obj.chains !== "object") {
       throw new Error("importJSON: missing session.chains");
+    }
+    if (typeof obj.created !== "string" || Number.isNaN(Date.parse(obj.created))) {
+      obj.created = new Date().toISOString();
     }
     await this.saveSession(obj);
     return obj;
@@ -1155,10 +1164,61 @@ const ENGINE = {
   _testSessionId: null, // selftest-only override so STORE round-trips use a deterministic id
   lastError: null,
 
+  // -- BusyError: thrown by setImage() when a call is in flight (Task 7a hardening —
+  // see _inFlight below). Lives on ENGINE (not ADAPTER — ADAPTER is untouched by this
+  // task) since being "busy" is an ENGINE-level concurrency concept, not a gateway
+  // response classification. Carries `kind:"busy"` directly on the instance (unlike
+  // ADAPTER.AuthError/ShapeError, which only get a `kind` string via
+  // ENGINE._classifyError) so a caller can branch on it without going through
+  // ENGINE.lastError at all — the busy state is synchronous/local, not a
+  // network-classified failure. -----------------------------------------------------
+  BusyError: class BusyError extends Error {
+    constructor(message) { super(message); this.name = "BusyError"; this.kind = "busy"; }
+  },
+
+  // -- _inFlight: a single shared promise gate (Task 7a hardening). analyze(),
+  // addAttempt(), and reanalyzeOtherTarget() all funnel through _guarded() below,
+  // which sets this to the in-progress promise and clears it (finally) when that
+  // promise settles — success OR failure. While set, a second call to any of those
+  // three methods returns the SAME promise instead of starting a second network op
+  // (two concurrent analyze() calls on the same session would otherwise race two
+  // gateway calls against one chain and silently keep whichever response lands
+  // last). setImage() checks this flag and throws a typed BusyError instead of
+  // swapping session images out from under an in-flight call, which would produce a
+  // recipe/correction that no longer matches what the model actually saw. --------
+  _inFlight: null,
+
+  // -- _guarded(fn): runs fn() (an async op) behind the _inFlight gate. If a gated op
+  // is already running, returns THAT SAME promise unchanged (fn is never invoked a
+  // second time). Otherwise starts fn(), stores its promise on _inFlight immediately
+  // (synchronously, before any await inside fn can run) so a synchronously-following
+  // second call sees the gate already set, and clears _inFlight in a finally so a
+  // thrown/rejected op still unblocks the next call. ------------------------------
+  _guarded(fn) {
+    if (this._inFlight) return this._inFlight;
+    const p = (async () => {
+      try {
+        return await fn();
+      } finally {
+        this._inFlight = null;
+      }
+    })();
+    this._inFlight = p;
+    return p;
+  },
+
   // -- ATTEMPTS_CAP: keep the last N attempts per chain (plan: 8). A constant (not a
   // magic number inline) so the selftest and any future UI copy ("up to N attempts")
   // read the same source of truth. ---------------------------------------------------
   ATTEMPTS_CAP: 8,
+
+  // -- SESSION_RETENTION_CAP: keep only the newest N whole sessions in IDB (Task 7a
+  // hardening — sessions carry full-resolution image dataUrls per slot/attempt, and
+  // an unbounded row count would eventually strain IndexedDB comfort the same way an
+  // uncapped attempts[] array would). Pruned on boot(), after loading the latest
+  // session (never before — boot must not delete the very session it is about to
+  // restore). ---------------------------------------------------------------------
+  SESSION_RETENTION_CAP: 5,
 
   // -- blank session factory: the shape documented in the plan/task, with both chains
   // pre-created (empty) so downstream code never has to null-check chains[target]. ---
@@ -1222,6 +1282,33 @@ const ENGINE = {
     return PACKS.lookup(this.activeTarget(), paramId);
   },
 
+  // -- activeChain(): read-only view of the active target's own chain object
+  // ({recipe, attempts[], _attemptCount, _evictedScores?}). Public accessor (Task 7a
+  // hardening) so the UI never reaches into session().chains[activeTarget] directly —
+  // one call, always correctly scoped to whichever target is currently active. This
+  // returns the LIVE object (same identity as session().chains[activeTarget]), not a
+  // defensive copy, matching session()'s own "live object, treat as ENGINE-owned"
+  // contract documented above — callers must not mutate it directly. ----------------
+  activeChain() {
+    const s = this.session();
+    return s.chains[s.activeTarget] || null;
+  },
+
+  // -- attemptInfo(): {n, cap, stored} for the active chain — the UI's one-stop
+  // accessor for attempt-count display so it never reads chain._attemptCount or
+  // chain.attempts.length paths directly. `n` is the monotonic per-chain counter
+  // (keeps climbing past the cap — matches the "ATTEMPT N:" label sent to the model);
+  // `cap` is ENGINE.ATTEMPTS_CAP; `stored` is the actual attempts[] array length
+  // (pinned at cap once eviction starts). n and stored are equal until the cap is
+  // first reached, then diverge — both are meaningful ("attempt 9 of up to 8 kept"
+  // reads correctly with n=9, stored=8). --------------------------------------------
+  attemptInfo() {
+    const chain = this.activeChain();
+    const n = chain && typeof chain._attemptCount === "number" ? chain._attemptCount : (chain ? chain.attempts.length : 0);
+    const stored = chain ? chain.attempts.length : 0;
+    return { n, cap: this.ATTEMPTS_CAP, stored };
+  },
+
   // -- _persist(): save the current session via STORE after every mutation, per the
   // plan ("wires ... STORE.saveSession after every mutation"). Centralized here so
   // every action method just calls this instead of repeating the STORE.saveSession
@@ -1240,6 +1327,7 @@ const ENGINE = {
   _classifyError(e) {
     if (e instanceof ADAPTER.AuthError) return "auth";
     if (e instanceof ADAPTER.ShapeError) return "shape";
+    if (e instanceof this.BusyError) return "busy";
     if (e && (e.name === "TypeError" || e.name === "AbortError" || /network|fetch/i.test(e.message || ""))) return "network";
     return "other";
   },
@@ -1305,7 +1393,22 @@ const ENGINE = {
         wrapped.name = "DecodeError";
         throw this._annotateError(wrapped);
       }
-      const metrics = METRICS.measure(source);
+      // METRICS.measure moved inside the annotated try/catch (Task 7a hardening): it
+      // previously ran AFTER this block closed, unguarded — a measure-time throw (e.g.
+      // a degenerate 0-area canvas) would propagate un-annotated past ENGINE's error
+      // boundary. "decode" is reused here (not a new "measure" kind) because from the
+      // caller's perspective both failures mean the same thing — "this image could not
+      // be turned into usable pixel data" — and the UI's decode-error banner text
+      // already covers that case; anything unexpected falls to "other" via the same
+      // _classifyError() path _annotateError() already runs.
+      let metrics;
+      try {
+        metrics = METRICS.measure(source);
+      } catch (e) {
+        const wrapped = new Error("Image measurement failed: " + (e && e.message));
+        wrapped.name = "DecodeError";
+        throw this._annotateError(wrapped);
+      }
       return { dataUrl: downscaled.dataUrl, metrics };
     } finally {
       if (owned && typeof source.close === "function") source.close();
@@ -1313,6 +1416,13 @@ const ENGINE = {
   },
 
   async setImage(slot, fileOrCanvas) {
+    // Task 7a hardening: swapping ref/base/settings while analyze()/addAttempt()/
+    // reanalyzeOtherTarget() is in flight would silently mismatch the session the
+    // model is currently evaluating against the session the UI displays afterward —
+    // throw a typed, catchable BusyError instead of letting that race happen.
+    if (this._inFlight) {
+      throw this._annotateError(new this.BusyError("ENGINE.setImage(): an analyze/attempt/reanalyze call is already in flight — wait for it to finish before swapping images."));
+    }
     const captured = await this._captureSlot(fileOrCanvas, { lossless: slot === "settings" });
     const s = this.session();
     if (slot === "ref") s.ref = captured;
@@ -1330,7 +1440,17 @@ const ENGINE = {
   // Calls ADAPTER.call with SCHEMAS.emit_recipe + a validate callback bound to the
   // active target/mode; on success stores the cleaned recipe under
   // chains[activeTarget].recipe, persists, and returns it. ---------------------------
-  async analyze() {
+  // Task 7a hardening: the public entry point is a thin _guarded() wrapper around
+  // _analyzeImpl — reanalyzeOtherTarget() calls _analyzeImpl DIRECTLY (not analyze()),
+  // since by the time it does so it is already running INSIDE the shared _inFlight
+  // gate; routing it back through analyze()/_guarded() would see the gate already
+  // held (by reanalyzeOtherTarget's own outer call) and just hand back that same
+  // promise instead of ever performing the actual analysis — a silent deadlock-shaped
+  // bug, not a hang, but the analysis would simply never run. ------------------------
+  analyze() {
+    return this._guarded(() => this._analyzeImpl());
+  },
+  async _analyzeImpl() {
     const s = this.session();
     if (this.state() === "empty") {
       throw new Error("ENGINE.analyze(): requires both reference and base images to be set first.");
@@ -1408,7 +1528,10 @@ const ENGINE = {
   // the front. The array itself stays at exactly ATTEMPTS_CAP entries (per the plan's
   // 9th-attempt example: "keeps only the last 8"), but each evicted entry's `score` is
   // preserved on `chain._evictedScores` (dataUrl/metrics/correction are dropped — those
-  // are the large fields; the plan only calls out the score as worth retaining). -----
+  // are the large fields; the plan only calls out the score as worth retaining).
+  // `_evictedScores` itself is intentionally left UNCAPPED — it holds only a tiny
+  // `{score}` per evicted attempt, cheap enough over a chain's whole lifetime that
+  // bounding it is not worth the complexity (unlike attempts[] and its dataUrls). --
   _pushAttempt(chain, entry) {
     chain.attempts.push(entry);
     while (chain.attempts.length > this.ATTEMPTS_CAP) {
@@ -1418,7 +1541,13 @@ const ENGINE = {
     }
   },
 
-  async addAttempt(fileOrCanvas) {
+  // Task 7a hardening: public entry point is a thin _guarded() wrapper; see the
+  // analyze()/_analyzeImpl() split comment above for why the guard lives at this
+  // outer layer rather than inside the implementation.
+  addAttempt(fileOrCanvas) {
+    return this._guarded(() => this._addAttemptImpl(fileOrCanvas));
+  },
+  async _addAttemptImpl(fileOrCanvas) {
     const s = this.session();
     const state = this.state();
     if (state !== "analyzed" && state !== "refining") {
@@ -1473,18 +1602,42 @@ const ENGINE = {
   // re-upload — analyze() reads from s.ref/s.base, which are untouched by this
   // switch). Leaves the original target's chain completely untouched: analyze()
   // writes only to chains[NEW activeTarget].recipe. -----------------------------------
-  async reanalyzeOtherTarget() {
+  // Task 7a hardening: guarded at THIS outer layer; the impl calls _analyzeImpl()
+  // directly (never the public analyze(), which would re-enter _guarded() and just
+  // return the already-held in-flight promise without actually running).
+  reanalyzeOtherTarget() {
+    return this._guarded(() => this._reanalyzeOtherTargetImpl());
+  },
+  async _reanalyzeOtherTargetImpl() {
     const s = this.session();
     if (!s.ref || !s.base) throw new Error("ENGINE.reanalyzeOtherTarget(): requires reference and base images to already be set.");
     const other = s.activeTarget === "vray7max" ? "vantage33" : "vray7max";
     s.activeTarget = other;
     await this._persist();
-    return this.analyze();
+    return this._analyzeImpl();
+  },
+
+  // -- _pruneSessions(): keeps only the newest SESSION_RETENTION_CAP sessions in IDB,
+  // deleting older rows by `created` (highest survives — same ordering rule as
+  // STORE.loadLatest()'s lexical-ISO comparison). Best-effort: a failure here (e.g.
+  // STORE degraded to the in-memory fallback and _all()/deleteSession behave
+  // unexpectedly) must never block boot() — caught and swallowed by the caller. -----
+  async _pruneSessions() {
+    const all = await STORE._all();
+    if (all.length <= this.SESSION_RETENTION_CAP) return;
+    const sorted = all.slice().sort((a, b) => (a.created > b.created ? -1 : a.created < b.created ? 1 : 0));
+    const toDelete = sorted.slice(this.SESSION_RETENTION_CAP);
+    for (const s of toDelete) {
+      try { await STORE.deleteSession(s.id); } catch (e) { /* best-effort; one bad row must not stop the rest */ }
+    }
   },
 
   // -- boot(): loads the latest session on startup. Never throws — a fresh install (no
   // session in STORE yet), or a STORE that degraded to in-memory-only, both just fall
-  // through to a blank session via reset(). -------------------------------------------
+  // through to a blank session via reset(). After loading (never before — pruning must
+  // not delete the very session about to be restored), prunes IDB down to the newest
+  // SESSION_RETENTION_CAP sessions (Task 7a hardening). Pruning failures are swallowed
+  // here too — retention hygiene must never prevent the app from opening. -----------
   async boot() {
     try {
       const latest = await STORE.loadLatest();
@@ -1493,6 +1646,9 @@ const ENGINE = {
       this._annotateError(e);
       this._session = this._blankSession();
     }
+    try {
+      await this._pruneSessions();
+    } catch (e) { /* retention hygiene is best-effort; never block boot on it */ }
     return this._session;
   }
 };
@@ -2507,6 +2663,229 @@ SELFTEST.suites.engine = async function () {
   try { await ENGINE.boot(); } catch (e) { bootThrew = e; }
   this.ok(bootThrew === null, `ENGINE.boot() does not throw (got ${bootThrew && bootThrew.message})`);
   ENGINE.reset();
+
+  // -- in-flight guard: analyze()/addAttempt()/reanalyzeOtherTarget() share one
+  // _inFlight promise gate. Two concurrent analyze() calls must hit the adapter only
+  // ONCE (the second call returns the SAME promise, not a second op) — proven with a
+  // slow stub adapter whose call() does not resolve until we release it. setImage()
+  // must throw a typed BusyError (kind "busy") while an op is in flight, since
+  // swapping images mid-analyze would silently mismatch the in-flight session.
+  {
+    const guardTestId = "selftest-" + Date.now() + "-guard";
+    ENGINE._testSessionId = guardTestId;
+    try {
+      ENGINE.reset();
+      let releaseCall;
+      const gate = new Promise(r => { releaseCall = r; });
+      let callCount = 0;
+      const slowStub = {
+        async call({ tool }) {
+          callCount++;
+          await gate;
+          const isCorrection = tool.name === "emit_correction";
+          return isCorrection
+            ? { moves: [{ param: "cam.iso", to: 200, from: 100, step: 1, confidence: "high", why: "x" }], rationale: "r", status: "continue", status_reason: "", applied_assumed: true }
+            : { baseline: "factory_defaults", hdri_mood: "m", values: [
+                { param: "cam.iso", set: 200, from: 100, step: 1, confidence: "high", why: "x" },
+                { param: "cm.contrast", set: 0.1, from: 0, step: 5, confidence: "high", why: "x" },
+                { param: "cam.fnumber", set: 5.6, from: 8, step: 1, confidence: "high", why: "x" },
+                { param: "vfb.exposure", set: 0.2, from: 0, step: 1, confidence: "high", why: "x" }
+              ], rationale: "r", gi_notes: "g", status: "continue", status_reason: "" };
+        }
+      };
+      ENGINE._adapter = slowStub;
+      await ENGINE.setImage("ref", solidCanvas(8, 8, 200, 180, 150));
+      await ENGINE.setImage("base", solidCanvas(8, 8, 120, 130, 140));
+
+      const p1 = ENGINE.analyze();
+      const p2 = ENGINE.analyze();
+      this.ok(p1 === p2, "ENGINE: concurrent analyze() calls while in-flight return the SAME promise (second call does not start a new op)");
+
+      // setImage must reject with a typed BusyError while the gate is held.
+      let busyErr = null;
+      try { await ENGINE.setImage("base", solidCanvas(8, 8, 90, 90, 90)); } catch (e) { busyErr = e; }
+      this.ok(!!busyErr, "ENGINE.setImage(): throws while an op is in-flight (does not silently swap the image)");
+      this.ok(busyErr instanceof ENGINE.BusyError, `ENGINE.setImage(): in-flight error is an ENGINE.BusyError instance (got ${busyErr && busyErr.name})`);
+      this.ok(busyErr && busyErr.kind === "busy", `ENGINE.setImage(): in-flight BusyError carries kind "busy" (got ${busyErr && busyErr.kind})`);
+
+      releaseCall();
+      await p1;
+      this.ok(callCount === 1, `ENGINE: the in-flight guard prevented a second adapter call — exactly 1 call total (got ${callCount})`);
+      this.ok(ENGINE.state() === "analyzed", `ENGINE: after the gate releases, state reaches analyzed (got ${ENGINE.state()})`);
+
+      // After the first op completes, the guard is clear (finally-cleared) and a fresh
+      // op can start — proven by addAttempt() actually reaching the (now-resolved) gate.
+      const gate2Promise = new Promise(r => { releaseCall = r; });
+      let released2 = false;
+      const slowStub2 = { async call({ tool }) {
+        callCount++;
+        await gate2Promise;
+        released2 = true;
+        return { moves: [{ param: "cam.iso", to: 210, from: 200, step: 1, confidence: "high", why: "x" }], rationale: "r", status: "continue", status_reason: "", applied_assumed: true };
+      } };
+      ENGINE._adapter = slowStub2;
+      const p3 = ENGINE.addAttempt(solidCanvas(8, 8, 190, 175, 145));
+      releaseCall();
+      await p3;
+      this.ok(released2 === true, "ENGINE: in-flight guard is cleared (finally) after a completed op, so the NEXT op actually runs");
+
+      // The guard clears even when the underlying call throws (finally, not just on
+      // success) — a failed analyze() must not permanently wedge the app.
+      const failingStub = { call: async () => { throw new Error("stub failure"); } };
+      ENGINE._adapter = failingStub;
+      let threwGuarded = null;
+      try { await ENGINE.reanalyzeOtherTarget(); } catch (e) { threwGuarded = e; }
+      this.ok(!!threwGuarded, "ENGINE: reanalyzeOtherTarget() propagates an adapter failure");
+      // Guard must be clear now — a subsequent setImage() must NOT throw BusyError.
+      let noLongerBusy = null;
+      try { await ENGINE.setImage("base", solidCanvas(8, 8, 90, 90, 90)); } catch (e) { noLongerBusy = e; }
+      this.ok(noLongerBusy === null, `ENGINE: in-flight guard clears even after a THROWN op (finally), setImage works again (got ${noLongerBusy && noLongerBusy.message})`);
+    } finally {
+      ENGINE._adapter = ADAPTER;
+      delete ENGINE._testSessionId;
+      ENGINE.reset();
+      try { await STORE.deleteSession(guardTestId); } catch (e) {}
+    }
+  }
+
+  // -- public accessors: attemptInfo() and activeChain() — the UI must never read
+  // _attemptCount/chains[...] paths directly; these are the documented read-only view.
+  {
+    const acTestId = "selftest-" + Date.now() + "-accessors";
+    ENGINE._testSessionId = acTestId;
+    try {
+      ENGINE.reset();
+      const emptyInfo = ENGINE.attemptInfo();
+      this.ok(!!emptyInfo && typeof emptyInfo === "object", "ENGINE.attemptInfo(): returns an object even before any recipe exists");
+      this.ok(emptyInfo.n === 0, `ENGINE.attemptInfo(): n===0 on a fresh chain (got ${emptyInfo.n})`);
+      this.ok(emptyInfo.cap === ENGINE.ATTEMPTS_CAP, `ENGINE.attemptInfo(): cap===ATTEMPTS_CAP (got ${emptyInfo.cap})`);
+      this.ok(emptyInfo.stored === 0, `ENGINE.attemptInfo(): stored===0 on a fresh chain (got ${emptyInfo.stored})`);
+      this.ok(ENGINE.activeChain() === null || (typeof ENGINE.activeChain() === "object" && ENGINE.activeChain().recipe === null), "ENGINE.activeChain(): a chain with no recipe reads as null-recipe (not throwing)");
+
+      const stubAC = { async call({ tool }) {
+        const isCorrection = tool.name === "emit_correction";
+        return isCorrection
+          ? { moves: [{ param: "cam.iso", to: 200, from: 100, step: 1, confidence: "high", why: "x" }], rationale: "r", status: "continue", status_reason: "", applied_assumed: true }
+          : { baseline: "factory_defaults", hdri_mood: "m", values: [
+              { param: "cam.iso", set: 200, from: 100, step: 1, confidence: "high", why: "x" },
+              { param: "cm.contrast", set: 0.1, from: 0, step: 5, confidence: "high", why: "x" },
+              { param: "cam.fnumber", set: 5.6, from: 8, step: 1, confidence: "high", why: "x" },
+              { param: "vfb.exposure", set: 0.2, from: 0, step: 1, confidence: "high", why: "x" }
+            ], rationale: "r", gi_notes: "g", status: "continue", status_reason: "" };
+      } };
+      ENGINE._adapter = stubAC;
+      await ENGINE.setImage("ref", solidCanvas(8, 8, 200, 180, 150));
+      await ENGINE.setImage("base", solidCanvas(8, 8, 120, 130, 140));
+      await ENGINE.analyze();
+
+      const chainAfterAnalyze = ENGINE.activeChain();
+      this.ok(!!chainAfterAnalyze && !!chainAfterAnalyze.recipe, "ENGINE.activeChain(): after analyze(), returns the active target's chain WITH its recipe");
+      this.ok(Array.isArray(chainAfterAnalyze.attempts) && chainAfterAnalyze.attempts.length === 0, "ENGINE.activeChain(): attempts[] present and empty right after analyze()");
+      this.ok(chainAfterAnalyze === ENGINE.session().chains[ENGINE.activeTarget()], "ENGINE.activeChain(): identity-matches session().chains[activeTarget] (a real view, not a detached copy)");
+
+      const infoAfterAnalyze = ENGINE.attemptInfo();
+      this.ok(infoAfterAnalyze.n === 0 && infoAfterAnalyze.stored === 0, `ENGINE.attemptInfo(): still n===0/stored===0 right after analyze(), before any attempt (got n=${infoAfterAnalyze.n}, stored=${infoAfterAnalyze.stored})`);
+
+      await ENGINE.addAttempt(solidCanvas(8, 8, 190, 175, 145));
+      const infoAfter1 = ENGINE.attemptInfo();
+      this.ok(infoAfter1.n === 1, `ENGINE.attemptInfo(): n===1 after one addAttempt() (got ${infoAfter1.n})`);
+      this.ok(infoAfter1.stored === 1, `ENGINE.attemptInfo(): stored===1 after one addAttempt() (got ${infoAfter1.stored})`);
+      this.ok(infoAfter1.cap === ENGINE.ATTEMPTS_CAP, "ENGINE.attemptInfo(): cap is stable across calls");
+
+      await ENGINE.addAttempt(solidCanvas(8, 8, 185, 170, 140));
+      const infoAfter2 = ENGINE.attemptInfo();
+      this.ok(infoAfter2.n === 2 && infoAfter2.stored === 2, `ENGINE.attemptInfo(): n and stored both track additional attempts (got n=${infoAfter2.n}, stored=${infoAfter2.stored})`);
+
+      // n (monotonic _attemptCount) vs stored (capped array length) diverge past the cap.
+      for (let i = 3; i <= 9; i++) await ENGINE.addAttempt(solidCanvas(8, 8, 190 - i, 175, 145));
+      const infoAfter9 = ENGINE.attemptInfo();
+      this.ok(infoAfter9.n === 9, `ENGINE.attemptInfo(): n keeps climbing past the cap (monotonic attempt count) (got ${infoAfter9.n})`);
+      this.ok(infoAfter9.stored === ENGINE.ATTEMPTS_CAP, `ENGINE.attemptInfo(): stored is pinned at ATTEMPTS_CAP once eviction starts (got ${infoAfter9.stored})`);
+      this.ok(infoAfter9.n !== infoAfter9.stored, "ENGINE.attemptInfo(): n and stored diverge past the cap (n keeps counting, stored is capped)");
+
+      const chainAfter9 = ENGINE.activeChain();
+      this.ok(chainAfter9.attempts.length === ENGINE.ATTEMPTS_CAP, `ENGINE.activeChain(): attempts[] length matches attemptInfo().stored (got ${chainAfter9.attempts.length})`);
+    } finally {
+      ENGINE._adapter = ADAPTER;
+      delete ENGINE._testSessionId;
+      ENGINE.reset();
+      try { await STORE.deleteSession(acTestId); } catch (e) {}
+    }
+  }
+
+  // -- STORE.importJSON: normalizes/validates `created` — missing or non-ISO becomes
+  // "now" rather than silently storing garbage that later breaks loadLatest()'s
+  // lexical-ISO-comparison sort.
+  {
+    const impId1 = "selftest-" + Date.now() + "-import-missing-created";
+    const impId2 = "selftest-" + Date.now() + "-import-bad-created";
+    const impId3 = "selftest-" + Date.now() + "-import-good-created";
+    try {
+      const validChains = { vray7max: { recipe: null, attempts: [] }, vantage33: { recipe: null, attempts: [] } };
+      const beforeImport = new Date().toISOString();
+
+      const missingCreated = { id: impId1, context: { scene: "", time: "", rig: "" }, ref: null, base: null, settingsShot: null, activeTarget: "vray7max", chains: validChains };
+      const importedMissing = await STORE.importJSON(JSON.stringify(missingCreated));
+      this.ok(typeof importedMissing.created === "string" && importedMissing.created.length > 0, `STORE.importJSON: missing "created" is normalized to a non-empty string (got ${JSON.stringify(importedMissing.created)})`);
+      this.ok(!Number.isNaN(Date.parse(importedMissing.created)), "STORE.importJSON: normalized created for missing case is a valid parseable date");
+      this.ok(importedMissing.created >= beforeImport, "STORE.importJSON: missing created is normalized to (approximately) now, not some earlier default");
+
+      const badCreated = { id: impId2, created: "not-a-date", context: { scene: "", time: "", rig: "" }, ref: null, base: null, settingsShot: null, activeTarget: "vray7max", chains: validChains };
+      const importedBad = await STORE.importJSON(JSON.stringify(badCreated));
+      this.ok(!Number.isNaN(Date.parse(importedBad.created)), `STORE.importJSON: non-ISO "created" ("not-a-date") is normalized to a valid date (got ${JSON.stringify(importedBad.created)})`);
+
+      const goodIso = "2026-01-01T00:00:00.000Z";
+      const goodCreated = { id: impId3, created: goodIso, context: { scene: "", time: "", rig: "" }, ref: null, base: null, settingsShot: null, activeTarget: "vray7max", chains: validChains };
+      const importedGood = await STORE.importJSON(JSON.stringify(goodCreated));
+      this.ok(importedGood.created === goodIso, `STORE.importJSON: a valid ISO "created" is preserved verbatim, not overwritten (got ${importedGood.created})`);
+    } finally {
+      for (const id of [impId1, impId2, impId3]) { try { await STORE.deleteSession(id); } catch (e) {} }
+    }
+  }
+};
+
+// -- suite: engine-retention (Task 7a hardening) — session pruning on boot(). Its own
+// suite (not appended into `engine` above) because it needs a clean multi-session IDB
+// fixture unrelated to the stubbed-adapter state machine walk above.
+SELFTEST.suites.engineRetention = async function () {
+  const ids = [];
+  try {
+    // Create 7 tiny sessions with distinct `created` timestamps, oldest to newest,
+    // all selftest-prefixed so the sweep below (and any interrupted-run cleanup)
+    // finds them. Backdated by (7-i) seconds so ordering is deterministic and does
+    // not depend on real wall-clock speed between saves.
+    const now = Date.now();
+    for (let i = 0; i < 7; i++) {
+      const id = "selftest-" + now + "-retain" + i;
+      ids.push(id);
+      await STORE.saveSession({
+        id, created: new Date(now - (7 - i) * 1000).toISOString(),
+        context: { scene: "", time: "", rig: "" }, ref: null, base: null, settingsShot: null,
+        activeTarget: "vray7max",
+        chains: { vray7max: { recipe: null, attempts: [], _attemptCount: 0 }, vantage33: { recipe: null, attempts: [], _attemptCount: 0 } }
+      });
+    }
+    const beforePrune = await STORE._all();
+    const beforeCount = beforePrune.filter(s => ids.includes(s.id)).length;
+    this.ok(beforeCount === 7, `engineRetention: sanity — all 7 fixture sessions saved before boot() (got ${beforeCount})`);
+
+    await ENGINE.boot();
+
+    const afterPrune = await STORE._all();
+    this.ok(afterPrune.length <= 5, `ENGINE.boot(): prunes IDB to the newest 5 sessions total (got ${afterPrune.length})`);
+
+    // The newest 5 of our 7 fixtures must be the survivors (retain4..retain6 are the
+    // 3 newest overall among typical suite runs, but to be robust against any other
+    // session STORE may already hold, just check that the OLDEST two of our fixtures
+    // (retain0, retain1) are gone, since they are unconditionally the two oldest
+    // sessions in the whole store at this point in a fresh test run).
+    const survivingIds = new Set(afterPrune.map(s => s.id));
+    this.ok(!survivingIds.has(ids[0]), "ENGINE.boot(): the oldest fixture session was pruned");
+    this.ok(!survivingIds.has(ids[1]), "ENGINE.boot(): the second-oldest fixture session was pruned");
+  } finally {
+    for (const id of ids) { try { await STORE.deleteSession(id); } catch (e) {} }
+    ENGINE.reset();
+  }
 };
 
 addEventListener("DOMContentLoaded", () => {
