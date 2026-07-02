@@ -147,7 +147,20 @@ button, .chip, .slot, input, select, summary {
 }
 .key-field::placeholder { color: var(--text-3); }
 .key-field:focus { outline: none; border-color: var(--accent); }
-.privacy-line { color: var(--text-3); font-size: 10.5px; margin-top: 9px; text-align: right; }
+/* privacy row: quiet always-available session Export/Import (#15) on the left, the
+   verbatim privacy caption on the right. Text-only ghost buttons — restrained, no
+   border/fill, one shade up on hover — so they read as a caption-level affordance,
+   never competing with the primary actions. */
+.privacy-row { display: flex; align-items: baseline; gap: 12px; margin-top: 9px; }
+.session-io { display: inline-flex; align-items: baseline; gap: 8px; }
+.session-io-btn {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: inherit; font-size: 10.5px; color: var(--text-3);
+  letter-spacing: 0.01em;
+}
+.session-io-btn:hover { color: var(--text-2); text-decoration: underline; text-underline-offset: 2px; }
+.session-io-sep { color: var(--line-2); font-size: 10.5px; }
+.privacy-line { color: var(--text-3); font-size: 10.5px; text-align: right; margin-top: 0; margin-left: auto; }
 
 /* -- main two-column layout -------------------------------------------------------- */
 #main { display: flex; gap: 32px; align-items: flex-start; }
@@ -440,8 +453,8 @@ const PACKS = {
         kind: "placement", unit: "deg", range: [0, 360], default: 135, verified: "2026-07-02",
         notes: "V-Ray 7 has no azimuth spinner on VRaySun itself — position is set by moving the sun or via a 3ds Max Daylight system with VRaySun as the sun type (docs). Compass: 0 = North, 90 = East. Emit as a placement instruction; default is informational." },
       { id: "sun.placement_elevation", ui_path: "VRaySun ▸ move the sun head height in the viewport, or Create panel ▸ Systems ▸ Daylight ▸ Sunlight = VRaySun ▸ Position (Date/Time/Location or Manual)",
-        kind: "placement", unit: "deg", range: [0, 90], default: 35, verified: "2026-07-02",
-        notes: "Elevation above horizon; sun and sky color follow the position physically — a lower sun is warmer with longer, softer-lit shadows (docs). Emit as a placement instruction; default is informational." },
+        kind: "placement", unit: "deg", range: [-12, 90], default: 35, verified: "2026-07-03",
+        notes: "Elevation above horizon; sun and sky color follow the position physically — a lower sun is warmer with longer, softer-lit shadows (docs). Negative elevations reach twilight/dusk: the sun drops below the horizon and the PRG Clear Sky model keeps producing sky illumination down to about -12 deg (civil-to-nautical dusk), so a dusk reference is matched by placing the sun a few degrees under the horizon rather than clamping at 0. Emit as a placement instruction; default is informational." },
       { id: "sun.intensity_mult", ui_path: "VRaySun ▸ Modify panel ▸ Sun Parameters ▸ Intensity multiplier",
         kind: "spinner", unit: "x", range: [0, 2], default: 1.0, verified: "2026-07-02",
         notes: "1.0 = physical solar brightness; docs recommend keeping it and exposing via camera or color mapping. Values like 0.01-0.05 only when NO exposure control is used. UI accepts higher than 2 (practical range)." },
@@ -2915,6 +2928,20 @@ const UI = {
     }
   },
 
+  // -- _sessionIoHtml(): the always-available quiet Export/Import control (#15). A pure
+  // markup helper (all-literal, no interpolation) so it is testable without the DOM and
+  // so the topbar template stays readable. Buttons reuse the SAME data-action hooks the
+  // IDB-warning banner wires, so a healthy browser reaches Export/Import without first
+  // hitting the persistence-failure banner. -----------------------------------------
+  _sessionIoHtml() {
+    return `
+      <div class="session-io">
+        <button class="session-io-btn" data-action="export-session" title="Download this session as a JSON file">Export</button>
+        <span class="session-io-sep" aria-hidden="true">·</span>
+        <button class="session-io-btn" data-action="import-session" title="Load a session from a JSON file">Import</button>
+      </div>`;
+  },
+
   // -- topbar: title, target toggle, model picker, key status + field. Every
   // interpolated value is a hardcoded label/constant or this.esc()'d; the key value
   // itself is set via the DOM .value property in the wiring below, never interpolated
@@ -2938,12 +2965,22 @@ const UI = {
           <input id="key-field" class="key-field" type="password" placeholder="oc_..." />
         </div>
       </div>
-      <div class="privacy-line">Stored only in this browser.</div>
+      <div class="privacy-row">
+        ${this._sessionIoHtml()}
+        <div class="privacy-line">Stored only in this browser.</div>
+      </div>
     `;
 
     host.querySelectorAll("[data-target]").forEach(btn => {
       btn.onclick = () => this.setTarget(btn.getAttribute("data-target"));
     });
+    // Always-available session Export/Import (#15) — reuses the same handlers the
+    // IDB-unavailable warning banner wires, so a healthy browser can move a session
+    // between profiles/machines without first having to hit the persistence failure.
+    const exportIo = host.querySelector('[data-action="export-session"]');
+    if (exportIo) exportIo.onclick = () => this.doExportSession();
+    const importIo = host.querySelector('[data-action="import-session"]');
+    if (importIo) importIo.onclick = () => this.doImportSessionClick();
     const picker = host.querySelector("#model-picker");
     if (picker) picker.onchange = () => this.setModel(picker.value);
     const keyField = host.querySelector("#key-field");
@@ -3388,6 +3425,17 @@ SELFTEST.suites.packs = async function () {
   this.ok(!!sunK, "lookup finds vray7max sun.kelvin");
   this.ok(PACKS.lookup("vray7max", "no.such_param") === null, "lookup unknown id -> null");
   this.ok(PACKS.lookup("corona", "sun.kelvin") === null, "lookup unknown target -> null");
+  // -- (#14) V-Ray sun elevation reaches twilight: range [-12, 90], default 35 still in
+  // range, note mentions the twilight/dusk rationale.
+  const sunEl = PACKS.lookup("vray7max", "sun.placement_elevation");
+  this.ok(!!sunEl && sunEl.range[0] === -12 && sunEl.range[1] === 90, `elevation (#14): sun.placement_elevation range is [-12, 90] (got ${sunEl && JSON.stringify(sunEl.range)})`);
+  this.ok(!!sunEl && sunEl.default === 35 && sunEl.default >= sunEl.range[0] && sunEl.default <= sunEl.range[1], `elevation (#14): default 35 stays inside the extended range (got ${sunEl && sunEl.default})`);
+  this.ok(!!sunEl && /twilight|dusk/i.test(sunEl.notes), "elevation (#14): the note mentions twilight/dusk");
+  // a below-horizon dusk elevation is now IN range (not clamped), while -13 still clamps.
+  const elDusk = PACKS.clamp("vray7max", "sun.placement_elevation", -10);
+  this.ok(elDusk.value === -10 && elDusk.clamped === false, `elevation (#14): -10 deg (dusk) is accepted un-clamped now (got ${JSON.stringify(elDusk)})`);
+  const elTooLow = PACKS.clamp("vray7max", "sun.placement_elevation", -20);
+  this.ok(elTooLow.value === -12 && elTooLow.clamped === true, `elevation (#14): -20 still clamps to the -12 floor (got ${JSON.stringify(elTooLow)})`);
   // clamp pass-through for strings / non-numeric kinds
   const str = PACKS.clamp("vray7max", "cm.type", "Reinhard");
   this.ok(str.value === "Reinhard" && str.clamped === false, "clamp passes string values through unflagged");
@@ -5196,6 +5244,16 @@ SELFTEST.suites.ui = async function () {
       UI._els = prevEls;
     }
   }
+
+  // -- (#15) always-available Export/Import: a pure markup helper the topbar renders
+  // unconditionally (not only inside the !STORE.persistent warning), reusing the same
+  // data-action hooks the warning banner wires. Asserted on the helper string (no DOM).
+  this.ok(typeof UI._sessionIoHtml === "function", "session-io (#15): UI._sessionIoHtml is a function");
+  const ioHtml = UI._sessionIoHtml();
+  this.ok(/data-action="export-session"/.test(ioHtml), "session-io (#15): the always-available control carries the export-session hook");
+  this.ok(/data-action="import-session"/.test(ioHtml), "session-io (#15): the always-available control carries the import-session hook");
+  this.ok(/>Export</.test(ioHtml) && />Import</.test(ioHtml), "session-io (#15): the control is labeled Export / Import");
+  this.ok(typeof UI.doExportSession === "function" && typeof UI.doImportSessionClick === "function", "session-io (#15): the reused Export/Import handlers exist");
 };
 
 addEventListener("DOMContentLoaded", () => {
