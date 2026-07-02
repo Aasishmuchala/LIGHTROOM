@@ -255,7 +255,217 @@ const PACKS = {
 };
 
 /* ===== SECTION: SCHEMAS ===== */
-const SCHEMAS = {};
+// Tool schemas, system prompts, and local (pre-network) validation for the model's
+// structured output. SCHEMAS depends only on PACKS (prompt fragment + clamp/lookup
+// inside validateRecipe) — never on ADAPTER, ENGINE, or the DOM.
+const SCHEMAS = {
+  // -- emit_recipe: the full-analysis tool. Byte-fixed by the plan (Step 4.1) — do
+  // not restructure into the spec's grouped shape (environment/sun/fills[]/exposure/
+  // color_mapping/step_order[]); flat values[] with a per-value `step: 1..5` is the
+  // locked contract because it is far easier to validate parametrically and is
+  // information-equivalent (fill placement + key:fill ratio already live as
+  // kind:"placement" pack entries; step_order is redundant given the fixed order in
+  // the system prompt). ------------------------------------------------------------
+  emit_recipe: {
+    name: "emit_recipe", strict: true, input_schema: {
+      type: "object", additionalProperties: false,
+      required: ["baseline", "values", "rationale", "hdri_mood", "gi_notes", "status"],
+      properties: {
+        baseline: { type: "string", enum: ["factory_defaults", "settings_screenshot"] },
+        hdri_mood: { type: "string", description: "One line: what HDRI to reach for" },
+        values: {
+          type: "array", minItems: 4, maxItems: 24, items: {
+            type: "object", additionalProperties: false,
+            required: ["param", "set", "from", "step", "confidence", "why"],
+            properties: {
+              param: { type: "string", description: "MUST be an id from the provided pack" },
+              set: { type: ["number", "string"] }, from: { type: ["number", "string"] },
+              step: { type: "integer", minimum: 1, maximum: 5 },
+              confidence: { type: "string", enum: ["high", "medium", "low"] },
+              why: { type: "string" }
+            }
+          }
+        },
+        rationale: { type: "string" }, gi_notes: { type: "string" },
+        status: { type: "string", enum: ["continue", "handoff_to_grade"] },
+        status_reason: { type: "string" }
+      }
+    }
+  },
+
+  // -- emit_correction: the refine-round tool. Same value-object shape as
+  // emit_recipe.values[] (locked identically: param/step/confidence/why, integer
+  // step 1..5), but the array is `moves` (minItems 1, maxItems 5 — "small trims beat
+  // re-matching") and the value key is `to` (not `set`, since a correction targets an
+  // already-applied baseline rather than a fresh factory/screenshot one). Adds
+  // `applied_assumed: boolean` — true when the model had to assume every prior-round
+  // move was applied as recommended (the UI's per-row "applied" toggle can turn
+  // individual moves off; when that toggle state isn't available to the model, it
+  // must declare the assumption explicitly rather than silently guessing). ---------
+  emit_correction: {
+    name: "emit_correction", strict: true, input_schema: {
+      type: "object", additionalProperties: false,
+      required: ["moves", "rationale", "status", "status_reason", "applied_assumed"],
+      properties: {
+        moves: {
+          type: "array", minItems: 1, maxItems: 5, items: {
+            type: "object", additionalProperties: false,
+            required: ["param", "to", "from", "step", "confidence", "why"],
+            properties: {
+              param: { type: "string", description: "MUST be an id from the provided pack" },
+              to: { type: ["number", "string"] }, from: { type: ["number", "string"] },
+              step: { type: "integer", minimum: 1, maximum: 5 },
+              confidence: { type: "string", enum: ["high", "medium", "low"] },
+              why: { type: "string" }
+            }
+          }
+        },
+        rationale: { type: "string" },
+        status: { type: "string", enum: ["continue", "handoff_to_grade"] },
+        status_reason: { type: "string" },
+        applied_assumed: { type: "boolean" }
+      }
+    }
+  },
+
+  // -- systemPrompt(target, mode): full persona + contract text for one gateway call.
+  // mode: "recipe" (full analysis, emit_recipe) | "correction" (refine round,
+  // emit_correction). Deliberately target-agnostic in its own prose — every
+  // parameter specific, unit, range, or host quirk (e.g. "this sun has no kelvin
+  // spinner") comes from PACKS.promptFragment(target) appended at the end, never
+  // hardcoded here. That keeps this function identical in shape for every future
+  // pack (adding a host is a data task, per the spec's non-goals). -----------------
+  systemPrompt(target, mode) {
+    const isCorrection = mode === "correction";
+    const lines = [];
+
+    lines.push("You are a lighting technical director (TD) — the same disciplined, surgical role you would play " +
+      "grading a shot against a reference plate, now applied to matching a 3D render's LIGHTING to a reference " +
+      "image before any color grade happens.");
+    lines.push("");
+    lines.push("You do not measure. Measurements are provided to you as computed evidence — deterministic canvas " +
+      "photometry run on both images before this prompt was assembled. Your job is to translate that evidence into " +
+      "exact parameter moves in the target application's native vocabulary. Trust your eyes for direction, the " +
+      "numbers for magnitude: the images tell you WHICH way something is wrong (warmer, brighter, softer shadows), " +
+      "the measurements tell you HOW FAR to push it and confirm you are not chasing a false read.");
+    lines.push("");
+    lines.push("Parameter discipline: choose ONLY parameter ids that appear in the pack listing below — never invent " +
+      "a setting, never rename one, never describe a control the pack does not list. Every numeric value you set " +
+      "must stay inside that parameter's stated range; the app will clamp and flag anything outside it, so get it " +
+      "right the first time.");
+    lines.push("");
+    lines.push("Baseline convention: unless a settings screenshot is supplied, assume the target is at its FACTORY " +
+      "DEFAULTS and declare baseline:\"factory_defaults\" — every `from` value is then that parameter's pack " +
+      "default. If a settings screenshot IS supplied, read the actual on-screen values from it and use those as " +
+      "`from`, declaring baseline:\"settings_screenshot\" instead of assuming defaults.");
+    lines.push("");
+    lines.push("Fixed step order — always move in this sequence, and tag every value's `step` field accordingly:");
+    lines.push("  1. exposure/WB lock — camera or VFB exposure and white balance, decided and held first.");
+    lines.push("  2. sun/key — the primary light's direction, intensity, and color.");
+    lines.push("  3. dome/environment — HDRI or skylight fill, mood, and rotation.");
+    lines.push("  4. fills/rim — secondary/artificial lights and their key:fill ratio.");
+    lines.push("  5. color mapping — highlight burn, contrast, saturation, and any display-side correction.");
+    lines.push("Why this order is fixed, not a suggestion: doubling the sun's intensity and opening the camera by " +
+      "+1 EV produce nearly the same pixels — it is a genuine degeneracy, not a matter of taste. Locking exposure " +
+      "and WB FIRST removes that ambiguity before you touch the light itself; without a fixed order the refine " +
+      "loop oscillates between \"brighten the sun\" and \"open the camera\" forever.");
+    lines.push("");
+    lines.push("Exactness goal: the user requires a ~99% match to the reference's lighting, not a pleasing " +
+      "approximation. Be surgical, not tasteful — small, evidence-backed moves that close the measured gap beat " +
+      "confident-sounding creative reinterpretation.");
+
+    if (isCorrection) {
+      lines.push("");
+      lines.push("CORRECTION ROUND (refine mode): you are looking at an attempt that was rendered from a prior " +
+        "recipe or correction, not a blank slate. The full move history from every previous round is provided to " +
+        "you, along with which of those moves the user actually applied. Return a correction card, not a new " +
+        "recipe: 3-5 moves max, each prioritized by how much of the remaining measured gap it closes. Small trims " +
+        "beat re-matching from scratch.");
+      lines.push("Oscillation guard: never reverse a prior move by more than half its distance from its own " +
+        "`from` value — if round 2 pushed sun.kelvin from 6500 to 5000 (a move of 1500), round 3 may pull it back " +
+        "toward 6500 by at most 750. If you see a metric ping-pong across rounds (it improves, then reverses, then " +
+        "improves again), do not keep chasing it — name the exposure/light degeneracy to the user directly in " +
+        "`status_reason` instead, so they understand why the number is not settling.");
+      lines.push("Know when to stop: declare status:\"handoff_to_grade\" the moment the residual measured diff is " +
+        "dominated by chromatic/tonal terms (tint, saturation, contrast curve) rather than light-transport terms " +
+        "(luminance structure, where light enters the frame, shadow/highlight placement). At that point further " +
+        "re-rendering will not help — the remaining 1% is a color grade, not a lighting problem, and belongs to a " +
+        "grading tool, not this loop.");
+    }
+
+    lines.push("");
+    lines.push(PACKS.promptFragment(target));
+
+    return lines.join("\n");
+  },
+
+  // -- validateRecipe(obj, target, mode): local (pre-network) validation of a
+  // model-returned tool call, before it ever reaches the UI. Handles BOTH shapes with
+  // one function rather than two near-duplicate validators — recipe (`values[]`,
+  // `set`) is the default when `mode` is omitted, `mode:"correction"` switches to
+  // `moves[]`/`to`. Returns {ok, errors[], cleaned}:
+  //   - unknown `param` (not in the target pack)      -> ERROR (value/move dropped from cleaned, ok:false)
+  //   - non-finite numeric `set`/`to` (NaN/Infinity)   -> ERROR (never let it into cleaned; PACKS.clamp alone does
+  //                                                        NOT catch this — it passes non-finite numbers through
+  //                                                        unflagged by design, so this check is done HERE, first)
+  //   - numeric `set`/`to` outside the pack's range    -> WARNING only: PACKS.clamp clamps it into range and the
+  //                                                        cleaned value/move carries `clamped:true`; ok stays true
+  //   - `step` outside the integer range 1..5          -> ERROR
+  //   - string `set`/`to` (dropdown/slot/placement)    -> passed through untouched, never flagged clamped
+  // `cleaned` always has the same top-level shape as `obj` (values[] or moves[]), with
+  // per-item `clamped` added where applicable; items that hit an ERROR are dropped
+  // from cleaned so nothing invalid can flow downstream even if a caller ignores `ok`.
+  validateRecipe(obj, target, mode) {
+    const isCorrection = mode === "correction";
+    const arrKey = isCorrection ? "moves" : "values";
+    const valKey = isCorrection ? "to" : "set";
+    const errors = [];
+
+    const cleaned = Object.assign({}, obj);
+    const items = Array.isArray(obj && obj[arrKey]) ? obj[arrKey] : [];
+    const cleanedItems = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const where = `${arrKey}[${i}]`;
+      if (!item || typeof item.param !== "string") {
+        errors.push(`${where}: missing or non-string "param"`);
+        continue;
+      }
+      const entry = PACKS.lookup(target, item.param);
+      if (!entry) {
+        errors.push(`${where}: unknown param "${item.param}" — not in pack "${target}"`);
+        continue;
+      }
+      if (typeof item.step !== "number" || !Number.isInteger(item.step) || item.step < 1 || item.step > 5) {
+        errors.push(`${where} (${item.param}): "step" must be an integer 1..5, got ${JSON.stringify(item.step)}`);
+        continue;
+      }
+
+      const rawVal = item[valKey];
+      let outItem = Object.assign({}, item);
+      if (typeof rawVal === "number") {
+        // Carry-forward fix (mandatory, Task 2 review): PACKS.clamp passes non-finite
+        // numbers through UNFLAGGED — a NaN/Infinity `set`/`to` must be rejected here,
+        // before clamp ever sees it, or it silently reaches `cleaned`.
+        if (!Number.isFinite(rawVal)) {
+          errors.push(`${where} (${item.param}): non-finite numeric "${valKey}" (${String(rawVal)}) — rejected`);
+          continue;
+        }
+        const clampResult = PACKS.clamp(target, item.param, rawVal);
+        outItem[valKey] = clampResult.value;
+        outItem.clamped = clampResult.clamped;
+      } else {
+        // string (dropdown/slot/placement kinds): pass through untouched, unflagged.
+        outItem.clamped = false;
+      }
+      cleanedItems.push(outItem);
+    }
+
+    cleaned[arrKey] = cleanedItems;
+    return { ok: errors.length === 0, errors, cleaned };
+  }
+};
 
 /* ===== SECTION: METRICS ===== */
 // Pure canvas photometry: measure/diff/score a rendered image against a reference.
@@ -640,6 +850,186 @@ SELFTEST.suites.packs = async function () {
   const pf2 = PACKS.promptFragment("vantage33");
   this.ok(pf2.includes("cam.exposure_value") && pf2.includes(evEntry.ui_path), "vantage33 fragment has cam.exposure_value + verbatim ui_path");
   this.ok(PACKS.promptFragment("corona") === "", "promptFragment unknown target -> empty string");
+};
+
+// -- suite: schemas (Task 4) ----------------------------------------------------------
+SELFTEST.suites.schemas = async function () {
+  // -- emit_recipe: byte-match the plan-fixed shape ---------------------------------
+  const EXPECTED_RECIPE = { name: "emit_recipe", strict: true, input_schema: { type: "object", additionalProperties: false,
+    required: ["baseline", "values", "rationale", "hdri_mood", "gi_notes", "status"],
+    properties: {
+      baseline: { type: "string", enum: ["factory_defaults", "settings_screenshot"] },
+      hdri_mood: { type: "string", description: "One line: what HDRI to reach for" },
+      values: { type: "array", minItems: 4, maxItems: 24, items: { type: "object", additionalProperties: false,
+        required: ["param", "set", "from", "step", "confidence", "why"],
+        properties: {
+          param: { type: "string", description: "MUST be an id from the provided pack" },
+          set: { type: ["number", "string"] }, from: { type: ["number", "string"] },
+          step: { type: "integer", minimum: 1, maximum: 5 },
+          confidence: { type: "string", enum: ["high", "medium", "low"] },
+          why: { type: "string" } } } },
+      rationale: { type: "string" }, gi_notes: { type: "string" },
+      status: { type: "string", enum: ["continue", "handoff_to_grade"] },
+      status_reason: { type: "string" } } } };
+  this.ok(JSON.stringify(SCHEMAS.emit_recipe) === JSON.stringify(EXPECTED_RECIPE), "SCHEMAS.emit_recipe byte-matches the plan-fixed shape");
+
+  // -- emit_correction: value-object shape with moves[]/to + applied_assumed --------
+  this.ok(!!SCHEMAS.emit_correction, "SCHEMAS.emit_correction exists");
+  const ec = SCHEMAS.emit_correction;
+  this.ok(ec.name === "emit_correction" && ec.strict === true, "emit_correction: name + strict");
+  const ecReq = ec.input_schema.required;
+  for (const k of ["moves", "rationale", "status", "status_reason", "applied_assumed"]) this.ok(ecReq.includes(k), `emit_correction: required includes "${k}"`);
+  this.ok(ec.input_schema.additionalProperties === false, "emit_correction: additionalProperties false at top level");
+  this.ok(ec.input_schema.properties.applied_assumed.type === "boolean", "emit_correction: applied_assumed is boolean");
+  this.ok(ec.input_schema.properties.status.enum.includes("continue") && ec.input_schema.properties.status.enum.includes("handoff_to_grade"), "emit_correction: status enum matches emit_recipe's");
+  const movesSchema = ec.input_schema.properties.moves;
+  this.ok(movesSchema.type === "array" && movesSchema.minItems === 1 && movesSchema.maxItems === 5, "emit_correction: moves[] minItems 1, maxItems 5");
+  const moveItemReq = movesSchema.items.required;
+  this.ok(moveItemReq.includes("to") && !moveItemReq.includes("set"), "emit_correction: move item uses \"to\", not \"set\"");
+  for (const k of ["param", "from", "step", "confidence", "why"]) this.ok(moveItemReq.includes(k), `emit_correction: move item required includes "${k}"`);
+  this.ok(movesSchema.items.additionalProperties === false, "emit_correction: move item additionalProperties false");
+  this.ok(JSON.stringify(movesSchema.items.properties.step) === JSON.stringify(EXPECTED_RECIPE.input_schema.properties.values.items.properties.step), "emit_correction: move item step is the same integer 1..5 shape as values[].step");
+
+  // -- systemPrompt: requirement checklist (string-content assertions; see report for the
+  // full mapping to plan requirements) ------------------------------------------------
+  for (const target of PACKS.targets()) {
+    for (const mode of ["recipe", "correction"]) {
+      const sp = SCHEMAS.systemPrompt(target, mode);
+      this.ok(typeof sp === "string" && sp.length > 200, `systemPrompt(${target},${mode}): non-trivial string`);
+      this.ok(/lighting[- ]?TD|technical director/i.test(sp), `systemPrompt(${target},${mode}): lighting-TD persona present`);
+      this.ok(/do not measure/i.test(sp) && /measurements are provided/i.test(sp), `systemPrompt(${target},${mode}): "you do not measure" clause present`);
+      this.ok(/trust your eyes for direction/i.test(sp) && /numbers for magnitude/i.test(sp), `systemPrompt(${target},${mode}): eyes-for-direction/numbers-for-magnitude clause present`);
+      this.ok(/ONLY.*param(eter)? ids|choose ONLY/i.test(sp), `systemPrompt(${target},${mode}): "choose ONLY param ids from the pack" clause present`);
+      this.ok(/inside.*ranges|within.*ranges|legal ranges/i.test(sp), `systemPrompt(${target},${mode}): values-inside-ranges clause present`);
+      this.ok(/factory defaults/i.test(sp) && /settings screenshot/i.test(sp), `systemPrompt(${target},${mode}): baseline convention present`);
+      this.ok(/1[.).\s]*exposure.*WB|exposure.*WB.*lock|lock exposure/i.test(sp), `systemPrompt(${target},${mode}): step 1 (exposure/WB lock) present`);
+      this.ok(/2[.).\s]*sun|sun.*key/i.test(sp), `systemPrompt(${target},${mode}): step 2 (sun/key) present`);
+      this.ok(/3[.).\s]*dome|dome.*environment/i.test(sp), `systemPrompt(${target},${mode}): step 3 (dome/environment) present`);
+      this.ok(/4[.).\s]*fills|fills.*rim/i.test(sp), `systemPrompt(${target},${mode}): step 4 (fills/rim) present`);
+      this.ok(/5[.).\s]*color mapping|color mapping/i.test(sp), `systemPrompt(${target},${mode}): step 5 (color mapping) present`);
+      this.ok(/doubling sun.*\+?1 ?EV|\+1 ?EV.*doubling sun|same pixels/i.test(sp), `systemPrompt(${target},${mode}): degeneracy rationale (doubling sun ~= +1 EV, same pixels) present`);
+      this.ok(/99%/.test(sp) && /surgical/i.test(sp) && /not tasteful/i.test(sp), `systemPrompt(${target},${mode}): exactness goal ("~99% match — be surgical, not tasteful") present`);
+      this.ok(sp.includes(PACKS.promptFragment(target)), `systemPrompt(${target},${mode}): ends with PACKS.promptFragment(target) verbatim`);
+      this.ok(!/kelvin spinner|V-Ray 7's sun/i.test(sp.replace(PACKS.promptFragment(target), "")), `systemPrompt(${target},${mode}): host-specific example (kelvin spinner) not hardcoded outside the pack fragment`);
+    }
+    const spCorrection = SCHEMAS.systemPrompt(target, "correction");
+    this.ok(/move history/i.test(spCorrection), `systemPrompt(${target},correction): "full move history provided" present`);
+    this.ok(/never reverse.*more than half|more than half/i.test(spCorrection), `systemPrompt(${target},correction): never-reverse-more-than-half rule present`);
+    this.ok(/3[–\-—]5 moves|3 to 5 moves|3-5 moves/i.test(spCorrection), `systemPrompt(${target},correction): 3-5 moves max present`);
+    this.ok(/ping-?pong/i.test(spCorrection), `systemPrompt(${target},correction): ping-pong / oscillation-guard clause present`);
+    this.ok(/degeneracy/i.test(spCorrection) && /status_reason/i.test(spCorrection), `systemPrompt(${target},correction): name-the-degeneracy-in-status_reason clause present`);
+    this.ok(/handoff_to_grade/i.test(spCorrection) && /chromatic|tonal/i.test(spCorrection), `systemPrompt(${target},correction): handoff_to_grade-when-chromatic/tonal clause present`);
+    const spRecipe = SCHEMAS.systemPrompt(target, "recipe");
+    this.ok(!/move history/i.test(spRecipe), `systemPrompt(${target},recipe): correction-only move-history clause absent in recipe mode`);
+  }
+  this.ok(SCHEMAS.systemPrompt("corona", "recipe") !== SCHEMAS.systemPrompt("vray7max", "recipe"), "systemPrompt: unknown target does not silently alias a known pack");
+
+  // -- validateRecipe: recipe shape (values[]/set) -----------------------------------
+  function baseRecipe() {
+    return {
+      baseline: "factory_defaults",
+      hdri_mood: "soft overcast",
+      values: [
+        { param: "sun.kelvin", set: 5500, from: 5777, step: 2, confidence: "high", why: "warm the key" },
+        { param: "cm.contrast", set: 0.1, from: 0, step: 5, confidence: "medium", why: "lift contrast" },
+        { param: "vfb.exposure", set: 0.5, from: 0, step: 1, confidence: "high", why: "brighten" },
+        { param: "dome.intensity", set: 1.2, from: 1.0, step: 3, confidence: "low", why: "brighten sky" }
+      ],
+      rationale: "test rationale", gi_notes: "brute force is fine",
+      status: "continue", status_reason: ""
+    };
+  }
+  const valid = SCHEMAS.validateRecipe(baseRecipe(), "vray7max");
+  this.ok(valid.ok === true, `validateRecipe: valid object passes (errors: ${JSON.stringify(valid.errors)})`);
+  this.ok(Array.isArray(valid.errors) && valid.errors.length === 0, "validateRecipe: valid object has zero errors");
+  this.ok(!!valid.cleaned && Array.isArray(valid.cleaned.values) && valid.cleaned.values.length === 4, "validateRecipe: cleaned.values preserved for a valid object");
+
+  const unknownParam = baseRecipe();
+  unknownParam.values[0].param = "no.such_param";
+  const rUnknown = SCHEMAS.validateRecipe(unknownParam, "vray7max");
+  this.ok(rUnknown.ok === false, "validateRecipe: unknown param -> ok===false");
+  this.ok(rUnknown.errors.some(e => /no\.such_param/.test(e)), "validateRecipe: unknown param error names the bad id");
+
+  const outOfRange = baseRecipe();
+  outOfRange.values[0] = { param: "sun.kelvin", set: 40000, from: 5777, step: 2, confidence: "high", why: "way too warm... or cold" };
+  const rClamped = SCHEMAS.validateRecipe(outOfRange, "vray7max");
+  this.ok(rClamped.ok === true, "validateRecipe: out-of-range numeric set is a warning, not a fail (ok===true)");
+  const clampedVal = rClamped.cleaned.values.find(v => v.param === "sun.kelvin");
+  this.ok(!!clampedVal, "validateRecipe: clamped value survives into cleaned");
+  this.ok(clampedVal.set === PACKS.lookup("vray7max", "sun.kelvin").range[1], `validateRecipe: 40000 clamped to pack max (got ${clampedVal.set})`);
+  this.ok(clampedVal.clamped === true, "validateRecipe: clamped value flagged clamped:true");
+
+  const nanValue = baseRecipe();
+  nanValue.values[0] = { param: "sun.kelvin", set: NaN, from: 5777, step: 2, confidence: "high", why: "broken" };
+  const rNaN = SCHEMAS.validateRecipe(nanValue, "vray7max");
+  this.ok(rNaN.ok === false, "validateRecipe: NaN set -> ok===false (ERROR, never passed through)");
+  this.ok(rNaN.errors.some(e => /sun\.kelvin/.test(e)), "validateRecipe: NaN error names the offending param");
+  this.ok(!rNaN.cleaned.values.some(v => v.param === "sun.kelvin" && (Number.isNaN(v.set))), "validateRecipe: NaN never survives into cleaned.values");
+
+  const infValue = baseRecipe();
+  infValue.values[0] = { param: "sun.kelvin", set: Infinity, from: 5777, step: 2, confidence: "high", why: "broken" };
+  const rInf = SCHEMAS.validateRecipe(infValue, "vray7max");
+  this.ok(rInf.ok === false, "validateRecipe: Infinity set -> ok===false (ERROR)");
+  const negInfValue = baseRecipe();
+  negInfValue.values[0] = { param: "sun.kelvin", set: -Infinity, from: 5777, step: 2, confidence: "high", why: "broken" };
+  const rNegInf = SCHEMAS.validateRecipe(negInfValue, "vray7max");
+  this.ok(rNegInf.ok === false, "validateRecipe: -Infinity set -> ok===false (ERROR)");
+
+  const badStep = baseRecipe();
+  badStep.values[0].step = 7;
+  const rBadStep = SCHEMAS.validateRecipe(badStep, "vray7max");
+  this.ok(rBadStep.ok === false, "validateRecipe: step outside 1..5 -> ok===false");
+
+  const zeroStep = baseRecipe();
+  zeroStep.values[0].step = 0;
+  const rZeroStep = SCHEMAS.validateRecipe(zeroStep, "vray7max");
+  this.ok(rZeroStep.ok === false, "validateRecipe: step 0 -> ok===false");
+
+  // string `set` (dropdown/slot/placement kinds) passes through untouched, unflagged
+  const stringSet = baseRecipe();
+  stringSet.values[1] = { param: "cm.type", set: "Reinhard", from: "Reinhard", step: 5, confidence: "high", why: "keep default" };
+  const rString = SCHEMAS.validateRecipe(stringSet, "vray7max");
+  this.ok(rString.ok === true, "validateRecipe: string set (dropdown) passes");
+  const cleanedString = rString.cleaned.values.find(v => v.param === "cm.type");
+  this.ok(cleanedString.set === "Reinhard" && !cleanedString.clamped, "validateRecipe: string set untouched, not flagged clamped");
+
+  // -- validateRecipe: correction shape (moves[]/to) ---------------------------------
+  function baseCorrection() {
+    return {
+      moves: [
+        { param: "sun.kelvin", to: 5200, from: 5500, step: 2, confidence: "high", why: "cool it slightly" }
+      ],
+      rationale: "small trim", status: "continue", status_reason: "", applied_assumed: false
+    };
+  }
+  const validCorrection = SCHEMAS.validateRecipe(baseCorrection(), "vray7max", "correction");
+  this.ok(validCorrection.ok === true, `validateRecipe correction mode: valid object passes (errors: ${JSON.stringify(validCorrection.errors)})`);
+  this.ok(Array.isArray(validCorrection.cleaned.moves) && validCorrection.cleaned.moves.length === 1, "validateRecipe correction mode: cleaned.moves preserved");
+
+  const correctionOutOfRange = baseCorrection();
+  correctionOutOfRange.moves[0].to = -500;
+  const rCorrectionClamped = SCHEMAS.validateRecipe(correctionOutOfRange, "vray7max", "correction");
+  this.ok(rCorrectionClamped.ok === true, "validateRecipe correction mode: out-of-range `to` is a warning, not a fail");
+  const clampedMove = rCorrectionClamped.cleaned.moves[0];
+  this.ok(clampedMove.to === PACKS.lookup("vray7max", "sun.kelvin").range[0] && clampedMove.clamped === true, `validateRecipe correction mode: -500 clamped to pack min, flagged (got ${clampedMove.to})`);
+
+  const correctionNaN = baseCorrection();
+  correctionNaN.moves[0].to = NaN;
+  const rCorrectionNaN = SCHEMAS.validateRecipe(correctionNaN, "vray7max", "correction");
+  this.ok(rCorrectionNaN.ok === false, "validateRecipe correction mode: NaN `to` -> ok===false (ERROR)");
+
+  const correctionUnknownParam = baseCorrection();
+  correctionUnknownParam.moves[0].param = "no.such_param";
+  const rCorrectionUnknown = SCHEMAS.validateRecipe(correctionUnknownParam, "vray7max", "correction");
+  this.ok(rCorrectionUnknown.ok === false, "validateRecipe correction mode: unknown param -> ok===false");
+
+  // mode defaults to "recipe" when omitted (2-arg call keeps working for the recipe shape)
+  const rDefaultMode = SCHEMAS.validateRecipe(baseRecipe(), "vray7max");
+  this.ok(rDefaultMode.ok === true, "validateRecipe: 2-arg call (mode omitted) defaults to recipe mode");
+
+  // unknown target: every param lookup fails -> every value errors
+  const rUnknownTarget = SCHEMAS.validateRecipe(baseRecipe(), "corona");
+  this.ok(rUnknownTarget.ok === false, "validateRecipe: unknown target -> ok===false (no params resolve)");
 };
 
 // -- suite: metrics (Task 3) ---------------------------------------------------------
