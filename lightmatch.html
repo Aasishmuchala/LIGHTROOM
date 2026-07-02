@@ -1,149 +1,339 @@
-<!DOCTYPE html><html><head><meta charset="utf-8"><title>LightMatch</title>
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LightMatch</title>
 <style>
 /* ===== SECTION: STYLE =====
-   Task 7a: semantic classes only, clean/readable/minimal placeholder styling — NO
-   decorative effort (colors/spacing/typography are intentionally plain). Task 7b
-   (design-taste pass) restyles this section; do not add polish here. */
+   Task 7b: design-taste pass. Dark precision-instrument language (Resolve/Vantage
+   neighborhood): cool-neutral surfaces with border-driven elevation, ONE desaturated
+   tungsten-amber accent reserved for actions/selection, mono + tabular numerals for
+   every value. System fonts only; no external assets of any kind.
+   Radius rule (locked): 4px controls/badges/thumbs · 8px containers · dots round.
+   Type scale: 10/11/12/13/15px — hierarchy from weight/case/spacing, never font variety.
+   Elevation steps: --bg page < --panel cards < --ctl controls < --raised toasts.
+   All text/surface pairs verified ≥ 4.7:1 (small text) WCAG AA. */
+:root {
+  --bg: #131417;
+  --panel: #17181b;
+  --panel-2: #1a1c21;
+  --ctl: #1e2026;
+  --ctl-hover: #24272e;
+  --raised: #262932;
+  --line: #24272d;
+  --line-2: #31353d;
+  --text: #e8eaed;
+  --text-2: #a9afb9;
+  --text-3: #8b929e;
+  --accent: #d9a15c;
+  --accent-strong: #e0a860;
+  --accent-ink: #131417;
+  --accent-wash: rgba(217, 161, 92, 0.12);
+  --ok: #7db98f;
+  --ok-edge: #4a7d5c;
+  --ok-wash: #16211b;
+  --warn: #c9a356;
+  --warn-edge: #8f7433;
+  --warn-wash: #221e12;
+  --err: #c96a5e;
+  --err-edge: #8f4a41;
+  --err-wash: #241717;
+  --sans: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
 html, body {
   margin: 0;
   padding: 0;
-  background: #141414;
-  color: #e8e8e8;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
   font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
 }
-#app {
-  padding: 16px;
-  max-width: 1400px;
-  margin: 0 auto;
-}
-button, select, input {
-  font: inherit;
-  color: inherit;
-}
+#app { padding: 20px 24px 32px; max-width: 1400px; margin: 0 auto; }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
 a { color: inherit; }
+::selection { background: rgba(217, 161, 92, 0.28); }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+* { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+button, .chip, .slot, input, select, summary {
+  transition: background-color 0.12s ease-out, border-color 0.12s ease-out,
+              color 0.12s ease-out, box-shadow 0.12s ease-out;
+}
 
-/* -- banners --------------------------------------------------------------------- */
+/* -- banners: warn = amber, error = brick, handoff = green milestone. Valence is
+      carried by a 3px left edge + tinted wash; message text stays high-contrast. -- */
 .banner {
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
+  border: 1px solid var(--line-2);
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  font-size: 13px;
 }
-.banner-warn { border-color: #8a6d1a; background: #2a2410; }
-.banner-error { border-color: #8a2a2a; background: #2a1414; }
-.banner-handoff { border-color: #2a6d4a; background: #10241a; margin-bottom: 8px; }
+.banner-warn { border-color: var(--warn-edge); border-left-color: var(--warn); background: var(--warn-wash); }
+.banner-error { border-color: var(--err-edge); border-left-color: var(--err); background: var(--err-wash); }
+.banner-handoff { border-color: var(--ok-edge); border-left-color: var(--ok); background: var(--ok-wash); color: #c3ddcd; }
 .banner .btn-small { margin-left: auto; }
 .raw-details { width: 100%; }
-.raw { white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto; background: #0c0c0c; padding: 8px; border-radius: 4px; font-size: 11px; }
+.raw-details summary { cursor: pointer; color: var(--text-3); font-size: 12px; }
+.raw-details summary:hover { color: var(--text-2); }
+.raw {
+  white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto;
+  background: var(--bg); border: 1px solid var(--line); padding: 8px 10px; margin-top: 6px;
+  border-radius: 4px; font-family: var(--mono); font-size: 11px; color: var(--text-2);
+}
 
-/* -- topbar ------------------------------------------------------------------------ */
-#topbar { border-bottom: 1px solid #2c2c2c; padding-bottom: 12px; margin-bottom: 16px; }
-.topbar-inner { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.brand { font-weight: 600; font-size: 16px; margin-right: 8px; }
-.target-toggle { display: inline-flex; border: 1px solid #3a3a3a; border-radius: 4px; overflow: hidden; }
-.toggle-btn { background: #1c1c1c; border: none; padding: 6px 10px; cursor: pointer; }
-.toggle-btn.active { background: #3a5a7a; color: #fff; }
-.model-picker { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 4px; padding: 6px 8px; }
-.key-area { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
-.key-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.key-dot-ok { background: #3ea36b; }
-.key-dot-missing { background: #a3603e; }
-.key-field { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 4px; padding: 6px 8px; width: 140px; }
-.privacy-line { color: #8a8a8a; font-size: 11px; margin-top: 6px; }
+/* -- topbar: instrument nameplate + primary mode controls ------------------------- */
+#topbar { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 20px; }
+.topbar-inner { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.brand { font-weight: 650; font-size: 15px; letter-spacing: 0.02em; margin-right: 10px; }
+.target-toggle {
+  display: inline-flex; background: var(--ctl); border: 1px solid var(--line-2);
+  border-radius: 4px; padding: 2px; gap: 2px;
+}
+.toggle-btn {
+  background: transparent; border: none; border-radius: 3px;
+  padding: 4px 12px; font-size: 12px; font-weight: 500; color: var(--text-2);
+}
+.toggle-btn:hover { color: var(--text); }
+.toggle-btn.active { background: var(--accent-wash); color: var(--accent-strong); font-weight: 600; }
+.model-picker {
+  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 4px;
+  padding: 5px 8px; font-size: 12px; color: var(--text-2);
+}
+.model-picker:hover { border-color: var(--text-3); color: var(--text); }
+.key-area { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.key-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.key-dot-ok { background: var(--ok); }
+.key-dot-missing { background: var(--err); }
+.key-field {
+  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 4px;
+  padding: 5px 9px; width: 150px; font-family: var(--mono); font-size: 12px;
+}
+.key-field::placeholder { color: var(--text-3); }
+.key-field:focus { outline: none; border-color: var(--accent); }
+.privacy-line { color: var(--text-3); font-size: 11px; margin-top: 8px; }
 
 /* -- main two-column layout -------------------------------------------------------- */
-#main { display: flex; gap: 24px; align-items: flex-start; }
-#leftrail { flex: 0 0 320px; }
+#main { display: flex; gap: 28px; align-items: flex-start; }
+#leftrail { flex: 0 0 320px; min-width: 0; }
 #recipearea { flex: 1 1 auto; min-width: 0; }
 
-/* -- slots -------------------------------------------------------------------------- */
+/* -- slots: inviting drop targets. Empty = dashed invitation; filled = solid,
+      confident thumb; focused = unmistakable accent ring (paste routing relies on
+      perceived focus). ------------------------------------------------------------- */
 .slots { display: flex; flex-direction: column; gap: 10px; }
 .slot {
-  border: 1px dashed #3a3a3a;
-  border-radius: 4px;
-  padding: 8px;
+  background: var(--panel);
+  border: 1px dashed var(--line-2);
+  border-radius: 8px;
+  padding: 10px 12px 8px;
   cursor: pointer;
 }
-.slot-focused { border-color: #6a9ac4; border-style: solid; }
-.slot-label { font-weight: 600; margin-bottom: 6px; }
-.slot-hint { font-weight: 400; color: #8a8a8a; }
-.slot-drop { min-height: 60px; display: flex; align-items: center; justify-content: center; }
-.slot-empty { color: #8a8a8a; text-align: center; font-size: 12px; }
-.slot-thumb { max-width: 100%; max-height: 100px; display: block; }
-.slot-file-input { margin-top: 6px; font-size: 11px; }
-.attempt-hint { color: #8a8a8a; font-size: 11px; margin: 10px 0; }
+.slot:hover { border-color: var(--text-3); }
+.slot-filled { border-style: solid; border-color: var(--line-2); }
+.slot:focus { outline: none; }
+.slot-focused, .slot-focused:hover {
+  border-style: solid; border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--accent-wash);
+}
+.slot-label { font-weight: 600; font-size: 12px; margin-bottom: 8px; }
+.slot-focused .slot-label { color: var(--accent-strong); }
+.slot-hint { font-weight: 400; color: var(--text-3); font-size: 11px; }
+.slot-drop { min-height: 64px; display: flex; align-items: center; justify-content: center; }
+.slot-empty { color: var(--text-3); text-align: center; font-size: 11.5px; padding: 4px 8px; }
+.slot-thumb {
+  width: 100%; max-height: 110px; object-fit: cover; display: block;
+  border-radius: 4px; border: 1px solid var(--line);
+}
+.slot-file-input { margin-top: 8px; font-size: 10.5px; color: var(--text-3); max-width: 100%; }
+.slot-file-input::file-selector-button {
+  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 4px;
+  color: var(--text-2); font: inherit; padding: 2px 8px; margin-right: 8px; cursor: pointer;
+}
+.slot-file-input::file-selector-button:hover { color: var(--text); border-color: var(--text-3); }
+.attempt-hint { color: var(--text-3); font-size: 11px; margin: 10px 2px 14px; }
 
-/* -- chips ---------------------------------------------------------------------------- */
-.chips { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
-.chip-group-label { font-size: 11px; color: #8a8a8a; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
+/* -- chips: single-select context toggles ------------------------------------------- */
+.chips { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.chip-group-label {
+  font-size: 10px; color: var(--text-3); margin-bottom: 5px;
+  text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+}
 .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
-.chip { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 12px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
-.chip-active { background: #3a5a7a; border-color: #6a9ac4; color: #fff; }
+.chip {
+  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 4px;
+  padding: 3px 10px; font-size: 11.5px; color: var(--text-2);
+}
+.chip:hover { color: var(--text); border-color: var(--text-3); }
+.chip-active, .chip-active:hover {
+  background: var(--accent-wash); border-color: var(--accent);
+  color: var(--accent-strong); font-weight: 500;
+}
 
-/* -- buttons -------------------------------------------------------------------------- */
-.btn-primary { background: #3a5a7a; color: #fff; border: none; border-radius: 4px; padding: 8px 16px; cursor: pointer; width: 100%; }
-.btn-primary:disabled { opacity: 0.4; cursor: default; }
-.btn-secondary { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 4px; padding: 8px 16px; cursor: pointer; width: 100%; margin-top: 8px; }
-.btn-small { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 11px; }
-.spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid #ffffff88; border-top-color: #fff; border-radius: 50%; animation: lm-spin 0.7s linear infinite; }
+/* -- buttons: one accent-filled primary; everything else stays quiet ---------------- */
+.btn-primary {
+  background: var(--accent); color: var(--accent-ink); font-weight: 600;
+  border: none; border-radius: 4px; padding: 9px 16px; width: 100%;
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-strong); }
+.btn-primary:active:not(:disabled) { transform: translateY(1px); }
+.btn-primary:disabled { background: var(--ctl); color: var(--text-3); cursor: default; }
+.btn-secondary {
+  background: transparent; border: 1px solid var(--line-2); border-radius: 4px;
+  padding: 8px 16px; width: 100%; margin-top: 8px; color: var(--text-2); font-size: 12.5px;
+}
+.btn-secondary:hover { color: var(--text); border-color: var(--text-3); }
+.btn-secondary:active { transform: translateY(1px); }
+.btn-small {
+  background: transparent; border: 1px solid var(--line-2); border-radius: 4px;
+  padding: 3px 9px; font-size: 11px; color: var(--text-2);
+}
+.btn-small:hover { color: var(--text); border-color: var(--text-3); }
+.spinner {
+  display: inline-block; width: 10px; height: 10px; vertical-align: -1px;
+  border: 2px solid rgba(19, 20, 23, 0.35); border-top-color: var(--accent-ink);
+  border-radius: 50%; animation: lm-spin 0.7s linear infinite;
+}
 @keyframes lm-spin { to { transform: rotate(360deg); } }
 
-/* -- recipe card ------------------------------------------------------------------------ */
-.empty-state { color: #8a8a8a; padding: 40px 0; text-align: center; }
-.recipe-card { border: 1px solid #2c2c2c; border-radius: 4px; padding: 14px; margin-bottom: 14px; }
-.correction-card { background: #1a1a1a; }
-.recipe-card-header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
-.recipe-card-title { font-weight: 600; }
-.recipe-card-baseline { color: #8a8a8a; font-size: 12px; }
-.recipe-card-actions { margin-left: auto; display: flex; gap: 6px; }
-.score-inline { color: #8a8a8a; font-weight: 400; font-size: 12px; margin-left: 8px; }
-.step-group { margin-bottom: 12px; }
-.step-header { font-weight: 600; font-size: 12px; color: #a8c4e0; margin-bottom: 6px; }
-.rationale-foldout { margin-top: 10px; font-size: 12px; color: #c0c0c0; }
-.rationale-foldout summary { cursor: pointer; color: #8a8a8a; }
-.hdri-mood, .gi-notes { font-size: 12px; color: #a0a0a0; margin-top: 4px; }
-.status-reason { font-size: 12px; color: #a0a0a0; margin-top: 6px; }
-
-/* -- value rows ---------------------------------------------------------------------------- */
-.value-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 0;
-  border-top: 1px solid #232323;
+/* -- recipe card: the hero. Step groups scan as bands; ui_path breadcrumbs recede,
+      the control leaf carries the weight; values are mono/tabular. ------------------ */
+.empty-state {
+  color: var(--text-3); padding: 72px 24px; text-align: center; font-size: 13px;
+  border: 1px dashed var(--line-2); border-radius: 8px;
 }
-.value-row-placement { font-style: italic; }
+.recipe-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 16px 20px 14px; margin-bottom: 12px;
+}
+.correction-card { background: var(--panel-2); }
+.recipe-card-header {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.recipe-card-title { font-weight: 650; font-size: 14px; letter-spacing: 0.01em; }
+.recipe-card-baseline {
+  color: var(--text-2); font-size: 11px; background: var(--ctl);
+  border: 1px solid var(--line); border-radius: 4px; padding: 1px 8px;
+}
+.recipe-card-actions { margin-left: auto; display: flex; gap: 6px; }
+.score-inline { color: var(--text-3); font-weight: 400; font-size: 12px; margin-left: 8px; }
+.score-num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 650; font-size: 13px; color: var(--text); }
+.step-group { margin-bottom: 16px; }
+.step-group:last-of-type { margin-bottom: 6px; }
+.step-header {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 600; font-size: 10.5px; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px;
+}
+.step-header::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--line); }
+.rationale-foldout { margin-top: 12px; font-size: 12px; color: var(--text-2); }
+.rationale-foldout summary { cursor: pointer; color: var(--text-3); font-size: 12px; }
+.rationale-foldout summary:hover { color: var(--text-2); }
+.rationale-foldout p {
+  margin: 8px 0 2px; padding-left: 12px; border-left: 2px solid var(--line-2);
+  max-width: 68ch; line-height: 1.55;
+}
+.hdri-mood, .gi-notes { font-size: 12px; color: var(--text-3); margin-top: 6px; max-width: 68ch; }
+.status-reason { font-size: 12px; color: var(--text-3); margin-top: 10px; max-width: 68ch; }
+
+/* -- value rows ---------------------------------------------------------------------- */
+.value-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 0 8px; border-top: 1px solid var(--line);
+}
+.step-group .value-row:first-of-type, .correction-card .value-row:first-of-type { border-top-color: transparent; }
 .value-row-main { flex: 1 1 auto; min-width: 0; }
-.value-row-label { font-size: 12px; color: #dcdcdc; }
-.value-row-value { font-size: 12px; margin-top: 2px; }
-.from-text { color: #8a8a8a; }
-.value-row-why { color: #8a8a8a; font-size: 11px; margin-top: 2px; }
-.conf-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-top: 4px; flex-shrink: 0; }
-.conf-high { background: #3ea36b; }
-.conf-medium { background: #c4a23e; }
-.conf-low { background: #a3603e; }
-.clamped-flag { color: #c4a23e; font-size: 10px; border: 1px solid #c4a23e; border-radius: 3px; padding: 0 4px; margin-left: 6px; }
-.applied-toggle { font-size: 11px; color: #8a8a8a; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-.row-copy-btn { background: none; border: 1px solid #3a3a3a; border-radius: 3px; padding: 2px 6px; cursor: pointer; font-size: 10px; color: #8a8a8a; align-self: flex-start; }
+.value-row-label { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
+.path-sep { color: var(--text-3); opacity: 0.65; }
+.path-leaf { color: var(--text); font-weight: 600; }
+.value-row-value {
+  font-size: 12.5px; margin-top: 3px;
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+}
+.value-text { color: var(--text); font-weight: 550; }
+.value-unit { color: var(--text-2); font-weight: 400; padding-left: 2px; }
+.value-row-placement .value-row-value { font-family: var(--sans); }
+.value-row-placement .value-text { font-weight: 450; font-style: italic; color: #d3d7dc; }
+.from-text { color: var(--text-3); font-family: var(--sans); font-size: 11.5px; }
+.value-row-why { color: var(--text-3); font-size: 11px; margin-top: 3px; max-width: 62ch; }
+.conf-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-top: 5px; flex-shrink: 0; }
+.conf-high { background: var(--ok); }
+.conf-medium { background: var(--warn); }
+.conf-low { background: var(--err); }
+.clamped-flag {
+  color: var(--warn); font-size: 9.5px; font-family: var(--mono);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  border: 1px solid var(--warn-edge); border-radius: 4px;
+  padding: 0 5px; margin-left: 8px; vertical-align: 1px;
+}
+.applied-toggle {
+  font-size: 11px; color: var(--text-3); display: flex; align-items: center;
+  gap: 5px; white-space: nowrap; margin-top: 2px; cursor: pointer;
+}
+.applied-toggle:hover { color: var(--text-2); }
+.applied-toggle input { accent-color: var(--accent); width: 13px; height: 13px; margin: 0; cursor: pointer; }
+.row-copy-btn {
+  background: transparent; border: 1px solid transparent; border-radius: 4px;
+  padding: 2px 7px; font-size: 10px; color: var(--text-3); align-self: flex-start; margin-top: 1px;
+}
+.value-row:hover .row-copy-btn { border-color: var(--line-2); }
+.row-copy-btn:hover { color: var(--text); border-color: var(--text-3); }
 
-/* -- session strip ------------------------------------------------------------------------ */
-#sessionstrip { margin-top: 20px; border-top: 1px solid #2c2c2c; padding-top: 14px; }
-.session-strip { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
-.strip-thumb { flex: 0 0 auto; width: 100px; text-align: center; }
-.strip-thumb img { width: 100px; height: 70px; object-fit: cover; border-radius: 3px; display: block; }
-.strip-caption { font-size: 10px; color: #a0a0a0; margin-top: 4px; }
-.strip-caveat { font-size: 11px; color: #8a8a8a; margin-top: 8px; font-style: italic; }
-.trend-up { color: #3ea36b; }
-.trend-down { color: #a3603e; }
+/* -- session strip: filmstrip of attempts; the score is the headline number --------- */
+#sessionstrip { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; }
+#sessionstrip:empty { display: none; }
+.session-strip { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+.strip-thumb { flex: 0 0 auto; width: 124px; text-align: center; }
+.strip-thumb img {
+  width: 124px; height: 82px; object-fit: cover; display: block;
+  border-radius: 4px; border: 1px solid var(--line-2); background: var(--panel);
+}
+.strip-ref img { border-color: var(--text-3); }
+.strip-thumb .slot-empty {
+  width: 124px; height: 82px; display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--line-2); border-radius: 4px; box-sizing: border-box;
+}
+.strip-caption {
+  font-size: 10px; color: var(--text-3); margin-top: 5px; line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.strip-score { font-family: var(--mono); font-size: 13px; font-weight: 650; color: var(--text); }
+.trend { font-size: 9px; }
+.trend-up { color: var(--ok); }
+.trend-down { color: var(--err); }
+.trend-flat { color: var(--text-3); }
+.strip-caveat { font-size: 11px; color: var(--text-3); margin-top: 8px; font-style: italic; }
 
-/* -- toasts ------------------------------------------------------------------------------- */
+/* -- toasts -------------------------------------------------------------------------- */
 #toasts { position: fixed; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 6px; z-index: 1000; }
-.toast { background: #2c2c2c; border: 1px solid #3a3a3a; border-radius: 4px; padding: 8px 12px; font-size: 12px; }
+.toast {
+  background: var(--raised); border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 8px 14px; font-size: 12px; color: var(--text);
+  box-shadow: 0 8px 24px rgba(8, 9, 11, 0.5);
+}
+
+/* -- narrow (half-of-a-monitor) layout: rail stacks above the recipe, the three
+      named slots compress into a row so the recipe stays near the fold. ------------- */
+@media (max-width: 880px) {
+  #main { flex-direction: column; }
+  #leftrail { flex: 1 1 auto; width: 100%; }
+  .slots { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .slot-attempt { grid-column: 1 / -1; }
+  #app { padding: 16px 16px 28px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  button, .chip, .slot, input, select, summary { transition: none; }
+  .btn-primary:active:not(:disabled), .btn-secondary:active { transform: none; }
+  .spinner { animation-duration: 1.6s; }
+}
 </style></head><body>
 <div id="app"></div>
 <script>
@@ -2450,7 +2640,7 @@ const UI = {
     const thumb = safe ? `<img class="slot-thumb" src="${safe}" alt="${this.esc(def.label)}" />` : "";
     const focused = this._focusedSlot === def.key ? "slot-focused" : "";
     return `
-      <div class="slot ${focused}" data-slot="${def.key}" tabindex="0">
+      <div class="slot ${safe ? "slot-filled" : ""} ${focused}" data-slot="${def.key}" tabindex="0">
         <div class="slot-label">${this.esc(def.label)}${def.hint ? ` <span class="slot-hint">(${this.esc(def.hint)})</span>` : ""}</div>
         <div class="slot-drop">
           ${thumb || '<div class="slot-empty">Drop, click to focus + paste, or choose a file</div>'}
@@ -2592,13 +2782,22 @@ const UI = {
 
     const valueDisplay = isPlacement
       ? `<span class="value-text">${this.esc(value)}</span>`
-      : `<span class="value-text">${this.esc(value)}${this.esc(unit)}</span> <span class="from-text">(from ${this.esc(v.from)})</span>`;
+      : `<span class="value-text">${this.esc(value)}<span class="value-unit">${this.esc(unit)}</span></span> <span class="from-text">(from ${this.esc(v.from)})</span>`;
+
+    // Presentation-only breadcrumb treatment of the verbatim ui_path (Task 7b): each
+    // " ▸ "-separated segment is wrapped in a span (breadcrumbs recede, the final
+    // control name carries the weight) — the rendered TEXT stays byte-identical to
+    // the verbatim ui_path, and data-copy-text above still copies it verbatim.
+    const pathParts = String(uiPath).split(" ▸ ");
+    const pathLeaf = pathParts.pop();
+    const pathHtml = (pathParts.length ? `${pathParts.map(p => this.esc(p)).join(`<span class="path-sep"> ▸ </span>`)}<span class="path-sep"> ▸ </span>` : "")
+      + `<span class="path-leaf">${this.esc(pathLeaf)}</span>`;
 
     return `
       <div class="value-row ${isPlacement ? "value-row-placement" : ""}" data-param="${this.esc(v.param)}">
         ${confDot}
         <div class="value-row-main">
-          <div class="value-row-label">${this.esc(uiPath)}</div>
+          <div class="value-row-label">${pathHtml}</div>
           <div class="value-row-value">${valueDisplay} ${clampedFlag}</div>
           <div class="value-row-why">${this.esc(v.why)}</div>
         </div>
@@ -2622,7 +2821,7 @@ const UI = {
     return `
       <div class="recipe-card correction-card" data-attempt-index="${idx}">
         <div class="recipe-card-header">
-          <div class="recipe-card-title">Correction — attempt ${idx + 1} <span class="score-inline">look distance ${Math.round(att.score)}</span></div>
+          <div class="recipe-card-title">Correction — attempt ${idx + 1} <span class="score-inline">look distance <span class="score-num">${Math.round(att.score)}</span></span></div>
         </div>
         ${movesHtml}
         <div class="status-reason">${this.esc(c.status_reason || "")}</div>
@@ -2687,7 +2886,7 @@ const UI = {
       return `
         <div class="strip-thumb" data-attempt-index="${idx}">
           ${attImg}
-          <div class="strip-caption">look distance (0–100): ${Math.round(att.score)} ${trend}</div>
+          <div class="strip-caption">look distance (0–100): <span class="strip-score">${Math.round(att.score)}</span> ${trend}</div>
         </div>
       `;
     }).join("");
