@@ -340,8 +340,12 @@ button, .chip, .slot, input, select, summary {
 /* ===== SECTION: PACKS ===== */
 // Target packs: the exactness asset. Every ui_path is rendered verbatim in the UI and
 // was checked against current Chaos documentation (docs.chaos.com, spaces VMAX + LAV)
-// on 2026-07-02 — see docs/pack-verification.md for the per-entry log.
-// verified: "2026-07-02" = control name/location/options and all doc-stated facts checked.
+// on 2026-07-02, then re-audited (Vantage sun-path corrections) and extended with the
+// step-6 atmosphere/weather group on 2026-07-03 — see docs/pack-verification.md,
+// docs/settings-audit-existing.md and docs/settings-research-atmospherics.md for the
+// per-entry logs.
+// verified: "<date>"     = control name/location/options and all doc-stated facts checked
+//                          against the cited doc page on that date (2026-07-02 or -03).
 // verified: false        = the control path is doc-checked but a stated default (usually a
 //                          factory creation value) is NOT printed in current Chaos docs;
 //                          the value shipped here is conservative and flagged in notes.
@@ -431,23 +435,90 @@ const PACKS = {
         notes: "Doc-stated range and default: 1.0 = Linear multiply, 0.0 = Exponential, in-between blends the two (docs). Lower it to tame blown highlights at the render level." },
       { id: "cm.contrast", ui_path: "V-Ray Frame Buffer ▸ Layers panel ▸ Exposure layer ▸ Contrast",
         kind: "spinner", unit: "", range: [-1, 1], default: 0, verified: "2026-07-02",
-        notes: "0 = no change; positive pushes colors away from mid grey, negative toward it (docs). Practical range; slider bounds not stated in docs. Display-side: keep identical across attempts." },
+        notes: "0 = no change; positive pushes colors away from mid grey, negative toward it (docs). Practical range; slider bounds not stated in docs. Display-side: keep identical across attempts. Layer is not in the VFB's default stack — add it via V-Ray Frame Buffer ▸ Layers panel ▸ + (Add layer) if not present (docs)." },
       { id: "cm.saturation", ui_path: "V-Ray Frame Buffer ▸ Layers panel ▸ Hue/Saturation layer ▸ Saturation",
         kind: "spinner", unit: "", range: [-100, 100], default: 0, verified: "2026-07-02",
-        notes: "Lower moves toward greyscale, higher intensifies colors (docs); 0 = no change. Practical range; slider bounds not stated in docs. Display-side: keep identical across attempts." },
+        notes: "Lower moves toward greyscale, higher intensifies colors (docs); 0 = no change. Display-side: keep identical across attempts. Layer is not in the VFB's default stack — add it via V-Ray Frame Buffer ▸ Layers panel ▸ + (Add layer) if not present (docs). Range pending in-product confirmation — Chaos docs don't print slider bounds; if the VFB Hue/Saturation slider is actually -1..1, this is a 100x scale mismatch (flagged to user)." },
       { id: "vfb.exposure", ui_path: "V-Ray Frame Buffer ▸ Layers panel ▸ Exposure layer ▸ Exposure",
         kind: "spinner", unit: "stops", range: [-5, 5], default: 0, verified: "2026-07-02",
-        notes: "Doc-stated default 0.0 = original brightness; +1.0 doubles, -1.0 halves (docs). Practical range; slider bounds not stated in docs. Display-side only — keep identical across attempts." },
+        notes: "Doc-stated default 0.0 = original brightness; +1.0 doubles, -1.0 halves (docs). Practical range; slider bounds not stated in docs. Display-side only — keep identical across attempts. Layer is not in the VFB's default stack — add it via V-Ray Frame Buffer ▸ Layers panel ▸ + (Add layer) if not present (docs)." },
       { id: "vfb.wb_kelvin", ui_path: "V-Ray Frame Buffer ▸ Layers panel ▸ White Balance layer ▸ Temperature",
         kind: "spinner", unit: "K", range: [1000, 20000], default: 6500, verified: "2026-07-02",
-        notes: "Lower = bluer, higher = more amber (docs). 6500 K = layer-neutral (no correction; derived, not doc-stated). Pairs with the Magenta - Green tint slider in the same layer. Practical range." },
+        notes: "Lower = bluer, higher = more amber (docs). 6500 K = layer-neutral (no correction; derived, not doc-stated). Pairs with the Magenta - Green tint slider in the same layer. Practical range. Layer is not in the VFB's default stack — add it via V-Ray Frame Buffer ▸ Layers panel ▸ + (Add layer) if not present (docs)." },
       // -- GI ------------------------------------------------------------------------
       { id: "gi.primary", ui_path: "Render Setup ▸ GI tab ▸ Global illumination rollout ▸ Primary engine",
         kind: "dropdown", unit: "", range: [0, 0], default: "Brute force", verified: "2026-07-02",
         notes: "Options: Irradiance map (deprecated, slated for removal) | Brute force | Light cache. Factory default: Brute force (docs, Universal V-Ray Settings). Notes-only: engine choice changes noise/speed character, not the lighting targets." },
       { id: "gi.secondary", ui_path: "Render Setup ▸ GI tab ▸ Global illumination rollout ▸ Secondary engine",
         kind: "dropdown", unit: "", range: [0, 0], default: "Light cache", verified: "2026-07-02",
-        notes: "Options: None | Brute force | Light cache. Factory default: Light cache (docs). Brute force defaults to 3 bounces, Light cache works with ~100 (docs); None removes indirect color bleeding." }
+        notes: "Options: None | Brute force | Light cache. Factory default: Light cache (docs). Brute force defaults to 3 bounces, Light cache works with ~100 (docs); None removes indirect color bleeding." },
+      // -- step 6: atmosphere / weather — volumetric fog (VRayEnvironmentFog), distance
+      // haze (VRayAerialPerspective), procedural clouds (VRaySun ▸ Clouds). Added
+      // 2026-07-03; curated per docs/settings-research-atmospherics.md (ultra-granular
+      // sub-params folded into notes). ------------------------------------------------
+      { id: "fog.enabled", ui_path: "Rendering menu ▸ Environment ▸ Add ▸ VRayEnvironmentFog",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: "2026-07-03",
+        notes: "Options: on | off. on = the VRayEnvironmentFog atmospheric effect is added via the docs' Add path; off = effect absent (neutral — no fog). Without gizmos it fills the scene below Fog height (docs). Docs recommend turning on Optimized atmospherics evaluation (Render Setup ▸ System rollout) with it." },
+      { id: "fog.color", ui_path: "VRayEnvironmentFog ▸ General parameters ▸ Fog color",
+        kind: "placement", unit: "", range: [0, 0], default: "white (untinted)", verified: "2026-07-03",
+        notes: "Color swatch (texture-mappable): how the fog reacts to light — it does NOT change the volume transparency (docs). white = untinted scattering (derived neutral; factory value not printed). Emit as an instruction, e.g. 'pale warm grey for dusty evening air'." },
+      { id: "fog.distance", ui_path: "VRayEnvironmentFog ▸ General parameters ▸ Fog distance",
+        kind: "spinner", unit: "units", range: [0.1, 10000], default: 50, verified: false,
+        notes: "THE density control: larger = more transparent fog, smaller = denser (docs). Value in 3ds Max scene units (no fixed unit stated in docs); practical range. Factory creation value not printed in current Chaos docs (50 assumed — the docs' Fog height example pairs distance 50 with height 10)." },
+      { id: "fog.height", ui_path: "VRayEnvironmentFog ▸ General parameters ▸ Fog height",
+        kind: "spinner", unit: "units", range: [0, 10000], default: 10, verified: false,
+        notes: "Z-level the fog starts at, continuing downward indefinitely; IGNORED when gizmos are listed in the Nodes section (docs). Raising it darkens the scene (more fog blocks the sun) — compensate by raising Fog distance (docs). Factory value not printed (10 assumed, doc example)." },
+      { id: "fog.phase", ui_path: "VRayEnvironmentFog ▸ General parameters ▸ Fog phase function",
+        kind: "spinner", unit: "", range: [-0.9, 0.9], default: 0.0, verified: "2026-07-03",
+        notes: "Doc-stated default 0.0 = uniform scattering; positive = forward scatter (glow around backlights), negative = backward (docs). Docs warn values very close to +/-1.0 produce very directional scattering — practical range stops at 0.9." },
+      { id: "fog.scatter_gi", ui_path: "VRayEnvironmentFog ▸ General parameters ▸ Scatter GI",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: false,
+        notes: "Options: on | off. When on, the fog scatters global illumination using the current GI engine — can be quite slow; docs suggest a simple Fog emission term as the substitute. Factory state not printed in current Chaos docs (off assumed). Folded sub-params (docs): Scatter bounces (active only while on; the dense-smoke example uses 100) and the Fog emission color swatch (fog self-illumination, the cheap GI substitute)." },
+      { id: "aerial.enabled", ui_path: "Rendering menu ▸ Environment ▸ Add ▸ VRayAerialPerspective",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: "2026-07-03",
+        notes: "Options: on | off. Distance-haze approximation that works together with VRaySun + VRaySky; renders faster than VRayEnvironmentFog but produces no volumetric shadows (docs). off = effect absent (neutral). The sun's Affect atmospherics option has NO effect on it (docs, VRaySun page). Folded sub-toggle: Affect environment rays (doc default OFF — the VRaySky already accounts for scattered sunlight; enable only for artistic low-visibility looks, docs)." },
+      { id: "aerial.visibility_range", ui_path: "VRayAerialPerspective ▸ Parameters ▸ Visibility range (in meters)",
+        kind: "spinner", unit: "m", range: [10, 100000], default: 10000, verified: false,
+        notes: "Distance at which the haze has absorbed 90% of the light from objects behind it; lower = denser (docs). ALWAYS meters — converted internally from the current 3ds Max units (docs). Factory default not printed (10000 assumed; the docs' small demo scene uses 30-540 m)." },
+      { id: "aerial.atmosphere_height", ui_path: "VRayAerialPerspective ▸ Parameters ▸ Atmosphere height (in meters)",
+        kind: "spinner", unit: "m", range: [10, 100000], default: 10000, verified: false,
+        notes: "Height of the atmosphere layer in meters, converted internally from the scene units; lower values exaggerate the effect artistically and interact with scene scale (docs). Factory default not printed (10000 assumed). Practical range." },
+      { id: "aerial.inscatter", ui_path: "VRayAerialPerspective ▸ Parameters ▸ Inscattered light intensity",
+        kind: "spinner", unit: "x", range: [0, 5], default: 1.0, verified: "2026-07-03",
+        notes: "Doc-stated default 1.0 = physically accurate amount of sunlight scattered into the haze; lower/higher only for artistic purposes (docs). Practical range; spinner bounds not stated in docs." },
+      { id: "aerial.filter_color", ui_path: "VRayAerialPerspective ▸ Parameters ▸ Filter color",
+        kind: "placement", unit: "", range: [0, 0], default: "white (no tint)", verified: "2026-07-03",
+        notes: "Color swatch tinting the inscattered light (docs; their example shifts the hue of a red filter). white = untinted (derived neutral). Emit as an instruction, e.g. 'pale warm filter for golden-hour haze'." },
+      { id: "aerial.affect_background", ui_path: "VRayAerialPerspective ▸ Parameters ▸ Affect background",
+        kind: "dropdown", unit: "", range: [0, 0], default: "on", verified: "2026-07-03",
+        notes: "Options: on | off. Doc-stated default ON — the haze also covers camera rays that hit a background other than VRaySky; disabling gives cut-out looks (docs)." },
+      { id: "clouds.enabled", ui_path: "VRaySun ▸ Modify panel ▸ Clouds ▸ Clouds on",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: "2026-07-03",
+        notes: "Options: on | off. V-Ray 7's procedural clouds are a section of the SUN — the VRaySky texture has no cloud parameters and follows the active sun automatically (docs). off = clear sky (neutral; startup state not printed in docs). For a fully overcast grey sky the lever is VRaySun ▸ Sky Parameters ▸ Sky model = CIE Overcast (docs; V-Ray 7 option list on the VRaySky page)." },
+      { id: "clouds.density", ui_path: "VRaySun ▸ Modify panel ▸ Clouds ▸ Density",
+        kind: "spinner", unit: "", range: [0, 1], default: 0.5, verified: false,
+        notes: "Density of the cumulus/stratus clouds: 1 fills up the sky (docs; examples 0/0.4/0.8). Range doc-implied. Factory value not printed in current Chaos docs (0.5 assumed)." },
+      { id: "clouds.density_mult", ui_path: "VRaySun ▸ Modify panel ▸ Clouds ▸ Density multiplier",
+        kind: "spinner", unit: "x", range: [0, 5], default: 1.0, verified: "2026-07-03",
+        notes: "Multiplier on Density; larger values darken the sky at the horizon, 0 removes all clouds regardless of Density (docs). 1.0 = neutral multiplier (derived). Practical range." },
+      { id: "clouds.variety", ui_path: "VRaySun ▸ Modify panel ▸ Clouds ▸ Variety",
+        kind: "spinner", unit: "", range: [0, 1], default: 0.5, verified: false,
+        notes: "Variety of the cumulus/stratus cloud pattern (docs; examples 0/0.5/1 — range from doc examples). Factory value not printed (0.5 assumed)." },
+      { id: "clouds.cirrus_amount", ui_path: "VRaySun ▸ Modify panel ▸ Clouds ▸ Cirrus amount",
+        kind: "spinner", unit: "", range: [0, 1], default: 0, verified: false,
+        notes: "Doc-stated scale: maximum 1 fills the sky with cirrus, 0 = cirrus completely gone. Factory value not printed (0 assumed = no cirrus)." },
+      { id: "clouds.height", ui_path: "VRaySun ▸ Modify panel ▸ Clouds ▸ Height (m)",
+        kind: "spinner", unit: "m", range: [100, 10000], default: 1000, verified: false,
+        notes: "Clouds position in height, meters (docs; examples 500/1000/1500). Factory value not printed (1000 assumed). Practical range." },
+      { id: "clouds.thickness", ui_path: "VRaySun ▸ Modify panel ▸ Clouds ▸ Thickness (m)",
+        kind: "spinner", unit: "m", range: [10, 5000], default: 500, verified: false,
+        notes: "Lower = thin, sheer/lucent cumulus/stratus; higher = full and heavy (docs; examples 200/500/800). Factory value not printed (500 assumed). Practical range." },
+      { id: "clouds.ground_shadows", ui_path: "VRaySun ▸ Modify panel ▸ Clouds ▸ Ground shadows",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: false,
+        notes: "Options: on | off. off = one global lit/shadowed state decided at the camera position (fast, small scenes); on = precise per-point cloud shadows, slower but defined — for larger scenes (docs). Factory state not printed (off assumed). NOTE: Vantage's same-named toggle means cloud shadows on/off instead." },
+      { id: "clouds.detail", ui_path: "VRaySun ▸ Modify panel ▸ Clouds ▸ Seed + Phase X/Y (%) + Offset X/Y (m) + Enable contrails",
+        kind: "placement", unit: "", range: [0, 0], default: "keep identical across attempts", verified: "2026-07-03",
+        notes: "Note-entry folding the pattern sub-params (docs). Seed reseeds the cloud AND contrail pattern — RECIPE-CRITICAL: keep the SAME seed across attempts or the pattern changes while every other value matches. Phase X/Y (%) fine-tweak the cumulus/stratus pattern and LOOP at 0/100/200; Offset X/Y (m) slide the whole system (doc examples -250/500). Contrails: Enable contrails + Number of contrails (docs: 5-40, spread randomly), Contrails strength 0.1-1.0 (lower = fainter/older), Contrails distortion, Contrails offset X/Y (m), Contrails time (docs animate 0-2). Emit as an instruction, e.g. 'keep Seed 0 in every attempt'." }
     ]
   },
 
@@ -473,28 +544,29 @@ const PACKS = {
       { id: "env.sky_model", ui_path: "Environment tab ▸ Sky rollout ▸ Settings ▸ Sky model (Environment mode = Physical Sky)",
         kind: "dropdown", unit: "", range: [0, 0], default: "PRG Clear Sky", verified: "2026-07-02",
         notes: "Options: Preetham et al. | CIE Clear | CIE Overcast | Hosek et al. | PRG Clear Sky (old) | PRG Clear Sky. Updated PRG adds observer altitude, twilight to -12 deg and turbidity 1.81-4.89 (docs). Imported scenes keep their VRaySky model; default shown is the current model." },
-      // -- sun -------------------------------------------------------------------------
-      { id: "sun.enabled", ui_path: "Lights tab ▸ Sun (Vantage Default Sun / Sun Light) ▸ Basic settings ▸ Enabled",
-        kind: "dropdown", unit: "", range: [0, 0], default: "on", verified: "2026-07-02",
-        notes: "Options: on | off. Imported V-Ray suns list as Sun Light; Vantage's own sun as Vantage Default Sun — same parameters (docs). State follows the scene." },
-      { id: "sun.intensity", ui_path: "Lights tab ▸ Sun ▸ Basic settings ▸ Intensity",
-        kind: "spinner", unit: "x", range: [0, 2], default: 1.0, verified: "2026-07-02",
-        notes: "1.0 = physical sun; docs describe it as a way to reduce the default brightness. Practical range; UI accepts higher — prefer exposure moves first." },
-      { id: "sun.size", ui_path: "Lights tab ▸ Sun ▸ Basic settings ▸ Sun size mult.",
-        kind: "spinner", unit: "x", range: [0.2, 40], default: 1.0, verified: "2026-07-02",
-        notes: "Visible sun-disc size and shadow softness: lower = sharp shadows, higher = soft (docs). 1.0 = real sun. Practical range." },
-      { id: "sun.position_mode", ui_path: "Lights tab ▸ Sun ▸ Basic settings ▸ Sun position mode",
-        kind: "dropdown", unit: "", range: [0, 0], default: "Altitude/Azimuth", verified: "2026-07-02",
-        notes: "Options: Manual | Altitude/Azimuth | Geolocation | Animated Geolocation (docs). Set Altitude/Azimuth so numeric recipe moves apply; scene default follows the import." },
-      { id: "sun.azimuth", ui_path: "Lights tab ▸ Sun ▸ Basic settings ▸ Azimuth (Sun position mode = Altitude/Azimuth)",
-        kind: "spinner", unit: "deg", range: [0, 360], default: 135, verified: "2026-07-02",
-        notes: "Compass azimuth from scene North, eastward — 90 = East (docs convention). Default is informational; position is scene-specific." },
-      { id: "sun.elevation", ui_path: "Lights tab ▸ Sun ▸ Basic settings ▸ Altitude (Sun position mode = Altitude/Azimuth)",
-        kind: "spinner", unit: "deg", range: [-18, 90], default: 35, verified: "2026-07-02",
-        notes: "Vantage names this Altitude: 0 = horizon, 90 = zenith; negative values give twilight (PRG sky renders the sun to -12 deg, docs). Default is informational; position is scene-specific." },
-      { id: "sun.color_mode", ui_path: "Lights tab ▸ Sun ▸ Basic settings ▸ Color mode",
-        kind: "dropdown", unit: "", range: [0, 0], default: "Filter", verified: "2026-07-02",
-        notes: "Options: Filter | Direct | Override (docs). The Vantage sun has NO Kelvin control — warmth comes from Altitude + sky model, or Direct with a warm Color; numeric kelvin lives in post.wb_kelvin. Filter + white color = neutral/physical." },
+      // -- sun (paths corrected 2026-07-03: the default sun lives in the Environment tab's
+      // Sun and Moon rollout, NOT the Lights tab — see docs/settings-audit-existing.md) --
+      { id: "sun.enabled", ui_path: "Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Enabled",
+        kind: "dropdown", unit: "", range: [0, 0], default: "on", verified: "2026-07-03",
+        notes: "Options: on | off. Imported V-Ray suns list in the Lights tab as Sun Light; Vantage's own sun is configured in Environment tab ▸ Sun and Moon (Sun tab) — near-identical parameters (docs). State follows the scene." },
+      { id: "sun.intensity", ui_path: "Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Intensity",
+        kind: "spinner", unit: "x", range: [0, 2], default: 1.0, verified: "2026-07-03",
+        notes: "1.0 = physical sun; docs describe it as a way to reduce the default brightness. Practical range; UI accepts higher — prefer exposure moves first. Same-named control on an imported Sun Light (Lights tab)." },
+      { id: "sun.size", ui_path: "Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Sun size",
+        kind: "spinner", unit: "x", range: [0.2, 40], default: 1.0, verified: "2026-07-03",
+        notes: "Visible sun-disc size and shadow softness: lower = sharp shadows, higher = soft (docs). 1.0 = real sun. Practical range. On an imported Sun Light (Lights tab) the label is Sun size mult. (docs)." },
+      { id: "sun.position_mode", ui_path: "Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Sun position mode",
+        kind: "dropdown", unit: "", range: [0, 0], default: "Altitude/Azimuth", verified: "2026-07-03",
+        notes: "Options: Manual | Altitude/Azimuth | Geolocation | Animated Geolocation (docs). Set Altitude/Azimuth so numeric recipe moves apply; scene default follows the import. On an imported Sun Light (Lights tab) the label is Sun position (docs)." },
+      { id: "sun.azimuth", ui_path: "Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Azimuth (Sun position mode = Altitude/Azimuth)",
+        kind: "spinner", unit: "deg", range: [0, 360], default: 135, verified: "2026-07-03",
+        notes: "Compass azimuth from scene North, eastward — 90 = East (docs convention). Default is informational; position is scene-specific. Same control on an imported Sun Light (docs)." },
+      { id: "sun.elevation", ui_path: "Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Altitude (Sun position mode = Altitude/Azimuth)",
+        kind: "spinner", unit: "deg", range: [-18, 90], default: 35, verified: "2026-07-03",
+        notes: "Vantage names this Altitude: 0 = horizon, 90 = zenith; negative values give twilight (PRG sky renders the sun to -12 deg, docs). Default is informational; position is scene-specific. Same control on an imported Sun Light (docs)." },
+      { id: "sun.color_mode", ui_path: "Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Color mode",
+        kind: "dropdown", unit: "", range: [0, 0], default: "Filter", verified: "2026-07-03",
+        notes: "Options: Filter | Direct | Override (docs). The Vantage sun has NO Kelvin control — warmth comes from Altitude + sky model, or Direct with a warm Color; numeric kelvin lives in post.wb_kelvin. Filter + white color = neutral/physical. Same control + options on an imported Sun Light (docs)." },
       // -- camera ----------------------------------------------------------------------
       { id: "cam.exposure_mode", ui_path: "Camera tab ▸ Exposure (advanced) ▸ Exposure",
         kind: "dropdown", unit: "", range: [0, 0], default: "Value", verified: false,
@@ -529,17 +601,82 @@ const PACKS = {
         notes: "Options: Hable | AMPAS (docs — Vantage exposes fewer curve types than the V-Ray VFB). Requires the Filmic tonemap toggle ON; enabling it hides Highlight burn (docs). Default selection not stated in current Chaos docs (Hable assumed)." },
       { id: "post.saturation", ui_path: "Color Corrections tab ▸ Hue / Saturation ▸ Saturation",
         kind: "spinner", unit: "", range: [-100, 100], default: 0, verified: "2026-07-02",
-        notes: "Positive = more vibrant, negative = desaturated (docs); 0 = no change. Requires the Hue / Saturation toggle ON. Practical range; slider bounds not stated in docs." },
+        notes: "Positive = more vibrant, negative = desaturated (docs); 0 = no change. Requires the Hue / Saturation toggle ON. Range pending in-product confirmation — Chaos docs don't print slider bounds; if the Hue/Saturation slider is actually -1..1, this is a 100x scale mismatch (flagged to user)." },
       { id: "post.wb_kelvin", ui_path: "Color Corrections tab ▸ White balance ▸ Temperature",
         kind: "spinner", unit: "K", range: [1000, 20000], default: 6500, verified: "2026-07-02",
         notes: "Lower = bluer, higher = more amber (docs). 6500 K = neutral (no correction; derived, not doc-stated). Requires the White balance toggle ON. Practical range." },
       { id: "post.wb_tint", ui_path: "Color Corrections tab ▸ White balance ▸ Magenta-Green tint",
         kind: "spinner", unit: "", range: [-100, 100], default: 0, verified: "2026-07-02",
-        notes: "Positive = greener, negative = more purple (docs); 0 = neutral. Practical range; slider bounds not stated in docs." },
+        notes: "Positive = greener, negative = more purple (docs); 0 = neutral. Range pending in-product confirmation — Chaos docs don't print slider bounds; if the Magenta-Green tint slider is actually -1..1, this is a 100x scale mismatch (flagged to user)." },
       // -- render quality (GI character) -------------------------------------------------
       { id: "render.quality_preset", ui_path: "Viewport bar ▸ Render ▸ quality preset",
         kind: "dropdown", unit: "", range: [0, 0], default: "High", verified: false,
-        notes: "Options: Low | Medium | High | Ultra | Custom. The preset drives GI on/off and bounce counts (docs: Low = GI off, Medium = GI on with 2 bounces, ...). Keep the SAME preset across attempts or comparisons are invalid. Startup preset not stated in current Chaos docs (High assumed)." }
+        notes: "Options: Low | Medium | High | Ultra | Custom. The preset drives GI on/off and bounce counts (docs: Low = GI off, Medium = GI on with 2 bounces, ...). Keep the SAME preset across attempts or comparisons are invalid. Startup preset not stated in current Chaos docs (High assumed)." },
+      // -- step 6: atmosphere / weather — aerial-perspective fog layers + scattering fog
+      // (Environment tab ▸ Fog), clouds (Environment tab ▸ Clouds, gated on Physical sky),
+      // wetting (Environment tab ▸ Wetting, Beta in 3.3). Added 2026-07-03; curated per
+      // docs/settings-research-atmospherics.md. Docs: right-click a parameter value to
+      // reset it to its default (Environment Tab page). --------------------------------
+      { id: "fog.enabled", ui_path: "Environment tab ▸ Fog rollout ▸ Settings ▸ Enable fog",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: "2026-07-03",
+        notes: "Options: on | off. Enables the first aerial-perspective fog layer (the docs' examples call it Simple Fog 1); off = no fog (neutral; startup state not printed). A second identical layer exists as Enable fog 2 with its own range/height/start/opacity/color for two-tone atmospheres (docs)." },
+      { id: "fog.visibility_range", ui_path: "Environment tab ▸ Fog rollout ▸ Settings ▸ Fog visibility range",
+        kind: "spinner", unit: "km", range: [0.1, 300], default: 50, verified: false,
+        notes: "Distance in KILOMETERS at which the fog absorbs 90% of the light behind it; lower = denser (docs; examples 10/50/100/150). Note the unit — km here, meters on the V-Ray aerial control. Factory value not printed (50 assumed, doc example). Practical range." },
+      { id: "fog.height", ui_path: "Environment tab ▸ Fog rollout ▸ Settings ▸ Fog height",
+        kind: "spinner", unit: "m", range: [1, 10000], default: 500, verified: false,
+        notes: "Height of the fog layer in meters (docs; examples 100-2000). Factory value not printed (500 assumed, doc example). Practical range." },
+      { id: "fog.start_distance", ui_path: "Environment tab ▸ Fog rollout ▸ Settings ▸ Fog start distance",
+        kind: "spinner", unit: "", range: [0, 50000], default: 0, verified: "2026-07-03",
+        notes: "Distance from the camera at which the fog starts (docs; examples 0-20000 — unit not printed; sibling heights are meters). 0 = fog starts at the camera (neutral offset, derived). Practical range." },
+      { id: "fog.max_opacity", ui_path: "Environment tab ▸ Fog rollout ▸ Settings ▸ Fog max opacity",
+        kind: "spinner", unit: "", range: [0, 1], default: 1.0, verified: false,
+        notes: "Doc-stated scale: 1 = fog completely opaque, 0 = invisible. Lower it to keep distant objects readable through the haze (docs; examples 0.01-1). Factory value not printed (1.0 assumed)." },
+      { id: "fog.color", ui_path: "Environment tab ▸ Fog rollout ▸ Settings ▸ Fog color",
+        kind: "placement", unit: "", range: [0, 0], default: "white", verified: "2026-07-03",
+        notes: "Color swatch for the fog layer (docs; examples white/blue/grey/orange/yellow). Emit as an instruction, e.g. 'cool blue-grey morning mist'. Default informational." },
+      { id: "fog.scatter_enabled", ui_path: "Environment tab ▸ Fog rollout ▸ Scattering Fog ▸ Enable scattering fog",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: "2026-07-03",
+        notes: "Options: on | off. True volumetric scattering fog with light-shaft support — heavier than the simple layers (docs); off = neutral. Further doc-listed sub-controls not shipped here: Fog transparency + Fog emission colors, Fog start / Fog end, Fog max opacity, Fog light boost (multiplier pushing visible light shafts; docs examples 1-8), Affect secondary rays, Scatter only infinite direct lights." },
+      { id: "fog.scatter_distance", ui_path: "Environment tab ▸ Fog rollout ▸ Scattering Fog ▸ Fog distance",
+        kind: "spinner", unit: "", range: [0.1, 1000], default: 20, verified: false,
+        notes: "Density control for the scattering fog: larger = more transparent, smaller = denser (docs; examples 5-30, unit not printed). Factory value not printed (20 assumed, doc example)." },
+      { id: "fog.scatter_height", ui_path: "Environment tab ▸ Fog rollout ▸ Scattering Fog ▸ Fog height",
+        kind: "spinner", unit: "m", range: [0.1, 500], default: 8, verified: false,
+        notes: "Height of the scattering fog in meters (docs; examples 2-16 — a ground-hugging scale, unlike the simple layer's hundreds of meters). Factory value not printed (8 assumed, doc example)." },
+      { id: "fog.scatter_gi", ui_path: "Environment tab ▸ Fog rollout ▸ Scattering Fog ▸ Scatter GI",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: false,
+        notes: "Options: on | off. The fog also scatters GI — can be quite slow; docs suggest the Fog emission term as a cheap substitute. Factory state not printed (off assumed)." },
+      { id: "fog.scatter_texture_mode", ui_path: "Environment tab ▸ Fog rollout ▸ Scattering Fog ▸ Texture mode",
+        kind: "dropdown", unit: "", range: [0, 0], default: "Off", verified: "2026-07-03",
+        notes: "Options: Off | Built-in smoke density | From V-Ray scene (docs). Off = homogeneous fog (neutral no-texture state). Built-in smoke adds procedural clusters — Smoke size (m) / num iterations / exponent — and both texture modes add Ground fog (distance/height/transition) + Raymarch step size / cutoff threshold / max steps (docs)." },
+      { id: "clouds.enabled", ui_path: "Environment tab ▸ Clouds rollout ▸ Enable clouds",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: "2026-07-03",
+        notes: "Options: on | off. GATING: the Clouds rollout is available only when Environment mode = Physical sky in the Sky rollout (docs) — set env.mode first. off = clear sky (neutral; startup state not printed). Folded sub-toggles (docs): Ground shadows (on = clouds cast shadows — unlike the 3ds Max control of the same name, off removes cloud shadowing outright) and Improved shading (Vantage-only cloud-on-cloud shadowing; results are better in offline rendering)." },
+      { id: "clouds.density", ui_path: "Environment tab ▸ Clouds rollout ▸ Clouds settings ▸ Density",
+        kind: "spinner", unit: "", range: [0, 1], default: 0.5, verified: false,
+        notes: "Density of the cumulus/stratus clouds — docs describe 100% = sky fully filled and caption their examples 0/0.4/0.8 on a 0-1 scale. Factory value not printed (0.5 assumed). Folded sub-param (docs): Density multiplier — multiplies this; larger darkens the sky at the horizon, 0 removes all clouds; keep 1.0 (neutral) unless the horizon needs darkening." },
+      { id: "clouds.variety", ui_path: "Environment tab ▸ Clouds rollout ▸ Clouds settings ▸ Variety",
+        kind: "spinner", unit: "", range: [0, 1], default: 0.5, verified: false,
+        notes: "Variety of the cumulus/stratus pattern (docs; examples 0/0.5/1 — range from doc examples). Factory value not printed (0.5 assumed)." },
+      { id: "clouds.cirrus_amount", ui_path: "Environment tab ▸ Clouds rollout ▸ Clouds settings ▸ Cirrus amount",
+        kind: "spinner", unit: "", range: [0, 1], default: 0, verified: false,
+        notes: "Doc-stated scale: maximum 1 fills the sky with cirrus (high-altitude wispy) clouds, 0 = completely gone. Factory value not printed (0 assumed = no cirrus)." },
+      { id: "clouds.start_height", ui_path: "Environment tab ▸ Clouds rollout ▸ Clouds positioning settings ▸ Start height",
+        kind: "spinner", unit: "", range: [100, 10000], default: 1000, verified: false,
+        notes: "The clouds' starting height position (docs; examples 500/1000/1500, unit not printed — the V-Ray equivalent Height is meters). Vantage's name for that param. Factory value not printed (1000 assumed)." },
+      { id: "clouds.thickness", ui_path: "Environment tab ▸ Clouds rollout ▸ Clouds positioning settings ▸ Thickness",
+        kind: "spinner", unit: "", range: [10, 5000], default: 500, verified: false,
+        notes: "Height of the cloud layer: lower = thin/sheer clouds, higher = full and heavy (docs; examples 200/500/800, unit not printed). Factory value not printed (500 assumed)." },
+      { id: "clouds.detail", ui_path: "Environment tab ▸ Clouds rollout ▸ Clouds settings ▸ Random seed + Clouds positioning settings (Offset X/Y, Phase X/Y) + Contrails settings",
+        kind: "placement", unit: "", range: [0, 0], default: "keep identical across attempts", verified: "2026-07-03",
+        notes: "Note-entry folding the pattern sub-params (docs). Random seed (Vantage's name for the V-Ray Seed) reseeds the cloud AND contrail pattern — RECIPE-CRITICAL: keep the SAME seed across attempts or the pattern changes while every other value matches. Phase X/Y fine-tweak the pattern and LOOP at 0/100/200; Offset X/Y slide the whole system (units not printed; the V-Ray equivalents are meters). Contrails settings: Enable contrails + number slider (docs: 5-40, spread randomly), strength 0.1-1.0 (lower = fainter/older), distortion, offset X/Y, time (docs animate 0-2). Emit as an instruction, e.g. 'keep Random seed 0 in every attempt'." },
+      { id: "wet.enabled", ui_path: "Environment tab ▸ Wetting rollout ▸ Settings ▸ Enable wetting (Beta)",
+        kind: "dropdown", unit: "", range: [0, 0], default: "off", verified: "2026-07-03",
+        notes: "Options: on | off. Beta, new in Vantage 3.3: global wet-surface weather effect — darkens the diffuse, adds a glossier coat, puddle areas and beaded surface drops (docs). off = dry surfaces (neutral; startup state not printed). Finer controls folded here (docs): General (Size, Puddles, Occlusion), Drops and Ripples, Advanced tabs — leave at defaults unless the reference clearly shows puddles/drops. NOTE: V-Ray 7 has no atmospheric-wetting equivalent — surface wetness there is a material-domain change, outside this pack." },
+      { id: "wet.amount", ui_path: "Environment tab ▸ Wetting rollout ▸ General tab ▸ Wet cover",
+        kind: "spinner", unit: "%", range: [0, 100], default: 50, verified: false,
+        notes: "THE global wetness amount — doc name is Wet cover: surface coverage of the wetting effect when fully rained on; doc-stated scale 0% keeps surfaces dry, 100% makes surfaces uniformly wet. Beta feature. Factory value not printed in current Chaos docs (50 assumed)." }
     ]
   },
 
@@ -584,11 +721,13 @@ const PACKS = {
 const SCHEMAS = {
   // -- emit_recipe: the full-analysis tool. Byte-fixed by the plan (Step 4.1) — do
   // not restructure into the spec's grouped shape (environment/sun/fills[]/exposure/
-  // color_mapping/step_order[]); flat values[] with a per-value `step: 1..5` is the
+  // color_mapping/step_order[]); flat values[] with a per-value `step: 1..6` is the
   // locked contract because it is far easier to validate parametrically and is
   // information-equivalent (fill placement + key:fill ratio already live as
   // kind:"placement" pack entries; step_order is redundant given the fixed order in
-  // the system prompt). ------------------------------------------------------------
+  // the system prompt). Extended 2026-07-03: step max 5 -> 6 (atmosphere/weather) and
+  // values maxItems 24 -> 32 for the atmosphere packs — SELFTEST byte-match updated
+  // in lockstep. ---------------------------------------------------------------------
   emit_recipe: {
     name: "emit_recipe", strict: true, input_schema: {
       type: "object", additionalProperties: false,
@@ -597,13 +736,13 @@ const SCHEMAS = {
         baseline: { type: "string", enum: ["factory_defaults", "settings_screenshot"] },
         hdri_mood: { type: "string", description: "One line: what HDRI to reach for" },
         values: {
-          type: "array", minItems: 4, maxItems: 24, items: {
+          type: "array", minItems: 4, maxItems: 32, items: {
             type: "object", additionalProperties: false,
             required: ["param", "set", "from", "step", "confidence", "why"],
             properties: {
               param: { type: "string", description: "MUST be an id from the provided pack" },
               set: { type: ["number", "string"] }, from: { type: ["number", "string"] },
-              step: { type: "integer", minimum: 1, maximum: 5 },
+              step: { type: "integer", minimum: 1, maximum: 6 },
               confidence: { type: "string", enum: ["high", "medium", "low"] },
               why: { type: "string" }
             }
@@ -618,7 +757,7 @@ const SCHEMAS = {
 
   // -- emit_correction: the refine-round tool. Same value-object shape as
   // emit_recipe.values[] (locked identically: param/step/confidence/why, integer
-  // step 1..5), but the array is `moves` (minItems 1, maxItems 5 — "small trims beat
+  // step 1..6), but the array is `moves` (minItems 1, maxItems 5 — "small trims beat
   // re-matching") and the value key is `to` (not `set`, since a correction targets an
   // already-applied baseline rather than a fresh factory/screenshot one). Adds
   // `applied_assumed: boolean` — true when the model had to assume every prior-round
@@ -637,7 +776,7 @@ const SCHEMAS = {
             properties: {
               param: { type: "string", description: "MUST be an id from the provided pack" },
               to: { type: ["number", "string"] }, from: { type: ["number", "string"] },
-              step: { type: "integer", minimum: 1, maximum: 5 },
+              step: { type: "integer", minimum: 1, maximum: 6 },
               confidence: { type: "string", enum: ["high", "medium", "low"] },
               why: { type: "string" }
             }
@@ -688,10 +827,15 @@ const SCHEMAS = {
     lines.push("  3. dome/environment — HDRI or skylight fill, mood, and rotation.");
     lines.push("  4. fills/rim — secondary/artificial lights and their key:fill ratio.");
     lines.push("  5. color mapping — highlight burn, contrast, saturation, and any display-side correction.");
+    lines.push("  6. atmosphere/weather — fog, mist, haze, and clouds (and Vantage wetting): a mood layer matched " +
+      "to the reference's atmospheric depth.");
     lines.push("Why this order is fixed, not a suggestion: doubling the sun's intensity and opening the camera by " +
       "+1 EV produce nearly the same pixels — it is a genuine degeneracy, not a matter of taste. Locking exposure " +
       "and WB FIRST removes that ambiguity before you touch the light itself; without a fixed order the refine " +
       "loop oscillates between \"brighten the sun\" and \"open the camera\" forever.");
+    lines.push("Atmosphere (step 6) is set only after the base is dialed — and because heavy fog or haze lifts " +
+      "shadows and lowers contrast, re-confirm the exposure lock (step 1) after a large atmospheric change rather " +
+      "than re-chasing the light.");
     lines.push("");
     lines.push("Exactness goal: the user requires a ~99% match to the reference's lighting, not a pleasing " +
       "approximation. Be surgical, not tasteful — small, evidence-backed moves that close the measured gap beat " +
@@ -733,7 +877,7 @@ const SCHEMAS = {
   //                                                        unflagged by design, so this check is done HERE, first)
   //   - numeric `set`/`to` outside the pack's range    -> WARNING only: PACKS.clamp clamps it into range and the
   //                                                        cleaned value/move carries `clamped:true`; ok stays true
-  //   - `step` outside the integer range 1..5          -> ERROR
+  //   - `step` outside the integer range 1..6          -> ERROR
   //   - string `set`/`to` (dropdown/slot/placement)    -> passed through untouched, never flagged clamped
   // `cleaned` always has the same top-level shape as `obj` (values[] or moves[]), with
   // per-item `clamped` added where applicable; items that hit an ERROR are dropped
@@ -760,8 +904,8 @@ const SCHEMAS = {
         errors.push(`${where}: unknown param "${item.param}" — not in pack "${target}"`);
         continue;
       }
-      if (typeof item.step !== "number" || !Number.isInteger(item.step) || item.step < 1 || item.step > 5) {
-        errors.push(`${where} (${item.param}): "step" must be an integer 1..5, got ${JSON.stringify(item.step)}`);
+      if (typeof item.step !== "number" || !Number.isInteger(item.step) || item.step < 1 || item.step > 6) {
+        errors.push(`${where} (${item.param}): "step" must be an integer 1..6, got ${JSON.stringify(item.step)}`);
         continue;
       }
 
@@ -2678,14 +2822,15 @@ const UI = {
     }
   },
 
-  // -- recipe area: grouped-by-5-steps recipe card, or correction cards for attempts,
+  // -- recipe area: grouped-by-6-steps recipe card, or correction cards for attempts,
   // or an empty-state message. -------------------------------------------------------
   STEP_HEADERS: {
     1: "1 · Lock exposure & white balance",
     2: "2 · Sun / key",
     3: "3 · Environment / dome",
     4: "4 · Fills & rim",
-    5: "5 · Color mapping"
+    5: "5 · Color mapping",
+    6: "6 · Atmosphere / weather"
   },
   _renderRecipeArea(state, session, chain) {
     const host = this._els.recipearea;
@@ -2699,7 +2844,7 @@ const UI = {
     const recipe = chain.recipe;
     const baselineText = recipe.baseline === "settings_screenshot" ? "settings screenshot" : "factory defaults";
 
-    const stepGroups = [1, 2, 3, 4, 5].map(step => {
+    const stepGroups = [1, 2, 3, 4, 5, 6].map(step => {
       const rows = (recipe.values || []).filter(v => v.step === step);
       if (!rows.length) return "";
       return `
@@ -2944,7 +3089,7 @@ SELFTEST.suites.packs = async function () {
       this.ok(Array.isArray(e.range) && e.range.length === 2, `${w}: range is a pair`);
       this.ok(typeof e.ui_path === "string" && e.ui_path.length > 8, `${w}: ui_path non-trivial`);
       this.ok(typeof e.notes === "string" && e.notes.length > 0, `${w}: notes non-empty`);
-      this.ok(e.verified === false || e.verified === "2026-07-02", `${w}: verified is check-date or false`);
+      this.ok(e.verified === false || e.verified === "2026-07-02" || e.verified === "2026-07-03", `${w}: verified is check-date or false`);
       if (e.kind === "spinner") {
         // value-carrying entries: strictly increasing range, numeric default inside it
         this.ok(e.range[0] < e.range[1], `${w}: spinner range[0]<range[1]`);
@@ -2991,6 +3136,18 @@ SELFTEST.suites.packs = async function () {
   const pf2 = PACKS.promptFragment("vantage33");
   this.ok(pf2.includes("cam.exposure_value") && pf2.includes(evEntry.ui_path), "vantage33 fragment has cam.exposure_value + verbatim ui_path");
   this.ok(PACKS.promptFragment("corona") === "", "promptFragment unknown target -> empty string");
+  // -- step-6 atmosphere/weather group (added 2026-07-03; docs/settings-research-atmospherics.md)
+  for (const target of PACKS.targets()) {
+    const ids = PACKS[target].entries.map(e => e.id);
+    this.ok(ids.some(id => id.startsWith("fog.")), `${target}: atmosphere group has a fog.* id`);
+    this.ok(ids.some(id => id.startsWith("clouds.")), `${target}: atmosphere group has a clouds.* id`);
+  }
+  this.ok(PACKS.vray7max.entries.some(e => e.id.startsWith("aerial.")), "vray7max: atmosphere group has an aerial.* id");
+  this.ok(PACKS.vantage33.entries.some(e => e.id.startsWith("wet.")), "vantage33: atmosphere group has a wet.* (Wetting Beta) id");
+  const fogMax = PACKS.lookup("vray7max", "fog.distance");
+  this.ok(!!fogMax && pf.includes(fogMax.ui_path), "vray7max promptFragment carries fog.distance's verbatim ui_path");
+  const fogVan = PACKS.lookup("vantage33", "fog.visibility_range");
+  this.ok(!!fogVan && pf2.includes(fogVan.ui_path), "vantage33 promptFragment carries fog.visibility_range's verbatim ui_path");
 };
 
 // -- suite: schemas (Task 4) ----------------------------------------------------------
@@ -3001,12 +3158,12 @@ SELFTEST.suites.schemas = async function () {
     properties: {
       baseline: { type: "string", enum: ["factory_defaults", "settings_screenshot"] },
       hdri_mood: { type: "string", description: "One line: what HDRI to reach for" },
-      values: { type: "array", minItems: 4, maxItems: 24, items: { type: "object", additionalProperties: false,
+      values: { type: "array", minItems: 4, maxItems: 32, items: { type: "object", additionalProperties: false,
         required: ["param", "set", "from", "step", "confidence", "why"],
         properties: {
           param: { type: "string", description: "MUST be an id from the provided pack" },
           set: { type: ["number", "string"] }, from: { type: ["number", "string"] },
-          step: { type: "integer", minimum: 1, maximum: 5 },
+          step: { type: "integer", minimum: 1, maximum: 6 },
           confidence: { type: "string", enum: ["high", "medium", "low"] },
           why: { type: "string" } } } },
       rationale: { type: "string" }, gi_notes: { type: "string" },
@@ -3029,7 +3186,7 @@ SELFTEST.suites.schemas = async function () {
   this.ok(moveItemReq.includes("to") && !moveItemReq.includes("set"), "emit_correction: move item uses \"to\", not \"set\"");
   for (const k of ["param", "from", "step", "confidence", "why"]) this.ok(moveItemReq.includes(k), `emit_correction: move item required includes "${k}"`);
   this.ok(movesSchema.items.additionalProperties === false, "emit_correction: move item additionalProperties false");
-  this.ok(JSON.stringify(movesSchema.items.properties.step) === JSON.stringify(EXPECTED_RECIPE.input_schema.properties.values.items.properties.step), "emit_correction: move item step is the same integer 1..5 shape as values[].step");
+  this.ok(JSON.stringify(movesSchema.items.properties.step) === JSON.stringify(EXPECTED_RECIPE.input_schema.properties.values.items.properties.step), "emit_correction: move item step is the same integer 1..6 shape as values[].step");
 
   // -- systemPrompt: requirement checklist (string-content assertions; see report for the
   // full mapping to plan requirements) ------------------------------------------------
@@ -3048,6 +3205,8 @@ SELFTEST.suites.schemas = async function () {
       this.ok(/3[.).\s]*dome|dome.*environment/i.test(sp), `systemPrompt(${target},${mode}): step 3 (dome/environment) present`);
       this.ok(/4[.).\s]*fills|fills.*rim/i.test(sp), `systemPrompt(${target},${mode}): step 4 (fills/rim) present`);
       this.ok(/5[.).\s]*color mapping|color mapping/i.test(sp), `systemPrompt(${target},${mode}): step 5 (color mapping) present`);
+      this.ok(/6[.).\s]*atmosphere|atmosphere\/weather/i.test(sp), `systemPrompt(${target},${mode}): step 6 (atmosphere/weather) present`);
+      this.ok(/re-?confirm.*exposure|exposure.*re-?confirm/i.test(sp), `systemPrompt(${target},${mode}): atmosphere-then-reconfirm-exposure clause present`);
       this.ok(/doubling sun.*\+?1 ?EV|\+1 ?EV.*doubling sun|same pixels/i.test(sp), `systemPrompt(${target},${mode}): degeneracy rationale (doubling sun ~= +1 EV, same pixels) present`);
       this.ok(/99%/.test(sp) && /surgical/i.test(sp) && /not tasteful/i.test(sp), `systemPrompt(${target},${mode}): exactness goal ("~99% match — be surgical, not tasteful") present`);
       this.ok(sp.includes(PACKS.promptFragment(target)), `systemPrompt(${target},${mode}): ends with PACKS.promptFragment(target) verbatim`);
@@ -3119,12 +3278,18 @@ SELFTEST.suites.schemas = async function () {
   const badStep = baseRecipe();
   badStep.values[0].step = 7;
   const rBadStep = SCHEMAS.validateRecipe(badStep, "vray7max");
-  this.ok(rBadStep.ok === false, "validateRecipe: step outside 1..5 -> ok===false");
+  this.ok(rBadStep.ok === false, "validateRecipe: step 7 (outside 1..6) -> ok===false");
 
   const zeroStep = baseRecipe();
   zeroStep.values[0].step = 0;
   const rZeroStep = SCHEMAS.validateRecipe(zeroStep, "vray7max");
   this.ok(rZeroStep.ok === false, "validateRecipe: step 0 -> ok===false");
+
+  const step6 = baseRecipe();
+  step6.values[0].step = 6;
+  const rStep6 = SCHEMAS.validateRecipe(step6, "vray7max");
+  this.ok(rStep6.ok === true, `validateRecipe: step 6 (atmosphere/weather) validates OK (errors: ${JSON.stringify(rStep6.errors)})`);
+  this.ok(rStep6.cleaned.values.length === 4, "validateRecipe: step-6 value survives into cleaned.values");
 
   // string `set` (dropdown/slot/placement kinds) passes through untouched, unflagged
   const stringSet = baseRecipe();

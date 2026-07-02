@@ -1,6 +1,9 @@
-# Pack verification log — 2026-07-02
+# Pack verification log — 2026-07-02 · updated 2026-07-03
 
 Task 2 doc-grounding for `PACKS.vray7max` and `PACKS.vantage33` in `lightmatch.html`.
+2026-07-03 update (see the dated section at the end): Vantage `sun.*` path corrections,
+VFB-layer/±100-scale advisory notes, and the new step-6 atmosphere/weather group
+(current totals: vray7max **51** entries, vantage33 **47** entries).
 
 **Method.** `docs.chaos.com` now fronts a Refined site backed by Confluence Cloud
 (`docs-chaos.atlassian.net`); pages render via JS, so each page body was pulled through the
@@ -75,7 +78,7 @@ canonical citations (they 301 to `documentation.chaos.com`).
 | LAV Color Corrections Tab | https://docs.chaos.com/display/LAV/Color+Corrections+Tab | 2026-06-15 |
 | LAV What's New (v3.3.0) | https://docs.chaos.com/display/LAV/What%27s+New | 2026-06-11 |
 
-## PACKS.vray7max (30 entries)
+## PACKS.vray7max (51 entries — the 30 below logged 2026-07-02; 21 atmosphere entries in the 2026-07-03 section)
 
 - `env.gi_skylight_on` — Render Setup ▸ V-Ray tab ▸ Environment rollout ▸ GI Environment (Skylight) ▸ On — VERIFIED https://docs.chaos.com/display/VMAX/Environment+Settings (rollout path + On/Color/Multiplier/Texture group; "off" default from the page's own statement that without the override the 3ds Max Environment dialog is used).
 - `env.gi_skylight_mult` — … ▸ GI Environment (Skylight) ▸ Multiplier — VERIFIED https://docs.chaos.com/display/VMAX/Environment+Settings ("multiplier does not affect the environment texture" doc-stated; range practical, default 1.0 = neutral multiplier).
@@ -108,7 +111,7 @@ canonical citations (they 301 to `documentation.chaos.com`).
 - `gi.primary` — Render Setup ▸ GI tab ▸ Global illumination rollout ▸ Primary engine — VERIFIED https://docs.chaos.com/display/VMAX/Global+Illumination+Rollout (options incl. Irradiance map deprecation) + default Brute force VERIFIED https://docs.chaos.com/display/VMAX/Universal+V-Ray+Settings ("GI enabled, using Brute Force as Primary GI engine and Light Cache as Secondary GI engine" as the default settings).
 - `gi.secondary` — … ▸ Secondary engine — VERIFIED https://docs.chaos.com/display/VMAX/Global+Illumination+Rollout + https://docs.chaos.com/display/VMAX/Universal+V-Ray+Settings (default Light cache; bounce defaults 3/100 doc-stated).
 
-## PACKS.vantage33 (27 entries)
+## PACKS.vantage33 (47 entries — the 27 below logged 2026-07-02; 20 atmosphere entries in the 2026-07-03 section; `sun.*` ui_paths below superseded by the 2026-07-03 corrections)
 
 - `env.mode` — Environment tab ▸ Sky rollout ▸ Settings ▸ Environment mode — VERIFIED https://docs.chaos.com/display/LAV/Sky (Texture | Solid Color | Physical Sky; Physical Sky needs VRaySky in the .vrscene doc-stated; startup scene-dependent, noted).
 - `env.hdri_slot` — … ▸ Load environment (Texture mode) — VERIFIED https://docs.chaos.com/display/LAV/Sky (control + RGB color space options).
@@ -138,7 +141,7 @@ canonical citations (they 301 to `documentation.chaos.com`).
 - `post.wb_tint` — … ▸ Magenta-Green tint — VERIFIED https://docs.chaos.com/display/LAV/Color+Corrections+Tab (greener/purple semantics; 0 neutral; range practical).
 - `render.quality_preset` — Viewport bar ▸ Render ▸ quality preset — UNVERIFIED (startup preset not printed in docs) — options Low | Medium | High | Ultra | Custom + per-preset GI values VERIFIED on https://docs.chaos.com/display/LAV/Viewport+Bar ; "High" assumed.
 
-## Summary
+## Summary (2026-07-02 state — superseded totals; see the 2026-07-03 section below)
 
 - vray7max: 30 entries — 20 verified, **10 UNVERIFIED** (`dome.intensity`, `dome.temperature`,
   `sun.turbidity`, `fill.plane_intensity`, `fill.plane_kelvin`, `fill.sphere_intensity`,
@@ -152,3 +155,132 @@ canonical citations (they 301 to `documentation.chaos.com`).
   reference (no defaults listed), VMAX MAXScript page (no per-plugin defaults), VNS/APPSDK
   Confluence spaces (no plugin pages). Follow-up that would close them: read the values from
   a fresh 3ds Max + V-Ray 7 / Vantage 3.3 install and stamp them here.
+
+---
+
+# 2026-07-03 — Vantage sun-path corrections + step-6 atmosphere/weather group
+
+Applied from two read-only research passes: `docs/settings-audit-existing.md` (audit of every
+existing entry vs current Chaos docs) and `docs/settings-research-atmospherics.md` (new
+atmospherics specs). Same method as above (full page bodies via the public Confluence Cloud
+REST API at `docs-chaos.atlassian.net`; `docs.chaos.com/display/…` remain the canonical URLs).
+
+## A. Corrections to existing entries
+
+### The 7 Vantage `sun.*` ui_paths (stale location → doc-correct location)
+
+Audit root cause: Vantage's own (default) sun is driven from **Environment tab ▸ Sun and
+Moon rollout ▸ Sun tab** — only an *imported* V-Ray sun appears in the Lights tab (as "Sun
+Light"), and "Basic settings" is a legacy-page grouping that no longer names the current UI.
+Values/options/defaults were re-verified unchanged; only paths (and two label divergences,
+now in notes) were wrong. All seven re-stamped `verified:"2026-07-03"`.
+Docs: https://docs.chaos.com/display/LAV/Sun+and+Moon ·
+https://docs.chaos.com/display/LAV/Environment+Tab · https://docs.chaos.com/display/LAV/Sun+Light ·
+https://docs.chaos.com/display/LAV/Lights+Tab · https://docs.chaos.com/display/LAV/Vantage+Default+Sun
+
+| id | old ui_path (2026-07-02) | corrected ui_path (2026-07-03) |
+|---|---|---|
+| `sun.enabled` | Lights tab ▸ Sun (Vantage Default Sun / Sun Light) ▸ Basic settings ▸ Enabled | Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Enabled |
+| `sun.intensity` | Lights tab ▸ Sun ▸ Basic settings ▸ Intensity | Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Intensity |
+| `sun.size` | Lights tab ▸ Sun ▸ Basic settings ▸ Sun size mult. | Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Sun size (imported Sun Light label: Sun size mult. — noted) |
+| `sun.position_mode` | Lights tab ▸ Sun ▸ Basic settings ▸ Sun position mode | Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Sun position mode (imported Sun Light label: Sun position — noted) |
+| `sun.azimuth` | Lights tab ▸ Sun ▸ Basic settings ▸ Azimuth (…) | Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Azimuth (Sun position mode = Altitude/Azimuth) |
+| `sun.elevation` | Lights tab ▸ Sun ▸ Basic settings ▸ Altitude (…) | Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Altitude (Sun position mode = Altitude/Azimuth) |
+| `sun.color_mode` | Lights tab ▸ Sun ▸ Basic settings ▸ Color mode | Environment tab ▸ Sun and Moon rollout ▸ Sun tab ▸ Color mode |
+
+`sun.enabled` notes also rewritten: imported V-Ray suns list in the Lights tab as Sun Light;
+Vantage's own sun is configured in Environment tab ▸ Sun and Moon (Sun tab) — near-identical
+parameters (docs).
+
+### Advisory notes applied (paths/values unchanged)
+
+- **A1 — VFB layers are user-added** (`cm.contrast`, `cm.saturation`, `vfb.exposure`,
+  `vfb.wb_kelvin`): notes now state the Exposure / Hue-Saturation / White Balance layer is
+  not in the VFB's default stack — add it via V-Ray Frame Buffer ▸ Layers panel ▸ + (Add
+  layer). https://docs.chaos.com/display/VMAX/Layers
+- **A2 — ±100 saturation/tint scales unverifiable from docs** (`cm.saturation`,
+  `post.saturation`, `post.wb_tint`): notes now flag "Range pending in-product confirmation —
+  Chaos docs don't print slider bounds; if the slider is actually -1..1, this is a 100x scale
+  mismatch (flagged to user)." Numeric ranges left as-is pending an in-product spot-check.
+- V-Ray 7 pack: audit verdict 30/30 OK — no corrections needed.
+
+## B. New step-6 atmosphere/weather entries
+
+Curated from the 30/27 researched specs down to 21/20 (look-driving controls as rows;
+ultra-granular sub-params — cloud seed/phase/offset, contrail components, fog emission /
+scatter bounces / light boost, Vantage cloud Ground-shadows/Improved-shading/Density-mult —
+folded into notes or the `clouds.detail` note-entry). Every ui_path/range/default/verified
+flag is verbatim from `docs/settings-research-atmospherics.md` except `wet.*` (see below).
+
+### PACKS.vray7max (21 new)
+
+- `fog.enabled`, `fog.color`, `fog.distance` (UNVERIFIED default, 50 assumed), `fog.height`
+  (UNVERIFIED, 10 assumed), `fog.phase` (doc-stated default 0.0), `fog.scatter_gi`
+  (UNVERIFIED state, off assumed; Scatter bounces + Fog emission folded in notes)
+  → https://docs.chaos.com/display/VMAX/VRayEnvironmentFog
+- `aerial.enabled` (Affect environment rays folded in notes; sun Affect-atmospherics
+  no-effect fact from https://docs.chaos.com/display/VMAX/VRaySun ),
+  `aerial.visibility_range` (UNVERIFIED, 10000 assumed), `aerial.atmosphere_height`
+  (UNVERIFIED, 10000 assumed), `aerial.inscatter` (doc-stated default 1.0),
+  `aerial.filter_color`, `aerial.affect_background` (doc-stated default on)
+  → https://docs.chaos.com/display/VMAX/VRayAerialPerspective
+- `clouds.enabled` (clouds live on the SUN — no cloud params on VRaySky:
+  https://docs.chaos.com/display/VMAX/VRaySky ; CIE-Overcast sky-model lever folded in
+  notes), `clouds.density` (UNVERIFIED, 0.5 assumed), `clouds.density_mult` (1.0 neutral
+  derived), `clouds.variety` (UNVERIFIED, 0.5 assumed), `clouds.cirrus_amount` (UNVERIFIED,
+  0 assumed), `clouds.height` (UNVERIFIED, 1000 assumed), `clouds.thickness` (UNVERIFIED,
+  500 assumed), `clouds.ground_shadows` (UNVERIFIED state, off assumed), `clouds.detail`
+  (note-entry: Seed — keep identical across attempts — + Phase X/Y + Offset X/Y + contrail
+  sub-group) → https://docs.chaos.com/display/VMAX/VRaySun
+
+### PACKS.vantage33 (20 new)
+
+- Simple (aerial-perspective) fog: `fog.enabled`, `fog.visibility_range` (UNVERIFIED, 50 km
+  assumed), `fog.height` (UNVERIFIED, 500 assumed), `fog.start_distance` (0 neutral derived),
+  `fog.max_opacity` (UNVERIFIED, 1.0 assumed), `fog.color`
+  → https://docs.chaos.com/display/LAV/Fog
+- Scattering fog: `fog.scatter_enabled` (unshipped sub-controls incl. Fog light boost folded
+  in notes), `fog.scatter_distance` (UNVERIFIED, 20 assumed), `fog.scatter_height`
+  (UNVERIFIED, 8 assumed), `fog.scatter_gi` (UNVERIFIED state, off assumed),
+  `fog.scatter_texture_mode` (Off | Built-in smoke density | From V-Ray scene)
+  → https://docs.chaos.com/display/LAV/Fog
+- Clouds (gated on Environment mode = Physical sky, doc-stated): `clouds.enabled`
+  (Ground shadows + Improved shading folded in notes), `clouds.density` (UNVERIFIED, 0.5
+  assumed; Density multiplier folded in notes), `clouds.variety` (UNVERIFIED, 0.5 assumed),
+  `clouds.cirrus_amount` (UNVERIFIED, 0 assumed), `clouds.start_height` (UNVERIFIED, 1000
+  assumed), `clouds.thickness` (UNVERIFIED, 500 assumed), `clouds.detail` (note-entry:
+  Random seed — keep identical across attempts — + positioning + contrails)
+  → https://docs.chaos.com/display/LAV/Clouds
+- Wetting (Beta, new in 3.3 — the research pass had scoped it out, so both entries were
+  doc-grounded directly for this change from the LAV Wetting page, version 2, last modified
+  2026-06-15, fetched via the same Confluence API): `wet.enabled` = "Enable wetting (Beta)"
+  under the rollout's Settings; `wet.amount` = the **Wet cover** control (General tab;
+  doc-stated scale 0% dry … 100% uniformly wet; factory value UNVERIFIED, 50 assumed) — Wet
+  cover is the page's global wetness amount (its other "Amount" is droplet-coverage only).
+  V-Ray 7 has no atmospheric-wetting equivalent (surface wetness there is material-domain;
+  noted in `wet.enabled`). → https://docs.chaos.com/display/LAV/Wetting ·
+  https://docs.chaos.com/display/LAV/What%27s+New (Wet effects Beta listed under v3.3.0) ·
+  https://docs.chaos.com/display/LAV/Environment+Tab (Wetting rollout in the tab's rollout
+  list; also the "Right-click a parameter value to reset it to its default" tip quoted in
+  the pack's step-6 group comment)
+
+## C. Wiring shipped with this update
+
+`emit_recipe`/`emit_correction` value `step` max 5 → 6; `values` maxItems 24 → 32;
+`validateRecipe` step bound 1..6; systemPrompt step list gains
+"6. atmosphere/weather …" + a re-confirm-exposure-after-atmosphere sentence;
+UI STEP_HEADERS gains "6 · Atmosphere / weather". SELFTEST: PASS (2336 asserts), up from
+1571 — includes new asserts for step-6 schema acceptance (6 ok / 7 rejected), the step-6
+system-prompt line in both modes, and fog./clouds./aerial./wet. id presence + verbatim
+ui_path in promptFragment.
+
+## Summary (current totals, 2026-07-03)
+
+- vray7max: **51** entries — **30 verified-dated / 21 UNVERIFIED** (2026-07-02 log: 20
+  dated + 10 UNVERIFIED; atmosphere adds 10 dated + 11 UNVERIFIED).
+- vantage33: **47** entries — **29 verified-dated / 18 UNVERIFIED** (2026-07-02 log: 21
+  dated + 6 UNVERIFIED, with the 7 `sun.*` re-stamped 2026-07-03; atmosphere + wetting add
+  8 dated + 12 UNVERIFIED).
+- Every UNVERIFIED entry has a doc-checked ui_path; only factory values (and where noted a
+  unit or practical range) are unprinted in current Chaos docs — assumed values use doc
+  example values wherever one exists.
