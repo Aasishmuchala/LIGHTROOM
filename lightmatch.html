@@ -753,14 +753,154 @@ const METRICS = {
 };
 
 /* ===== SECTION: STORE ===== */
-// Full IndexedDB session persistence lands in Task 6. This task (5) adds ONLY the
-// minimal key accessor pair ADAPTER.call needs — localStorage, not IndexedDB, since
-// the key is a short string well under the 5 MB cap Task 6's session data would blow
-// through. Task 6 builds prefs/session storage around this same pair unchanged.
+// key()/setKey() (Task 5, localStorage) unchanged below. This task (6) adds:
+//   - prefs()/setPrefs(): small localStorage JSON blob (model, target).
+//   - IndexedDB session persistence: db "lightmatch" v1, one object store "sessions"
+//     keyPath "id". Promisified, minimal, single shared connection (opened lazily on
+//     first use, cached in _dbPromise so every call reuses the same connection rather
+//     than re-opening per operation).
+// Degrade-never-throw contract: if indexedDB.open(...) rejects/errors at runtime (a
+// real failure mode — private browsing, disabled storage, exotic embedder policy),
+// STORE falls back to an in-memory Map (_mem) and sets `persistent = false`. Nothing
+// in STORE ever throws out of boot; a failed IDB open is caught internally and the
+// in-memory path takes over silently for the rest of the page's lifetime.
 const STORE = {
   key: () => localStorage.getItem("lm_key") || "",
   // trim: pasted keys carry trailing newlines/spaces and produce mystifying 401s.
-  setKey: k => localStorage.setItem("lm_key", (k || "").trim())
+  setKey: k => localStorage.setItem("lm_key", (k || "").trim()),
+
+  // -- prefs: {model, target}, localStorage JSON, defaults filled in on read --------
+  PREFS_DEFAULTS: { model: "claude-opus-4-8", target: "vray7max" },
+  prefs() {
+    let stored = {};
+    try { stored = JSON.parse(localStorage.getItem("lm_prefs") || "{}") || {}; } catch (e) { stored = {}; }
+    return Object.assign({}, this.PREFS_DEFAULTS, stored);
+  },
+  setPrefs(patch) {
+    const merged = Object.assign({}, this.prefs(), patch || {});
+    localStorage.setItem("lm_prefs", JSON.stringify(merged));
+    return merged;
+  },
+
+  // -- IndexedDB plumbing -------------------------------------------------------------
+  DB_NAME: "lightmatch", DB_VERSION: 1, STORE_NAME: "sessions",
+  persistent: true,
+  _dbPromise: null,
+  _mem: new Map(), // in-memory fallback, keyed by session id — used only if IDB open fails
+
+  _openDB() {
+    if (this._dbPromise) return this._dbPromise;
+    this._dbPromise = new Promise((resolve) => {
+      let req;
+      try {
+        req = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+      } catch (e) {
+        this.persistent = false;
+        resolve(null);
+        return;
+      }
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+          db.createObjectStore(this.STORE_NAME, { keyPath: "id" });
+        }
+      };
+      req.onsuccess = () => { this.persistent = true; resolve(req.result); };
+      req.onerror = () => { this.persistent = false; resolve(null); };
+      req.onblocked = () => { this.persistent = false; resolve(null); };
+    });
+    return this._dbPromise;
+  },
+
+  // -- saveSession(s): upsert by id (IDB `put` is upsert-by-keyPath natively; the
+  // in-memory fallback mirrors that with Map.set on the same id). Session fields must
+  // stay JSON-safe (strings/numbers/booleans/plain objects/arrays/null) — the
+  // in-memory path round-trips through JSON.parse(JSON.stringify(...)) to decouple the
+  // stored copy from the caller's live object (matching IDB's own structured-clone
+  // copy-on-write semantics), which would silently drop a Date/Function/undefined
+  // field that the real IDB path would otherwise preserve. Every field this app
+  // actually stores (dataUrls as strings, ISO date strings, numbers) already satisfies
+  // this. ------------------------------------------------------------------------------
+  async saveSession(s) {
+    const db = await this._openDB();
+    if (!db) { this._mem.set(s.id, JSON.parse(JSON.stringify(s))); return s; }
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.STORE_NAME, "readwrite");
+      tx.objectStore(this.STORE_NAME).put(s);
+      tx.oncomplete = () => resolve(s);
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+
+  // -- _all(): every stored session, unordered. Internal helper for loadLatest() and
+  // for selftest cleanup sweeps; not part of the plan's public API surface but kept
+  // on STORE (not module-private) so both call sites can share one implementation.
+  // In-memory path returns FRESH copies (not the live _mem-stored references) so it
+  // matches IDB's getAll(), which always deserializes a new object per call — without
+  // this, a caller mutating a session returned from _all()/loadLatest() in memory-
+  // fallback mode would silently corrupt the "stored" copy with no saveSession() call. --
+  async _all() {
+    const db = await this._openDB();
+    if (!db) return Array.from(this._mem.values()).map(s => JSON.parse(JSON.stringify(s)));
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.STORE_NAME, "readonly");
+      const req = tx.objectStore(this.STORE_NAME).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  // -- loadLatest(): the session with the highest `created` (ISO string — lexical
+  // comparison is correct for same-format ISO-8601 timestamps). null if none exist. --
+  async loadLatest() {
+    const all = await this._all();
+    if (!all.length) return null;
+    let best = all[0];
+    for (const s of all) if (s.created > best.created) best = s;
+    return best;
+  },
+
+  // -- deleteSession(id): removes a session by id. Not one of the plan's headline API
+  // methods (saveSession/loadLatest/exportJSON/importJSON), but the plan explicitly
+  // calls for it as the selftest cleanup mechanism ("clean up test sessions afterward
+  // ... use a test-only id you remove"); also the natural building block for a future
+  // UI "delete session" action. ---------------------------------------------------------
+  async deleteSession(id) {
+    const db = await this._openDB();
+    if (!db) { this._mem.delete(id); return; }
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.STORE_NAME, "readwrite");
+      tx.objectStore(this.STORE_NAME).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+
+  // -- exportJSON(session?) / importJSON(str): the file:// fallback for moving a
+  // session between browser profiles/machines when IDB isn't usable (or just as a
+  // manual backup). exportJSON accepts an explicit session object (so a caller who
+  // already has one in hand — e.g. ENGINE.session() — exports exactly what's currently
+  // in memory, including any not-yet-persisted edit) but falls back to STORE's own
+  // "current" notion (the latest SAVED session) when called with no argument, per the
+  // plan's "exportJSON() returns a JSON string of the current session". importJSON
+  // does minimal shape validation — must be a parseable object with a string `id` and
+  // a `chains` object — then saves it. -------------------------------------------------
+  async exportJSON(session) {
+    const s = session !== undefined ? session : await this.loadLatest();
+    return JSON.stringify(s);
+  },
+  async importJSON(str) {
+    let obj;
+    try { obj = JSON.parse(str); } catch (e) { throw new Error("importJSON: not valid JSON"); }
+    if (!obj || typeof obj !== "object" || typeof obj.id !== "string" || !obj.id) {
+      throw new Error("importJSON: missing/invalid session.id");
+    }
+    if (!obj.chains || typeof obj.chains !== "object") {
+      throw new Error("importJSON: missing session.chains");
+    }
+    await this.saveSession(obj);
+    return obj;
+  }
 };
 
 /* ===== SECTION: ADAPTER ===== */
@@ -997,7 +1137,366 @@ const ADAPTER = {
 };
 
 /* ===== SECTION: ENGINE ===== */
-const ENGINE = {};
+// Orchestration + session state machine. ENGINE→{METRICS, PACKS, SCHEMAS, STORE,
+// ADAPTER} per the plan's dependency graph — never touches the DOM (no querySelector,
+// no event listeners on page elements; UI owns all of that and drives ENGINE through
+// its action methods). ENGINE._adapter defaults to the real ADAPTER and is the sole
+// injection seam selftests use to avoid any network call.
+//
+// State machine: empty -> ready (ref+base present) -> analyzed(target) -> refining(target).
+// State is DERIVED from the current session + activeTarget on every read (ENGINE.state()),
+// not tracked as a separate mutable flag — this guarantees state can never drift out of
+// sync with the data it describes. "analyzed"/"refining" are per the ACTIVE target's own
+// chain: switching activeTarget can move you from "refining" (old target had attempts)
+// back to "analyzed" or even "ready" for a target that has no recipe yet.
+const ENGINE = {
+  _adapter: null, // set to ADAPTER below, after ADAPTER is defined; selftests overwrite this
+  _session: null,
+  _testSessionId: null, // selftest-only override so STORE round-trips use a deterministic id
+  lastError: null,
+
+  // -- ATTEMPTS_CAP: keep the last N attempts per chain (plan: 8). A constant (not a
+  // magic number inline) so the selftest and any future UI copy ("up to N attempts")
+  // read the same source of truth. ---------------------------------------------------
+  ATTEMPTS_CAP: 8,
+
+  // -- blank session factory: the shape documented in the plan/task, with both chains
+  // pre-created (empty) so downstream code never has to null-check chains[target]. ---
+  _blankSession() {
+    return {
+      id: this._testSessionId || ("lm-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8)),
+      created: new Date().toISOString(),
+      context: { scene: "", time: "", rig: "" },
+      ref: null, base: null, settingsShot: null,
+      activeTarget: STORE.prefs().target || "vray7max",
+      // _attemptCount: monotonic per-chain counter, NEVER decremented by eviction — this
+      // is what "ATTEMPT N:" labels (sent to the model) are numbered from, so numbering
+      // keeps climbing truthfully past the ATTEMPTS_CAP window rather than sticking at
+      // (cap+1) forever once chain.attempts.length itself stops growing.
+      chains: {
+        vray7max: { recipe: null, attempts: [], _attemptCount: 0 },
+        vantage33: { recipe: null, attempts: [], _attemptCount: 0 }
+      }
+    };
+  },
+
+  // -- reset(): back to a blank "empty" session. Used by boot() when there is nothing
+  // to restore, and by selftests between scenarios. ----------------------------------
+  reset() {
+    this._session = this._blankSession();
+    this.lastError = null;
+    return this._session;
+  },
+
+  // -- session()/activeTarget(): read accessors. session() returns the live object —
+  // callers (UI, selftests) may read deeply into it, but should treat it as
+  // ENGINE-owned; ENGINE always persists after mutating it. --------------------------
+  session() { if (!this._session) this.reset(); return this._session; },
+  activeTarget() { return this.session().activeTarget; },
+
+  // -- state(): derives empty/ready/analyzed/refining from the current session, scoped
+  // to the ACTIVE target's own chain (per the plan: "analyzed(target)"/"refining(target)"
+  // are target-scoped states — the active target is the one the UI is looking at). ---
+  state() {
+    const s = this.session();
+    if (!s.ref || !s.base) return "empty";
+    const chain = s.chains[s.activeTarget];
+    if (!chain || !chain.recipe) return "ready";
+    if (chain.attempts.length > 0) return "refining";
+    return "analyzed";
+  },
+
+  // -- setActiveTarget(target): flips which target's chain the UI/state() looks at,
+  // WITHOUT running any analysis (plain switch — reanalyzeOtherTarget() is the action
+  // that also triggers a fresh analyze() call). Persists the switch. -----------------
+  async setActiveTarget(target) {
+    const s = this.session();
+    s.activeTarget = target;
+    await this._persist();
+    return s;
+  },
+
+  // -- lookup(paramId): UI's display-string API, delegates to PACKS for the ACTIVE
+  // target. -----------------------------------------------------------------------
+  lookup(paramId) {
+    return PACKS.lookup(this.activeTarget(), paramId);
+  },
+
+  // -- _persist(): save the current session via STORE after every mutation, per the
+  // plan ("wires ... STORE.saveSession after every mutation"). Centralized here so
+  // every action method just calls this instead of repeating the STORE.saveSession
+  // call + boilerplate. ----------------------------------------------------------
+  async _persist() {
+    await STORE.saveSession(this._session);
+    return this._session;
+  },
+
+  // -- error classification: maps a thrown error to a short `kind` string the UI can
+  // switch on without re-deriving instanceof checks itself. Kept intentionally small
+  // per the task note ("keep it simple") — auth/shape/network/other covers every
+  // ADAPTER-thrown case (AuthError, ShapeError, plain Error from a network reject or
+  // fatal HTTP status) plus anything ENGINE itself throws (e.g. an image decode
+  // rejection), which falls to "other". ----------------------------------------------
+  _classifyError(e) {
+    if (e instanceof ADAPTER.AuthError) return "auth";
+    if (e instanceof ADAPTER.ShapeError) return "shape";
+    if (e && (e.name === "TypeError" || e.name === "AbortError" || /network|fetch/i.test(e.message || ""))) return "network";
+    return "other";
+  },
+
+  // -- _annotateError(e): records ENGINE.lastError = {kind, message, raw?, at} and
+  // returns the SAME error (never a replacement) so callers can rethrow it unchanged —
+  // instanceof checks against ADAPTER.AuthError/ShapeError keep working for a caller
+  // that prefers that style, while ENGINE.lastError.kind gives the UI a ready-made
+  // string for the common case. -------------------------------------------------------
+  _annotateError(e) {
+    this.lastError = {
+      kind: this._classifyError(e),
+      name: e && e.name,
+      message: e && e.message,
+      raw: e && e.raw, // present only for ShapeError
+      at: new Date().toISOString()
+    };
+    return e;
+  },
+
+  // -- setImage(slot, fileOrCanvas): slots ref|base|settings (+ addAttempt() below
+  // reuses the same downscale/measure pipeline for the "attempt" case, which is not a
+  // named session slot but a chain entry). Runs METRICS.downscaleForSend (wrapped in
+  // try/catch — it rejects on undecodable files) and METRICS.measure (decoded from the
+  // SAME source where practical, not re-decoded from the dataUrl, so we do the decode
+  // once and hand the resulting bitmap/canvas to both downscale and measure). Settings
+  // slot uses the lossless PNG variant (2048/png/1.0); ref/base use the lossy JPEG
+  // default (1568/jpeg/0.85). ---------------------------------------------------------
+  async _decodeSource(fileOrCanvas) {
+    const isCanvasLike = fileOrCanvas && typeof fileOrCanvas.getContext === "function"
+      && typeof fileOrCanvas.width === "number" && typeof fileOrCanvas.height === "number";
+    const isBitmapLike = typeof ImageBitmap !== "undefined" && fileOrCanvas instanceof ImageBitmap;
+    if (isCanvasLike || isBitmapLike) return { source: fileOrCanvas, owned: false };
+    // File/Blob: decode once here so both downscaleForSend and measure() work from the
+    // same decoded bitmap rather than each independently re-decoding (downscaleForSend
+    // would otherwise decode its OWN bitmap from the raw file a second time).
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(fileOrCanvas);
+    } catch (e) {
+      const decodeErr = new Error("Could not decode image file — unsupported or corrupt image data.");
+      decodeErr.name = "DecodeError";
+      throw decodeErr;
+    }
+    return { source: bitmap, owned: true };
+  },
+
+  async _captureSlot(fileOrCanvas, { lossless } = {}) {
+    let decoded;
+    try {
+      decoded = await this._decodeSource(fileOrCanvas);
+    } catch (e) {
+      throw this._annotateError(e);
+    }
+    const { source, owned } = decoded;
+    try {
+      const sendOpts = lossless ? [2048, "image/png", 1.0] : [1568, "image/jpeg", 0.85];
+      let downscaled;
+      try {
+        downscaled = await METRICS.downscaleForSend(source, ...sendOpts);
+      } catch (e) {
+        const wrapped = new Error("Image downscale failed: " + (e && e.message));
+        wrapped.name = "DecodeError";
+        throw this._annotateError(wrapped);
+      }
+      const metrics = METRICS.measure(source);
+      return { dataUrl: downscaled.dataUrl, metrics };
+    } finally {
+      if (owned && typeof source.close === "function") source.close();
+    }
+  },
+
+  async setImage(slot, fileOrCanvas) {
+    const captured = await this._captureSlot(fileOrCanvas, { lossless: slot === "settings" });
+    const s = this.session();
+    if (slot === "ref") s.ref = captured;
+    else if (slot === "base") s.base = captured;
+    else if (slot === "settings") s.settingsShot = { dataUrl: captured.dataUrl };
+    else throw new Error(`ENGINE.setImage: unknown slot "${slot}" (expected ref|base|settings)`);
+    await this._persist();
+    return captured;
+  },
+
+  // -- analyze(): requires ready-state (ref+base present). Builds metricsBundle =
+  // {reference, base, diff} where diff = METRICS.diff(base, ref) — the diff() contract
+  // is diff(a,b) = b-a, so diff(base,ref) reads as "reference minus base", i.e. what
+  // must change to go FROM base TO reference. Images ordered ref, base, (settings).
+  // Calls ADAPTER.call with SCHEMAS.emit_recipe + a validate callback bound to the
+  // active target/mode; on success stores the cleaned recipe under
+  // chains[activeTarget].recipe, persists, and returns it. ---------------------------
+  async analyze() {
+    const s = this.session();
+    if (this.state() === "empty") {
+      throw new Error("ENGINE.analyze(): requires both reference and base images to be set first.");
+    }
+    const target = s.activeTarget;
+    const mode = "recipe";
+    const metricsBundle = {
+      reference: s.ref.metrics,
+      base: s.base.metrics,
+      diff: METRICS.diff(s.base.metrics, s.ref.metrics)
+    };
+    const images = [{ role: "reference", dataUrl: s.ref.dataUrl, mediaType: "image/jpeg" },
+                     { role: "base", dataUrl: s.base.dataUrl, mediaType: "image/jpeg" }];
+    if (s.settingsShot) images.push({ role: "settings", dataUrl: s.settingsShot.dataUrl, mediaType: "image/png" });
+
+    const system = SCHEMAS.systemPrompt(target, mode);
+    // buildUserContent is pure content-assembly (no network) — always the real ADAPTER,
+    // even when ENGINE._adapter is a stub. Only .call() (the network-performing method)
+    // is the injectable seam; see the SECTION: ADAPTER header ("ENGINE builds ...
+    // userContent via ADAPTER.buildUserContent").
+    const userContent = ADAPTER.buildUserContent({ mode, images, metricsBundle, context: s.context });
+    const tool = SCHEMAS.emit_recipe;
+    const validate = obj => SCHEMAS.validateRecipe(obj, target, undefined);
+
+    let cleaned;
+    try {
+      cleaned = await (this._adapter || ADAPTER).call({ model: STORE.prefs().model, system, userContent, tool, validate });
+    } catch (e) {
+      throw this._annotateError(e);
+    }
+
+    s.chains[target].recipe = cleaned;
+    await this._persist();
+    return cleaned;
+  },
+
+  // -- addAttempt(fileOrCanvas): valid in analyzed/refining (i.e. the active target
+  // already has a recipe — state() is "analyzed" or "refining", never "empty"/"ready").
+  // Measures the attempt, scores it against the reference, builds metricsBundle =
+  // {reference, attempt, diff: diff(attempt, ref)} (same base->reference convention:
+  // diff(a,b)=b-a, so diff(attempt,ref) = "what must still change from this attempt to
+  // reach the reference"), sends history = every prior round's moves (recipe's
+  // values[] normalized into the same {param,from,to,applied,why} shape as a "round 0"
+  // entry, then each stored attempt's correction.moves as subsequent rounds) with
+  // appliedParams defaulting to true for every move (no per-row UI toggle wired yet —
+  // "applied_assumed" is the model's own flag in its OUTPUT, not an input we set).
+  // Stores {dataUrl, metrics, score, correction, appliedParams} in the chain, caps at
+  // ATTEMPTS_CAP (oldest dataUrl dropped, its score retained — see _pushAttempt). ----
+  _historyForActiveChain() {
+    const s = this.session();
+    const chain = s.chains[s.activeTarget];
+    const rounds = [];
+    if (chain.recipe && Array.isArray(chain.recipe.values)) {
+      rounds.push({
+        round: 0,
+        moves: chain.recipe.values.map(v => ({ param: v.param, from: v.from, to: v.set, applied: true, why: v.why }))
+      });
+    }
+    chain.attempts.forEach((att, idx) => {
+      if (att.correction && Array.isArray(att.correction.moves)) {
+        rounds.push({
+          round: idx + 1,
+          moves: att.correction.moves.map(m => ({
+            param: m.param, from: m.from, to: m.to,
+            applied: !att.appliedParams || att.appliedParams[m.param] !== false,
+            why: m.why
+          }))
+        });
+      }
+    });
+    return rounds;
+  },
+
+  // -- _pushAttempt(chain, entry): appends, then enforces ATTEMPTS_CAP by evicting from
+  // the front. The array itself stays at exactly ATTEMPTS_CAP entries (per the plan's
+  // 9th-attempt example: "keeps only the last 8"), but each evicted entry's `score` is
+  // preserved on `chain._evictedScores` (dataUrl/metrics/correction are dropped — those
+  // are the large fields; the plan only calls out the score as worth retaining). -----
+  _pushAttempt(chain, entry) {
+    chain.attempts.push(entry);
+    while (chain.attempts.length > this.ATTEMPTS_CAP) {
+      const evicted = chain.attempts.shift();
+      if (!Array.isArray(chain._evictedScores)) chain._evictedScores = [];
+      chain._evictedScores.push({ score: evicted.score });
+    }
+  },
+
+  async addAttempt(fileOrCanvas) {
+    const s = this.session();
+    const state = this.state();
+    if (state !== "analyzed" && state !== "refining") {
+      throw new Error(`ENGINE.addAttempt(): active target must have a recipe first (state is "${state}"); call analyze() first.`);
+    }
+    const target = s.activeTarget;
+    const chain = s.chains[target];
+    const captured = await this._captureSlot(fileOrCanvas);
+    const score = METRICS.score(s.ref.metrics, captured.metrics);
+
+    const metricsBundle = {
+      reference: s.ref.metrics,
+      attempt: captured.metrics,
+      diff: METRICS.diff(captured.metrics, s.ref.metrics)
+    };
+    // Monotonic attempt number for the "ATTEMPT N:" label — NOT chain.attempts.length+1,
+    // which would stick at (ATTEMPTS_CAP+1) forever once eviction keeps the array length
+    // pinned at the cap. Falls back to attempts.length+1 for a chain restored from a
+    // session saved before _attemptCount existed (older STORE data / hand-built object).
+    if (typeof chain._attemptCount !== "number") chain._attemptCount = chain.attempts.length;
+    chain._attemptCount++;
+    const attemptN = chain._attemptCount;
+    const images = [
+      { role: "reference", dataUrl: s.ref.dataUrl, mediaType: "image/jpeg" },
+      { role: "attempt", n: attemptN, dataUrl: captured.dataUrl, mediaType: "image/jpeg" }
+    ];
+    const history = this._historyForActiveChain();
+    const system = SCHEMAS.systemPrompt(target, "correction");
+    const userContent = ADAPTER.buildUserContent({ mode: "correction", images, metricsBundle, context: s.context, history });
+    const tool = SCHEMAS.emit_correction;
+    const validate = obj => SCHEMAS.validateRecipe(obj, target, "correction");
+
+    let cleaned;
+    try {
+      cleaned = await (this._adapter || ADAPTER).call({ model: STORE.prefs().model, system, userContent, tool, validate });
+    } catch (e) {
+      throw this._annotateError(e);
+    }
+
+    // appliedParams: default all-applied (no per-row UI toggle wired yet in this task;
+    // the UI will overwrite this map later once it has real checkbox state).
+    const appliedParams = {};
+    for (const mv of cleaned.moves) appliedParams[mv.param] = true;
+
+    this._pushAttempt(chain, { dataUrl: captured.dataUrl, metrics: captured.metrics, score, correction: cleaned, appliedParams });
+    await this._persist();
+    return { score, correction: cleaned };
+  },
+
+  // -- reanalyzeOtherTarget(): flips activeTarget to the OTHER pack, then runs
+  // analyze() against it using the ALREADY-STORED ref/base images/metrics (no
+  // re-upload — analyze() reads from s.ref/s.base, which are untouched by this
+  // switch). Leaves the original target's chain completely untouched: analyze()
+  // writes only to chains[NEW activeTarget].recipe. -----------------------------------
+  async reanalyzeOtherTarget() {
+    const s = this.session();
+    if (!s.ref || !s.base) throw new Error("ENGINE.reanalyzeOtherTarget(): requires reference and base images to already be set.");
+    const other = s.activeTarget === "vray7max" ? "vantage33" : "vray7max";
+    s.activeTarget = other;
+    await this._persist();
+    return this.analyze();
+  },
+
+  // -- boot(): loads the latest session on startup. Never throws — a fresh install (no
+  // session in STORE yet), or a STORE that degraded to in-memory-only, both just fall
+  // through to a blank session via reset(). -------------------------------------------
+  async boot() {
+    try {
+      const latest = await STORE.loadLatest();
+      this._session = latest || this._blankSession();
+    } catch (e) {
+      this._annotateError(e);
+      this._session = this._blankSession();
+    }
+    return this._session;
+  }
+};
+ENGINE._adapter = ADAPTER;
 
 /* ===== SECTION: UI ===== */
 const UI = { boot() {} };
@@ -1668,6 +2167,346 @@ SELFTEST.suites.metrics = async function () {
   // -- edge case: all-black wb/sat do not NaN (0/0-style guards) -----------------------
   this.ok(Number.isFinite(mBlack.wb.warmthShadow) && Number.isFinite(mBlack.wb.tint), "all-black: wb warmth/tint finite, not NaN");
   this.ok(Number.isFinite(mBlack.sat.mean) && mBlack.sat.mean === 0, "all-black: sat.mean===0, not NaN");
+};
+
+// -- suite: engine (Task 6) -- STORE (localStorage prefs + IndexedDB sessions) and
+// ENGINE (state machine + orchestration). ADAPTER is stubbed via ENGINE._adapter —
+// NO real network call is ever made (globalThis.fetch is never touched here). All
+// test session ids are prefixed "selftest-" and deleted at the end (in a finally)
+// so repeated runs never accumulate rows in the real `lightmatch` IDB database.
+SELFTEST.suites.engine = async function () {
+  function solidCanvas(w, h, r, g, b) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(0, 0, w, h);
+    return c;
+  }
+
+  // -- STORE.prefs / setPrefs: localStorage-backed, defaults + merge-patch ----------
+  const priorPrefsRaw = localStorage.getItem("lm_prefs");
+  try {
+    localStorage.removeItem("lm_prefs");
+    const defaults = STORE.prefs();
+    this.ok(defaults.model === "claude-opus-4-8", `STORE.prefs() default model is claude-opus-4-8 (got ${defaults.model})`);
+    this.ok(defaults.target === "vray7max", `STORE.prefs() default target is vray7max (got ${defaults.target})`);
+    STORE.setPrefs({ target: "vantage33" });
+    const afterPatch = STORE.prefs();
+    this.ok(afterPatch.target === "vantage33", "STORE.setPrefs patches target");
+    this.ok(afterPatch.model === "claude-opus-4-8", "STORE.setPrefs merge keeps prior model untouched by an unrelated patch");
+    STORE.setPrefs({ model: "gpt-5.5" });
+    this.ok(STORE.prefs().model === "gpt-5.5" && STORE.prefs().target === "vantage33", "STORE.setPrefs merges (both patches survive)");
+  } finally {
+    if (priorPrefsRaw === null) localStorage.removeItem("lm_prefs"); else localStorage.setItem("lm_prefs", priorPrefsRaw);
+  }
+
+  // -- STORE.persistent flag: exists and is boolean (IDB open succeeded on this real
+  // Chrome profile per probe 0.5; the flag still must be inspectable either way) ----
+  this.ok(typeof STORE.persistent === "boolean", `STORE.persistent is a boolean (got ${typeof STORE.persistent})`);
+
+  // -- STORE session round-trip: save, then read back via a FRESH loadLatest() and
+  // compare ids. Uses a selftest-prefixed id + later timestamp so it sorts as the
+  // latest without disturbing any real session the user has saved. -----------------
+  const testId1 = "selftest-" + Date.now() + "-a";
+  const testId2 = "selftest-" + Date.now() + "-b";
+  try {
+    const sessionA = {
+      id: testId1, created: new Date(Date.now() - 10000).toISOString(),
+      context: { scene: "exterior", time: "golden hour", rig: "sun+dome" },
+      ref: { dataUrl: "data:image/png;base64,AAAA", metrics: { lum: { p50: 0.2 } } },
+      base: { dataUrl: "data:image/png;base64,BBBB", metrics: { lum: { p50: 0.3 } } },
+      settingsShot: null, activeTarget: "vray7max",
+      chains: { vray7max: { recipe: null, attempts: [] }, vantage33: { recipe: null, attempts: [] } }
+    };
+    await STORE.saveSession(sessionA);
+    const loaded1 = await STORE.loadLatest();
+    this.ok(!!loaded1 && loaded1.id === testId1, `STORE.saveSession/loadLatest round-trip: id matches (got ${loaded1 && loaded1.id})`);
+    this.ok(loaded1.context.scene === "exterior", "STORE round-trip: nested context field survives");
+    this.ok(loaded1.chains.vray7max.attempts.length === 0, "STORE round-trip: chains structure survives");
+
+    // -- loadLatest picks the HIGHEST `created`, not insertion order -----------------
+    const sessionB = Object.assign({}, sessionA, { id: testId2, created: new Date().toISOString() });
+    await STORE.saveSession(sessionB);
+    const loaded2 = await STORE.loadLatest();
+    this.ok(!!loaded2 && loaded2.id === testId2, `STORE.loadLatest returns the highest-created session (got ${loaded2 && loaded2.id})`);
+
+    // -- saveSession upserts by id: saving testId1 again with a change updates in place,
+    // does not create a duplicate row, and does not change which id is "latest" -------
+    const sessionA2 = Object.assign({}, sessionA, { activeTarget: "vantage33" });
+    await STORE.saveSession(sessionA2);
+    const stillLatestIsB = await STORE.loadLatest();
+    this.ok(stillLatestIsB.id === testId2, "STORE.saveSession upsert: re-saving an older id does not change which session is latest");
+
+    // -- exportJSON / importJSON round-trip -------------------------------------------
+    const exported = await STORE.exportJSON(sessionB);
+    this.ok(typeof exported === "string", "STORE.exportJSON returns a string");
+    const parsedExport = JSON.parse(exported);
+    this.ok(parsedExport.id === testId2, "STORE.exportJSON: parsed JSON carries the session id");
+    // exportJSON with NO argument falls back to STORE's own "current" (latest saved) --
+    const exportedNoArg = await STORE.exportJSON();
+    this.ok(JSON.parse(exportedNoArg).id === testId2, `STORE.exportJSON() with no arg exports the latest saved session (got ${JSON.parse(exportedNoArg).id})`);
+    const importTargetId = "selftest-" + Date.now() + "-imported";
+    const toImport = Object.assign({}, sessionB, { id: importTargetId, created: new Date().toISOString() });
+    await STORE.importJSON(JSON.stringify(toImport));
+    const loadedImport = await STORE.loadLatest();
+    this.ok(loadedImport.id === importTargetId, "STORE.importJSON: saves and becomes loadLatest's result");
+    await STORE.deleteSession(importTargetId);
+  } finally {
+    // -- cleanup: remove every selftest-* row this run created so repeated runs never
+    // accumulate rows in the real `lightmatch` database. ------------------------------
+    for (const id of [testId1, testId2]) { try { await STORE.deleteSession(id); } catch (e) {} }
+  }
+
+  // -- stub adapter: resolves immediately with a minimal VALID recipe/correction built
+  // from REAL pack ids (cam.iso / cm.contrast), so SCHEMAS.validateRecipe(obj, target,
+  // mode) genuinely passes rather than being hand-waved. Records every call() for
+  // assertion on what ENGINE actually sent (mode, target implied by pack ids used,
+  // image roles/order). NO network: this replaces ENGINE._adapter, globalThis.fetch is
+  // never touched by this suite. -----------------------------------------------------
+  // Per-target param ids (real pack ids, both targets) so the stub's recipe/correction
+  // passes SCHEMAS.validateRecipe no matter which pack is active when it's called —
+  // reanalyzeOtherTarget() switches ENGINE to the vantage33 pack mid-suite, and
+  // vray7max-only ids (e.g. cam.iso) are correctly rejected as "unknown param" there.
+  const STUB_PARAMS = {
+    vray7max: ["cam.iso", "cm.contrast", "cam.fnumber", "vfb.exposure"],
+    vantage33: ["cam.exposure_value", "post.contrast", "sun.intensity", "env.intensity"]
+  };
+  function detectTargetFromSystem(system) {
+    if (typeof system === "string" && system.includes("Chaos Vantage 3.3")) return "vantage33";
+    return "vray7max"; // default/fallback: also correct whenever the vray7max fragment is present
+  }
+  function makeStubAdapter() {
+    const calls = [];
+    return {
+      calls,
+      async call({ model, system, userContent, tool, validate }) {
+        calls.push({ model, system, userContent, tool, validate });
+        const isCorrection = tool.name === "emit_correction";
+        const target = detectTargetFromSystem(system);
+        const [p1, p2, p3, p4] = STUB_PARAMS[target];
+        const obj = isCorrection ? {
+          moves: [
+            { param: p1, to: 200, from: 100, step: 1, confidence: "high", why: "stub brighten" },
+            { param: p2, to: 0.1, from: 0, step: 5, confidence: "medium", why: "stub lift" }
+          ],
+          rationale: "stub correction", status: "continue", status_reason: "", applied_assumed: true
+        } : {
+          baseline: "factory_defaults", hdri_mood: "stub overcast",
+          values: [
+            { param: p1, set: 200, from: 100, step: 1, confidence: "high", why: "stub brighten" },
+            { param: p2, set: 0.1, from: 0, step: 5, confidence: "medium", why: "stub lift" },
+            { param: p3, set: 5.6, from: 8.0, step: 1, confidence: "high", why: "stub open up" },
+            { param: p4, set: 0.3, from: 0, step: 1, confidence: "medium", why: "stub brighten more" }
+          ],
+          rationale: "stub recipe", gi_notes: "stub gi notes", status: "continue", status_reason: ""
+        };
+        const result = typeof validate === "function" ? validate(obj) : { ok: true, errors: [], cleaned: obj };
+        if (!result.ok) throw new Error("stub adapter produced an object that failed validate(): " + JSON.stringify(result.errors));
+        return result.cleaned;
+      }
+    };
+  }
+
+  // -- ENGINE state machine: empty -> ready -> analyzed -> refining -----------------
+  // _testSessionId is set BEFORE the first reset() — reset()/_blankSession() reads it
+  // at session-creation time, so setting it any later would leave that first blank
+  // session on a random "lm-..." id that every subsequent _persist() call keeps
+  // re-saving under (never cleaned up by the selftest-prefixed sweep below). This was
+  // a real flake: it leaked a real-looking "lm-..." session with a fresh `created`
+  // timestamp on every suite run, which could then outrank the STORE round-trip
+  // section's deliberately-backdated test session in a LATER run's loadLatest().
+  const engineTestId = "selftest-" + Date.now() + "-engine";
+  ENGINE._testSessionId = engineTestId; // deterministic id so cleanup can find + delete it
+  try {
+    ENGINE.reset();
+    this.ok(ENGINE.state() === "empty", `ENGINE starts in "empty" state (got ${ENGINE.state()})`);
+
+    const stub = makeStubAdapter();
+    ENGINE._adapter = stub;
+
+    const refCanvas = solidCanvas(16, 16, 200, 180, 150);
+    const baseCanvas = solidCanvas(16, 16, 120, 130, 140);
+
+    await ENGINE.setImage("ref", refCanvas);
+    this.ok(ENGINE.state() === "empty", "ENGINE: ref alone is not enough to reach ready (still empty)");
+    await ENGINE.setImage("base", baseCanvas);
+    this.ok(ENGINE.state() === "ready", `ENGINE: ref+base present -> ready (got ${ENGINE.state()})`);
+
+    const sessionAfterImages = ENGINE.session();
+    this.ok(!!sessionAfterImages.ref && typeof sessionAfterImages.ref.dataUrl === "string" && sessionAfterImages.ref.dataUrl.startsWith("data:"), "ENGINE.setImage(ref): stores a dataUrl on the session");
+    this.ok(!!sessionAfterImages.ref.metrics && typeof sessionAfterImages.ref.metrics.lum.p50 === "number", "ENGINE.setImage(ref): stores METRICS.measure() output alongside the dataUrl");
+    this.ok(!!sessionAfterImages.base && !!sessionAfterImages.base.metrics, "ENGINE.setImage(base): stores dataUrl + metrics too");
+
+    // -- analyze(): requires ready-state, calls the (stubbed) adapter once, stores the
+    // validated recipe under chains[activeTarget].recipe, transitions to analyzed ----
+    STORE.setPrefs({ target: "vray7max" });
+    ENGINE.setActiveTarget("vray7max");
+    await ENGINE.analyze();
+    this.ok(ENGINE.state() === "analyzed", `ENGINE.analyze(): state -> analyzed (got ${ENGINE.state()})`);
+    this.ok(stub.calls.length === 1, `ENGINE.analyze(): calls the adapter exactly once (got ${stub.calls.length})`);
+    const analyzeCall = stub.calls[0];
+    this.ok(analyzeCall.tool.name === "emit_recipe", "ENGINE.analyze(): uses the emit_recipe tool");
+    this.ok(typeof analyzeCall.system === "string" && analyzeCall.system.includes("V-Ray 7 for 3ds Max"), "ENGINE.analyze(): system prompt built for the active target (vray7max)");
+    const sessionAfterAnalyze = ENGINE.session();
+    this.ok(!!sessionAfterAnalyze.chains.vray7max.recipe, "ENGINE.analyze(): recipe stored under chains.vray7max.recipe");
+    this.ok(Array.isArray(sessionAfterAnalyze.chains.vray7max.recipe.values) && sessionAfterAnalyze.chains.vray7max.recipe.values.length === 4, "ENGINE.analyze(): stored recipe carries the stub's 4 values");
+    this.ok(sessionAfterAnalyze.chains.vantage33.recipe === null, "ENGINE.analyze(): the OTHER target's chain is untouched (still null)");
+
+    // -- metricsBundle sent to the adapter: {reference, base, diff} with diff = base->reference
+    const sentBundle = JSON.parse(analyzeCall.userContent.find(b => b.type === "text" && /COMPUTED EVIDENCE/.test(b.text)).text.split("\n").slice(1).join("\n"));
+    this.ok(!!sentBundle.reference && !!sentBundle.base && !!sentBundle.diff, "ENGINE.analyze(): metricsBundle sent has reference/base/diff keys");
+    const expectedDiff = METRICS.diff(sessionAfterImages.base.metrics, sessionAfterImages.ref.metrics);
+    this.close(sentBundle.diff["lum.p50"], expectedDiff["lum.p50"], 1e-3, "ENGINE.analyze(): diff direction is base->reference (what must change)");
+
+    // -- images sent to the adapter: ordered ref, base (no settings slot set here) ----
+    const imageRoles = analyzeCall.userContent.filter(b => b.type === "text" && /^(REFERENCE:|BASE RENDER:|SETTINGS)/.test(b.text)).map(b => b.text);
+    this.ok(imageRoles[0] === "REFERENCE:", `ENGINE.analyze(): first labeled image is REFERENCE: (got ${imageRoles[0]})`);
+    this.ok(imageRoles[1] === "BASE RENDER:", `ENGINE.analyze(): second labeled image is BASE RENDER: (got ${imageRoles[1]})`);
+    this.ok(imageRoles.length === 2, `ENGINE.analyze(): exactly 2 labeled images when no settings screenshot was set (got ${imageRoles.length})`);
+
+    // -- addAttempt(): measures the attempt, computes a score, calls emit_correction,
+    // stores {dataUrl, metrics, score, correction, appliedParams}, state -> refining --
+    const attemptCanvas1 = solidCanvas(16, 16, 190, 175, 145);
+    await ENGINE.addAttempt(attemptCanvas1);
+    this.ok(ENGINE.state() === "refining", `ENGINE.addAttempt(): state -> refining (got ${ENGINE.state()})`);
+    this.ok(stub.calls.length === 2, `ENGINE.addAttempt(): calls the adapter again (total calls: ${stub.calls.length})`);
+    const attemptCall = stub.calls[1];
+    this.ok(attemptCall.tool.name === "emit_correction", "ENGINE.addAttempt(): uses the emit_correction tool");
+    let sessionAfterAttempt1 = ENGINE.session();
+    const chain1 = sessionAfterAttempt1.chains.vray7max.attempts;
+    this.ok(chain1.length === 1, `ENGINE.addAttempt(): one attempt stored in the active chain (got ${chain1.length})`);
+    this.ok(typeof chain1[0].score === "number" && Number.isFinite(chain1[0].score), `ENGINE.addAttempt(): stored attempt carries a finite numeric score (got ${chain1[0].score})`);
+    const expectedScore1 = METRICS.score(sessionAfterImages.ref.metrics, chain1[0].metrics);
+    this.close(chain1[0].score, expectedScore1, 1e-6, "ENGINE.addAttempt(): score === METRICS.score(refMetrics, attemptMetrics)");
+    this.ok(!!chain1[0].correction && Array.isArray(chain1[0].correction.moves), "ENGINE.addAttempt(): stored attempt carries the validated correction object");
+    this.ok(typeof chain1[0].dataUrl === "string" && chain1[0].dataUrl.startsWith("data:"), "ENGINE.addAttempt(): stored attempt carries a dataUrl");
+
+    // -- reanalyzeOtherTarget(): flips activeTarget, analyzes against the OTHER pack
+    // using stored images/metrics (no re-upload), leaves the original chain untouched --
+    const callsBeforeReanalyze = stub.calls.length;
+    await ENGINE.reanalyzeOtherTarget();
+    this.ok(ENGINE.activeTarget() === "vantage33", `ENGINE.reanalyzeOtherTarget(): activeTarget flips to vantage33 (got ${ENGINE.activeTarget()})`);
+    this.ok(stub.calls.length === callsBeforeReanalyze + 1, `ENGINE.reanalyzeOtherTarget(): calls the adapter exactly once more (got ${stub.calls.length - callsBeforeReanalyze})`);
+    const reanalyzeCall = stub.calls[stub.calls.length - 1];
+    this.ok(reanalyzeCall.tool.name === "emit_recipe", "ENGINE.reanalyzeOtherTarget(): uses emit_recipe (a fresh analysis, not a correction)");
+    this.ok(reanalyzeCall.system.includes("Chaos Vantage 3.3"), "ENGINE.reanalyzeOtherTarget(): system prompt built for the new active target (vantage33)");
+    const sessionAfterReanalyze = ENGINE.session();
+    this.ok(!!sessionAfterReanalyze.chains.vantage33.recipe, "ENGINE.reanalyzeOtherTarget(): vantage33 chain now has a recipe");
+    this.ok(sessionAfterReanalyze.chains.vray7max.attempts.length === 1, "ENGINE.reanalyzeOtherTarget(): the ORIGINAL (vray7max) chain's attempts are untouched");
+    this.ok(!!sessionAfterReanalyze.chains.vray7max.recipe, "ENGINE.reanalyzeOtherTarget(): the ORIGINAL (vray7max) chain's recipe is untouched (still present)");
+    this.ok(ENGINE.state() === "analyzed", `ENGINE.reanalyzeOtherTarget(): new target's state is analyzed (got ${ENGINE.state()})`);
+
+    // -- flip back to vray7max to keep filling its chain toward the 8-attempt cap -----
+    ENGINE.setActiveTarget("vray7max");
+    this.ok(ENGINE.activeTarget() === "vray7max", "ENGINE.setActiveTarget(): can flip back to the original target");
+    this.ok(ENGINE.session().chains.vray7max.attempts.length === 1, "ENGINE.setActiveTarget(): switching back does not lose the original chain's attempt");
+
+    // -- 8-attempt cap: add 7 more (total 8), all present; add a 9th, oldest dataUrl
+    // dropped but its score retained ----------------------------------------------
+    for (let i = 2; i <= 8; i++) {
+      await ENGINE.addAttempt(solidCanvas(16, 16, 190 - i, 175, 145));
+    }
+    const sessionAt8 = ENGINE.session();
+    this.ok(sessionAt8.chains.vray7max.attempts.length === 8, `ENGINE.addAttempt(): 8 attempts stored, all present (got ${sessionAt8.chains.vray7max.attempts.length})`);
+    // Snapshot BOTH the attempt about to be evicted (index 0, "attempt #1") and the
+    // attempt that should become the new index 0 after eviction ("attempt #2") — these
+    // are two DIFFERENT attempts (different synthetic canvases -> different scores), so
+    // the correct check after the 9th push is "index 0 now equals what #2 was", never
+    // "index 0's score is unchanged" (that would only hold if nothing were evicted).
+    const evictedAttemptSnapshot = sessionAt8.chains.vray7max.attempts[0];
+    const survivingSecondSnapshot = sessionAt8.chains.vray7max.attempts[1];
+    this.ok(typeof evictedAttemptSnapshot.dataUrl === "string" && evictedAttemptSnapshot.dataUrl.length > 0, "ENGINE.addAttempt(): sanity — oldest attempt has a real dataUrl before the 9th is added");
+
+    await ENGINE.addAttempt(solidCanvas(16, 16, 100, 175, 145));
+    const sessionAt9 = ENGINE.session();
+    const attemptsAt9 = sessionAt9.chains.vray7max.attempts;
+    this.ok(attemptsAt9.length === 8, `ENGINE.addAttempt(): adding a 9th keeps only the last 8 (got ${attemptsAt9.length})`);
+
+    // -- oldest (attempt #1) is truly evicted, not merely shuffled: its dataUrl no
+    // longer appears anywhere in the surviving array -----------------------------
+    this.ok(!attemptsAt9.some(a => a.dataUrl === evictedAttemptSnapshot.dataUrl), "ENGINE.addAttempt(): the evicted (oldest) attempt's dataUrl is dropped, not present anywhere in the surviving 8");
+
+    // -- FIFO shift: the new index 0 is what was index 1 (attempt #2) before eviction --
+    this.close(attemptsAt9[0].score, survivingSecondSnapshot.score, 1e-9, "ENGINE.addAttempt(): after eviction, the new oldest-kept entry is the PRIOR #2 attempt (FIFO), not a stale copy of #1");
+    this.ok(attemptsAt9[0].dataUrl === survivingSecondSnapshot.dataUrl, "ENGINE.addAttempt(): after eviction, the new index-0 dataUrl matches what was index 1 (proper FIFO shift)");
+
+    // -- evicted attempt's SCORE is retained somewhere retrievable, per the plan
+    // ("oldest dataUrl dropped, its score retained") — even though the entry itself
+    // fell out of the capped attempts[] array. ------------------------------------
+    const chainAt9 = sessionAt9.chains.vray7max;
+    this.ok(Array.isArray(chainAt9._evictedScores) && chainAt9._evictedScores.length >= 1, "ENGINE.addAttempt(): chain retains a retrievable record of evicted attempts' scores");
+    this.close(chainAt9._evictedScores[chainAt9._evictedScores.length - 1].score, evictedAttemptSnapshot.score, 1e-9, "ENGINE.addAttempt(): the retained score matches the evicted (oldest) attempt's own score");
+
+    // -- newest (9th) attempt is present with a score at the tail ------------------
+    this.ok(typeof attemptsAt9[attemptsAt9.length - 1].score === "number" && Number.isFinite(attemptsAt9[attemptsAt9.length - 1].score), "ENGINE.addAttempt(): newest (9th) attempt present with a finite score at the tail");
+
+    // -- lookup(paramId): delegates to PACKS.lookup(activeTarget, paramId) ------------
+    ENGINE.setActiveTarget("vray7max");
+    const lookedUp = ENGINE.lookup("cam.iso");
+    this.ok(!!lookedUp && lookedUp.id === "cam.iso", `ENGINE.lookup("cam.iso") returns the pack entry for the active target (got ${JSON.stringify(lookedUp && lookedUp.id)})`);
+    this.ok(ENGINE.lookup("no.such_param") === null, "ENGINE.lookup(): unknown param id -> null");
+
+    // -- persistence after every mutation: the session engine just built round-trips
+    // through STORE under its own (deterministic test) id --------------------------
+    const persisted = await STORE.loadLatest();
+    this.ok(!!persisted, "ENGINE mutations persisted a session that STORE.loadLatest() can find");
+
+    // -- ENGINE.lastError / typed-error scheme: adapter errors are caught and rethrown
+    // in a way the UI can distinguish (auth vs shape vs network vs other). Reuses
+    // engineTestId (set before the suite's first reset() above) — _testSessionId must
+    // be set BEFORE reset()/_blankSession() runs, not after, since the session's `id`
+    // is fixed at blank-session-creation time and never changes afterward. ------------
+    ENGINE.reset();
+    await ENGINE.setImage("ref", solidCanvas(16, 16, 200, 180, 150));
+    await ENGINE.setImage("base", solidCanvas(16, 16, 120, 130, 140));
+    const failingAdapter = { call: async () => { throw new ADAPTER.AuthError("stub 401"); } };
+    ENGINE._adapter = failingAdapter;
+    let threwAuth = null;
+    try { await ENGINE.analyze(); } catch (e) { threwAuth = e; }
+    this.ok(!!threwAuth, "ENGINE.analyze(): adapter AuthError propagates (throws), does not swallow silently");
+    this.ok(!!ENGINE.lastError && /auth/i.test(ENGINE.lastError.kind || ENGINE.lastError.name || ""), `ENGINE.lastError records an auth-classifiable error after an AuthError (got ${JSON.stringify(ENGINE.lastError && (ENGINE.lastError.kind || ENGINE.lastError.name))})`);
+
+    const failingShapeAdapter = { call: async () => { throw new ADAPTER.ShapeError("stub shape", "raw text"); } };
+    ENGINE._adapter = failingShapeAdapter;
+    let threwShape = null;
+    try { await ENGINE.analyze(); } catch (e) { threwShape = e; }
+    this.ok(!!threwShape, "ENGINE.analyze(): adapter ShapeError propagates");
+    this.ok(!!ENGINE.lastError && /shape/i.test(ENGINE.lastError.kind || ENGINE.lastError.name || ""), `ENGINE.lastError records a shape-classifiable error after a ShapeError (got ${JSON.stringify(ENGINE.lastError && (ENGINE.lastError.kind || ENGINE.lastError.name))})`);
+
+    // -- setImage decode-reject path: an undecodable "image" must surface a typed error,
+    // never throw an unhandled raw exception past ENGINE's boundary -------------------
+    ENGINE.reset();
+    let threwDecode = null;
+    try {
+      await ENGINE.setImage("ref", new Blob(["not an image"], { type: "text/plain" }));
+    } catch (e) { threwDecode = e; }
+    this.ok(!!threwDecode, "ENGINE.setImage(): an undecodable file surfaces a typed/catchable error, not a silent hang");
+  } finally {
+    ENGINE._adapter = ADAPTER;
+    // Order matters: delete _testSessionId BEFORE this reset() (not before any reset()
+    // earlier in the try block above) — every reset() up to this point intentionally
+    // rode on the same engineTestId so their _persist() calls kept upserting one
+    // tracked row; only THIS final reset(), which nothing after it ever persists, is
+    // safe to leave on a random real "lm-..." id. Do not hoist this delete earlier.
+    delete ENGINE._testSessionId;
+    ENGINE.reset();
+    try { await STORE.deleteSession(engineTestId); } catch (e) {}
+    // Best-effort broader sweep: delete any stray selftest-* session rows this suite
+    // (or a previous interrupted run) may have left behind, so repeated runs never
+    // accumulate garbage in the real `lightmatch` IndexedDB database.
+    try {
+      const all = await STORE._all();
+      for (const s of all) if (s && typeof s.id === "string" && s.id.startsWith("selftest-")) await STORE.deleteSession(s.id);
+    } catch (e) {}
+  }
+
+  // -- boot()/restore: loads the latest session on startup without throwing, even when
+  // there is nothing to load (fresh STORE / empty DB) — never blocks boot -----------
+  let bootThrew = null;
+  try { await ENGINE.boot(); } catch (e) { bootThrew = e; }
+  this.ok(bootThrew === null, `ENGINE.boot() does not throw (got ${bootThrew && bootThrew.message})`);
+  ENGINE.reset();
 };
 
 addEventListener("DOMContentLoaded", () => {
