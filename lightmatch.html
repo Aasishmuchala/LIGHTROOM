@@ -352,6 +352,7 @@ const METRICS = {
     const satArr = new Float64Array(n);
     let clipHiCount = 0, clipLoCount = 0;
     let satSum = 0;
+    let meanLinR = 0, meanLinG = 0, meanLinB = 0;
 
     for (let i = 0, p = 0; i < n; i++, p += 4) {
       const r255 = data[p], g255 = data[p + 1], b255 = data[p + 2];
@@ -367,7 +368,10 @@ const METRICS = {
       const s = mx === 0 ? 0 : (mx - mn) / mx;
       satArr[i] = s;
       satSum += s;
+
+      meanLinR += this._linearize(r); meanLinG += this._linearize(g); meanLinB += this._linearize(b);
     }
+    meanLinR /= n; meanLinG /= n; meanLinB /= n;
 
     // -- luminance percentiles (bin-center values, for the returned lum object) -------
     const [p1, p5, p25, p50, p75, p95, p99] = this._percentiles(lumArr, [1, 5, 25, 50, 75, 95, 99]);
@@ -408,7 +412,13 @@ const METRICS = {
     const highlight = { r: hiN ? hiR / hiN : 0, g: hiN ? hiG / hiN : 0, b: hiN ? hiB / hiN : 0 };
     const warmthShadow = (shadow.r - shadow.b) / (shadow.r + shadow.b + 1e-9);
     const warmthHighlight = (highlight.r - highlight.b) / (highlight.r + highlight.b + 1e-9);
-    const tint = highlight.g - (highlight.r + highlight.b) / 2;
+    // tint is a single whole-image green/magenta statistic (mirrors sat.mean being a
+    // whole-image stat rather than shadow/highlight-split) — warmthShadow/warmthHighlight
+    // already cover the per-tonal-region warm/cool read; tint uses the overall mean
+    // LINEAR r,g,b across every pixel in the thumb, not just the shadow/highlight
+    // quartile subsets, since the contract's return shape has one `tint` field, not a
+    // tintShadow/tintHighlight pair.
+    const tint = meanLinG - (meanLinR + meanLinB) / 2;
     const wb = { shadow, highlight, warmthShadow, warmthHighlight, tint };
 
     // -- saturation ---------------------------------------------------------------------
@@ -654,6 +664,20 @@ SELFTEST.suites.metrics = async function () {
     ctx.fillRect(0, 0, w, h);
     return c;
   }
+  // Two flat vertical halves of different solid colors — used to distinguish whole-image
+  // vs shadow-only vs highlight-only statistics (unlike a solid-color canvas, where every
+  // pixel is simultaneously the shadow AND highlight set, so the three interpretations
+  // are numerically indistinguishable).
+  function twoHalfCanvas(w, h, leftRgb, rightRgb) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = `rgb(${leftRgb[0]},${leftRgb[1]},${leftRgb[2]})`;
+    ctx.fillRect(0, 0, w / 2, h);
+    ctx.fillStyle = `rgb(${rightRgb[0]},${rightRgb[1]},${rightRgb[2]})`;
+    ctx.fillRect(w / 2, 0, w / 2, h);
+    return c;
+  }
 
   // -- solid gray 128 ---------------------------------------------------------------
   const gray = solidCanvas(64, 64, 128, 128, 128);
@@ -696,6 +720,16 @@ SELFTEST.suites.metrics = async function () {
   const mGreen = METRICS.measure(green);
   this.ok(mGreen.wb.tint > 0, `green: wb.tint > 0 (got ${mGreen.wb.tint})`);
 
+  // -- tint design lock: whole-image mean linear r,g,b, not shadow-only or highlight-only.
+  // The contract's return shape has a single `tint` field (no tintShadow/tintHighlight
+  // pair), unlike warmth which is explicitly split. Left half = neutral dark gray
+  // (would read tint~=0 if shadow-only), right half = green-tinted bright (would read
+  // tint~=0.422 if highlight-only). Whole-image mean lands at ~0.211 (see the METRICS
+  // section's tint comment for the full rationale).
+  const twoTone = twoHalfCanvas(64, 32, [40, 40, 40], [200, 255, 200]);
+  const mTwoTone = METRICS.measure(twoTone);
+  this.close(mTwoTone.wb.tint, 0.2112, 0.01, `two-tone: wb.tint is the whole-image mean (not highlight-only 0.422, not shadow-only 0)`);
+
   // -- diff / score identities ---------------------------------------------------------
   const dSelf = METRICS.diff(mGray, mGray);
   let allZero = true;
@@ -729,6 +763,31 @@ SELFTEST.suites.metrics = async function () {
   const small = solidCanvas(64, 48, 10, 20, 30);
   const notUpscaled = await METRICS.downscaleForSend(small, 1568, "image/jpeg", 0.85);
   this.ok(notUpscaled.w === 64 && notUpscaled.h === 48, `downscaleForSend: source <= maxEdge is not upscaled (got ${notUpscaled.w}x${notUpscaled.h})`);
+
+  // -- edge case: 1x1 image does not crash and returns a well-formed measurement -------
+  const onePx = solidCanvas(1, 1, 90, 60, 30);
+  const mOnePx = METRICS.measure(onePx);
+  this.ok(Number.isFinite(mOnePx.lum.p50), `1x1: lum.p50 is finite (got ${mOnePx.lum.p50})`);
+  this.ok(Array.isArray(mOnePx.grid) && mOnePx.grid.length === 16 && mOnePx.grid.every(Number.isFinite), "1x1: grid is 16 finite numbers");
+  this.ok(Number.isFinite(mOnePx.wb.warmthShadow) && Number.isFinite(mOnePx.wb.tint), "1x1: wb warmth/tint finite (shadow/highlight sets non-empty)");
+  const thOnePx = METRICS.thumb(onePx, 256);
+  this.ok(thOnePx.width === 1 && thOnePx.height === 1, `1x1: thumb does not upscale (got ${thOnePx.width}x${thOnePx.height})`);
+
+  // -- edge case: extreme thin aspect ratio does not produce a zero-dimension thumb ----
+  // 1000x1 at scale 256/1000=0.256 would round(1*0.256)=0 without a floor-of-1 guard.
+  const thinWide = solidCanvas(1000, 1, 40, 80, 120);
+  const thThinWide = METRICS.thumb(thinWide, 256);
+  this.ok(thThinWide.width === 256 && thThinWide.height === 1, `thin 1000x1: thumb w===256,h===1 (got ${thThinWide.width}x${thThinWide.height})`);
+  const mThinWide = METRICS.measure(thinWide);
+  this.ok(Number.isFinite(mThinWide.lum.p50), "thin 1000x1: measure does not crash / produces finite lum.p50");
+
+  const thinTall = solidCanvas(1, 1000, 40, 80, 120);
+  const thThinTall = METRICS.thumb(thinTall, 256);
+  this.ok(thThinTall.width === 1 && thThinTall.height === 256, `thin 1x1000: thumb w===1,h===256 (got ${thThinTall.width}x${thThinTall.height})`);
+
+  // -- edge case: all-black wb/sat do not NaN (0/0-style guards) -----------------------
+  this.ok(Number.isFinite(mBlack.wb.warmthShadow) && Number.isFinite(mBlack.wb.tint), "all-black: wb warmth/tint finite, not NaN");
+  this.ok(Number.isFinite(mBlack.sat.mean) && mBlack.sat.mean === 0, "all-black: sat.mean===0, not NaN");
 };
 
 addEventListener("DOMContentLoaded", () => {
