@@ -1,0 +1,4 @@
+# Local/scratch files — never tracked
+*.local.*
+
+# probes/results.md stays tracked (explicitly not ignored here)
