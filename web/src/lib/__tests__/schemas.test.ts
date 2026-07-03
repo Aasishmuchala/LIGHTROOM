@@ -185,6 +185,11 @@ describe("systemPrompt", () => {
     expect(p).toContain("surgical");
     // does NOT carry the correction-only guidance
     expect(p).not.toContain("CORRECTION ROUND");
+    // carries the JSON-only output directive naming emit_recipe
+    expect(p).toContain("OUTPUT FORMAT");
+    expect(p).toContain("emit_recipe");
+    expect(p).toMatch(/single valid JSON object/);
+    expect(p).toMatch(/NO markdown/);
     // ends with the pack fragment
     expect(p.endsWith(PACKS.promptFragment("vray7max"))).toBe(true);
   });
@@ -194,6 +199,10 @@ describe("systemPrompt", () => {
     expect(p).toContain("CORRECTION ROUND");
     expect(p).toContain("Oscillation guard");
     expect(p).toContain("handoff_to_grade");
+    // JSON-only directive present and naming the correction tool
+    expect(p).toContain("OUTPUT FORMAT");
+    expect(p).toContain("emit_correction");
+    expect(p).toMatch(/single valid JSON object/);
     expect(p.endsWith(PACKS.promptFragment("vray7max"))).toBe(true);
   });
 

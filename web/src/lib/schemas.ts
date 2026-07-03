@@ -195,6 +195,27 @@ export function systemPrompt(target: TargetId | string, mode: ModeName | string)
     );
   }
 
+  // Output-format directive (both modes). The omega gateway does NOT reliably honor a
+  // forced tool_choice — instead of a structured tool_use block it can return a text
+  // block containing prose analysis followed by the JSON in a markdown fence, which both
+  // (a) is unparseable by a tool_use extractor and (b) blows the token budget on prose
+  // and truncates the JSON mid-object. This directive kills the prose: a tool-honoring
+  // backend still just calls the tool; a text-only backend emits the raw JSON object and
+  // nothing else, so it parses cleanly and leaves the whole budget for the recipe.
+  lines.push("");
+  const emitName = isCorrection ? "emit_correction" : "emit_recipe";
+  const jsonWord = isCorrection ? "correction" : "recipe";
+  lines.push(
+    `OUTPUT FORMAT — READ THIS LAST AND OBEY IT EXACTLY. Emit your ${jsonWord} by calling the ` +
+      `${emitName} tool. If — and ONLY if — you cannot call a tool, then respond with ONLY the raw JSON ` +
+      `object that matches that tool's input schema: NO analysis, NO explanation, NO prose, NO commentary, ` +
+      "NO markdown, NO ``` code fences, and nothing whatsoever before or after it. In that case your entire " +
+      "reply must be a single valid JSON object that begins with the character `{` and ends with the " +
+      "character `}` — the very first character you output is `{`. Do not narrate your reasoning; put any " +
+      "justification inside the JSON's own `rationale`/`why` fields, never outside the object. Any text " +
+      "outside the JSON object will be discarded and will cause the response to be rejected."
+  );
+
   lines.push("");
   lines.push(PACKS.promptFragment(target));
 

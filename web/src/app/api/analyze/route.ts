@@ -11,11 +11,17 @@
 //   - per-attempt AbortController TIMEOUT that spans headers AND the body read
 //   - 3 retries on 429 / 5xx / network / timeout with 2s / 6s / 15s backoff
 //   - 401 -> auth error, no retry
-//   - no tool_use block -> shape error carrying the raw response text
 //   - stop_reason === "max_tokens" -> truncated error
-//   - the schema re-ask: validate the tool input server-side with validateRecipe; on
-//     failure re-send ONCE with a wire-valid assistant tool_use -> user tool_result
-//     turn carrying the errors, then re-validate.
+//   - tool_use block present -> return its .input
+//   - NO tool_use block (the omega gateway ignores the forced tool_choice and answers
+//     with the recipe JSON inside a text block, often after prose + a markdown fence) ->
+//     parse the outermost JSON object out of the concatenated text: a good parse is the
+//     input, a `{` that never closes is a truncation, no `{` at all is a shape error.
+//   - the schema re-ask: validate the input server-side with validateRecipe; on failure
+//     re-send ONCE. The re-ask turn branches on the first response: a real tool_use is
+//     answered with a wire-valid assistant tool_use -> user tool_result pair; a text-only
+//     response is answered with the assistant text turn + a plain user text turn (no
+//     tool_result, since there is no tool_use_id to answer). Then re-validate.
 //
 // The pure pieces (classify, BACKOFF_MS, buildReaskTurns, extractToolInput) are
 // exported so the route test can assert them with a mocked fetch, never the network.
@@ -60,32 +66,54 @@ export interface GatewayMessage {
   content: ContentBlock[];
 }
 
-// -- buildReaskTurns(firstResponse, errors): the wire-valid re-ask turns. On the
-// Anthropic Messages wire an assistant tool_use turn MUST be answered by a user turn
-// whose content holds a tool_result block with the MATCHING tool_use_id — a bare text
-// turn is a 400 ("tool_use ids were found without tool_result blocks"). Returns the
-// two messages to append: the assistant turn (echoing the model's own content) and the
-// user tool_result turn (is_error:true) naming the validation errors. Pure — the route
-// test asserts the tool_result carries the same tool_use_id as the assistant tool_use.
+// -- buildReaskTurns(firstResponse, errors): the wire-valid re-ask turns. Branches on
+// whether the first response actually used the tool:
+//   • tool_use path — on the Anthropic Messages wire an assistant tool_use turn MUST be
+//     answered by a user turn whose content holds a tool_result block with the MATCHING
+//     tool_use_id — a bare text turn is a 400 ("tool_use ids were found without
+//     tool_result blocks"). Append the assistant echo + a user tool_result (is_error).
+//   • text path — the omega gateway ignored the forced tool_choice and answered with a
+//     plain text block (no tool_use). There is NO tool_use_id to answer, so a tool_result
+//     turn would itself be wire-invalid ("unexpected tool_result"). Instead append the
+//     assistant's text turn followed by a PLAIN USER TEXT turn carrying the errors and the
+//     "only JSON" instruction.
+// Pure — the route test asserts each branch's shape.
 export function buildReaskTurns(
   firstResponse: { content: ContentBlock[] },
   errors: string[]
 ): [GatewayMessage, GatewayMessage] {
-  const toolUse = (firstResponse.content || []).find((b) => b.type === "tool_use") as
-    | { id?: string }
-    | undefined;
+  const content = firstResponse.content || [];
+  const toolUse = content.find((b) => b.type === "tool_use") as { id?: string } | undefined;
   const assistantTurn: GatewayMessage = {
     role: "assistant",
     content: firstResponse.content,
   };
+
+  if (toolUse) {
+    const userTurn: GatewayMessage = {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: toolUse.id,
+          is_error: true,
+          content: `Your emit was invalid: ${JSON.stringify(errors)}. Re-emit the full corrected tool call.`,
+        },
+      ],
+    };
+    return [assistantTurn, userTurn];
+  }
+
+  // Text path: no tool_use to answer — send a plain user text turn instead.
   const userTurn: GatewayMessage = {
     role: "user",
     content: [
       {
-        type: "tool_result",
-        tool_use_id: toolUse?.id,
-        is_error: true,
-        content: `Your emit was invalid: ${JSON.stringify(errors)}. Re-emit the full corrected tool call.`,
+        type: "text",
+        text:
+          `Your JSON was invalid: ${JSON.stringify(errors)}. ` +
+          "Re-emit ONLY the corrected JSON object — no prose, no markdown, no code fences, nothing else. " +
+          "Your entire reply must be a single valid JSON object beginning with `{` and ending with `}`.",
       },
     ],
   };
@@ -97,10 +125,85 @@ export type ExtractResult =
   | { ok: true; input: Record<string, unknown> }
   | { ok: false; kind: "truncated" | "shape"; message: string; raw: string };
 
+// -- stripCodeFences(text): pure. Remove markdown code fences so the JSON body inside a
+// ```json … ``` or bare ``` … ``` block is exposed to the brace scan. We do NOT require a
+// closing fence (a truncated response may open ```json and never close it), so this only
+// strips fence MARKER lines wherever they appear and returns the remaining text. -------
+function stripCodeFences(text: string): string {
+  // Drop any line that is just a fence marker: ``` optionally followed by a language tag
+  // (```json, ```JSON, ``` ). Keeps every other line verbatim.
+  return text
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*```[a-zA-Z0-9_-]*\s*$/.test(line))
+    .join("\n");
+}
+
+// -- parseJsonFromText(text): pure, defensive, NEVER throws. Finds the outermost balanced
+// { … } object in free text (prose + optional markdown fences) and JSON.parses it.
+//   - returns the parsed object on success,
+//   - returns { __truncated: true } when there IS an opening `{` but no balanced close
+//     parses (a cut-off / incomplete JSON — a truncation, not a shape error),
+//   - returns null when there is no JSON object at all.
+// The brace scan tracks string state and backslash escapes so a `{` or `}` inside a JSON
+// string literal does not throw the depth count off.
+export type JsonFromText = Record<string, unknown> | { __truncated: true } | null;
+export function parseJsonFromText(text: string): JsonFromText {
+  if (typeof text !== "string" || text.length === 0) return null;
+  const body = stripCodeFences(text);
+  const start = body.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < body.length; i++) {
+    const ch = body[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        // Found the matching close for the outermost object — parse just that slice.
+        const candidate = body.slice(start, i + 1);
+        try {
+          const parsed = JSON.parse(candidate) as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return parsed as Record<string, unknown>;
+          }
+          // A balanced {…} that parsed to a non-object (shouldn't happen for `{`), or the
+          // slice was somehow not an object: treat as no-JSON so the caller reports shape.
+          return null;
+        } catch {
+          // Balanced braces but not valid JSON (e.g. contains an unclosed string that the
+          // depth scan walked past): treat as truncated/incomplete rather than shape.
+          return { __truncated: true };
+        }
+      }
+    }
+  }
+  // Opened a `{` (possibly inside an unterminated string) but never balanced it: truncated.
+  return { __truncated: true };
+}
+
 // -- extractToolInput(json): pure. Truncation guard (stop_reason === "max_tokens")
 // first — a response cut at the token cap carries a half-written tool_use whose JSON is
 // structurally incomplete, so surface it as truncated (with the raw body) rather than
-// letting a partial recipe reach validation. Then the no-tool_use guard -> shape. ---
+// letting a partial recipe reach validation. Then, if there IS a tool_use block, return
+// its .input. Otherwise fall back to the TEXT path: the omega gateway ignores the forced
+// tool_choice and returns the recipe as JSON inside a text block (often after prose and a
+// markdown fence), so concatenate all text blocks and extract the JSON object from them.
 export function extractToolInput(json: {
   stop_reason?: string;
   content?: ContentBlock[];
@@ -116,15 +219,36 @@ export function extractToolInput(json: {
   const block = Array.isArray(json.content)
     ? json.content.find((b) => b.type === "tool_use")
     : null;
-  if (!block) {
+  if (block) {
+    return { ok: true, input: (block as unknown as { input: Record<string, unknown> }).input };
+  }
+
+  // No tool_use block — fall back to parsing JSON out of the text block(s).
+  const text = Array.isArray(json.content)
+    ? json.content
+        .filter((b) => b.type === "text" && typeof (b as { text?: unknown }).text === "string")
+        .map((b) => (b as unknown as { text: string }).text)
+        .join("\n")
+    : "";
+  const parsed = parseJsonFromText(text);
+  if (parsed && !("__truncated" in parsed)) {
+    return { ok: true, input: parsed };
+  }
+  if (parsed && "__truncated" in parsed) {
+    // A `{` was present but the JSON did not close/parse — the model's JSON was cut off.
     return {
       ok: false,
-      kind: "shape",
-      message: "Response contained no tool_use block.",
+      kind: "truncated",
+      message: "response text carried an incomplete (truncated) JSON object",
       raw: JSON.stringify(json),
     };
   }
-  return { ok: true, input: (block as unknown as { input: Record<string, unknown> }).input };
+  return {
+    ok: false,
+    kind: "shape",
+    message: "Response contained no tool_use block and no JSON object in its text.",
+    raw: JSON.stringify(json),
+  };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -251,7 +375,12 @@ export async function POST(request: Request): Promise<Response> {
 
   const makeRequestBody = (msgs: GatewayMessage[]) => ({
     model,
-    max_tokens: 4096,
+    // 8192 (raised from 4096): the omega gateway can ignore the forced tool_choice and
+    // answer with prose + the recipe JSON in a text block; at 4096 the prose ate the
+    // budget and the JSON truncated mid-object. Headroom keeps the JSON intact even when
+    // the model insists on narrating first. The no-prose system directive is the primary
+    // fix; this is the belt-and-braces backstop.
+    max_tokens: 8192,
     stream: false,
     system,
     messages: msgs,
