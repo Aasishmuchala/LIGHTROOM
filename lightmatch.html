@@ -17,12 +17,12 @@
      Never on an inactive control, never decorative.
    · Fixed rem type scale (root 13px, ratio ~1.15): 11 / 12 / 13 / 15 / 17 / 22 px.
      Hierarchy from weight / case / tracking, never font variety. Every micro-label
-     (rail groups, step headers, slot labels) shares ONE grammar: 11px / 600 /
-     0.12em caps in --text-3. Values + look-distance scores are --mono + tabular-nums
-     and the largest ink on their line; the ui_path breadcrumb recedes to 11.5px.
+     (rail groups, sheet band names, slot labels) shares ONE grammar: ~11px / 600 /
+     ~0.11-0.12em caps in the muted ink ramp. Values + look-distance scores are --mono +
+     tabular-nums and the largest ink on their line; the ui_path breadcrumb recedes to 11.5px.
    · Radius: 8px surfaces (cards / banners / slots / toasts) · 6px controls (buttons /
      chips / inputs / thumbs) · 4px nested-in-a-control · dots round.
-   · Spacing rhythm 4/8/12/16/20/24/32: card pad 20×24, step-group gap 24, row pad 12.
+   · Spacing rhythm 4/8/12/16/20/24/32: card pad 20×24, sheet band header 14/8, row pad 12.
    · Motion 160ms ease-out on state properties only (color/border/box-shadow) + a 1px
      press on buttons; everything collapses under prefers-reduced-motion.
    · Full control state set — default / hover / focus-visible / active / disabled /
@@ -294,7 +294,7 @@ button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .t
 #recipearea { flex: 1 1 auto; min-width: 0; }
 
 /* ---- rail section rhythm: a hairline divider + shared micro-label grammar ---- */
-.rail-title, .chip-group-label, .slot-label, .step-header {
+.rail-title, .chip-group-label, .slot-label {
   font-weight: 600; font-size: 11px; color: var(--text-3);
   text-transform: uppercase; letter-spacing: 0.12em;
 }
@@ -489,15 +489,6 @@ button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .t
   font-family: var(--mono); font-variant-numeric: tabular-nums;
   font-weight: 600; font-size: 22px; color: var(--text); letter-spacing: -0.01em;
 }
-/* step group = a calm band; the header names the step, a hairline finishes the line */
-.step-group { margin: 0; padding: 22px 0 0; }
-.step-group:first-of-type { padding-top: 12px; }
-.step-group:last-of-type { padding-bottom: 6px; }
-.step-header {
-  display: flex; align-items: center; gap: 12px;
-  color: var(--text-3); margin-bottom: 2px;
-}
-.step-header::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--line); }
 .rationale-foldout {
   margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line-2);
   font-size: 12.5px; color: var(--text-2);
@@ -530,7 +521,7 @@ button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .t
   border-top: 1px solid var(--line);
   border-radius: 6px;
 }
-.step-group .value-row:first-of-type, .correction-card .value-row:first-of-type { border-top-color: transparent; }
+.correction-card .value-row:first-of-type { border-top-color: transparent; }
 .value-row:hover { background: var(--ctl); }
 .value-row-main { flex: 1 1 auto; min-width: 0; }
 .value-row-label { font-size: 11.5px; color: var(--text-3); line-height: 1.55; }
@@ -580,6 +571,111 @@ button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .t
 .row-copy-btn:hover { color: var(--text); border-color: var(--line-strong); background: var(--ctl-solid); }
 .row-copy-btn:focus-visible { opacity: 1; outline-offset: 2px; }
 .row-copy-btn:active { transform: translateY(0.5px); }
+
+/* ============================================================================
+   SETTINGS SHEET — the recipe rendered as the COMPLETE panel, grouped like the real
+   V-Ray/Vantage UI. The scan job: changed controls are the focal jewels; held controls
+   recede to a quiet reference line; display-only (lighting:false) controls recede the
+   most. Group bands give the long sheet rhythm; all-held bands collapse behind their
+   header so defaults never bury the moves. One accent, hairlines for elevation — same
+   system as the rest of the instrument.
+   ============================================================================ */
+.sheet-summary {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 11px; color: var(--text-3); letter-spacing: 0.02em;
+  margin: 10px 0 2px; padding-bottom: 2px;
+}
+.sheet { display: flex; flex-direction: column; }
+
+/* a band = one real UI rollout/panel. A changed band is an open section; an all-held
+   band is a <details> that collapses. Both share the header grammar. */
+.sheet-band { border-top: 1px solid var(--line); }
+.sheet-band:first-child { border-top: none; }
+.band-header {
+  display: flex; align-items: baseline; gap: 12px;
+  padding: 14px 0 8px; margin: 0;
+}
+.band-name {
+  font-weight: 600; font-size: 11px; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: 0.11em;
+  flex: 0 1 auto; min-width: 0;
+}
+/* a band that carries changes names itself in full ink so the eye finds it while
+   scanning the long band list; an all-held band's name stays a step quieter. */
+.sheet-band-active > .band-header .band-name { color: var(--text); }
+.sheet-band-held > .band-header .band-name { color: var(--text-3); }
+.band-count {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 10.5px; color: var(--text-3); letter-spacing: 0.01em;
+  margin-left: auto; white-space: nowrap; flex: 0 0 auto; display: inline-flex; gap: 5px;
+}
+/* a band with changes flags its count in the accent; a fully-held band stays neutral */
+.band-count-changed { color: var(--accent-strong); font-weight: 600; }
+.band-count-changed.band-count-none { color: var(--text-3); font-weight: 400; }
+.band-count-sep { opacity: 0.5; }
+.band-count-total { color: var(--text-3); }
+
+/* collapsed all-held band: the summary is a real disclosure control with the full
+   focus/hover state set; a caret rotates on open. No side-stripe, no reinvented widget.
+   Denser vertical rhythm than an open band header — a closed band shows no rows, so the
+   long stack of held bands stays glanceable and the eye glides past to the next change. */
+.sheet-band-held > summary.band-header-summary {
+  cursor: pointer; list-style: none; user-select: none;
+  border-radius: 6px; margin: 0 -8px; padding: 9px 8px;
+}
+.sheet-band-held > summary.band-header-summary::-webkit-details-marker { display: none; }
+.sheet-band-held > summary.band-header-summary:hover { background: var(--ctl); }
+.sheet-band-held > summary.band-header-summary:hover .band-name { color: var(--text-2); }
+.sheet-band-held > summary.band-header-summary:hover .band-disclosure { border-left-color: var(--text-2); }
+.sheet-band-held > summary.band-header-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* an OPENED held band lifts its name a touch (it now shows content) to signal the change */
+.sheet-band-held[open] > summary.band-header-summary .band-name { color: var(--text-2); }
+.band-disclosure {
+  width: 0; height: 0; flex: 0 0 auto; align-self: center;
+  border-left: 5px solid var(--text-3); border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+  transition: transform 0.16s ease-out; transform: translateY(0.5px);
+}
+.sheet-band-held[open] > summary .band-disclosure { transform: rotate(90deg) translateX(0.5px); }
+.sheet-band-held[open] > summary .band-name { color: var(--text-2); }
+.band-rows { padding-bottom: 4px; }
+
+/* CHANGED sheet row — inherits the full .value-row jewel treatment (declared above);
+   here it just gains a subtle tungsten presence so it reads as the focal control the
+   moment the eye lands on the band. A hairline-thin accent wash on hover, and the
+   from → value pair leads with the mono value. NO side-stripe (banned) — the emphasis
+   is the accent-tinted rest state + the confidence dot already on the row. */
+.sheet-row-changed { background: var(--accent-wash); border-top-color: transparent; }
+.sheet-row-changed:hover { background: var(--accent-wash-2); }
+.sheet-row-changed + .sheet-row-changed { margin-top: 4px; }
+.value-arrow { color: var(--accent-strong); font-weight: 600; padding: 0 1px; }
+/* the "from" in a changed row is quiet; the arrow points to the jewel value */
+.sheet-row-changed .from-text { color: var(--text-3); }
+
+/* HELD sheet row — one compact line: recessed breadcrumb + held default value. No
+   toggle, no why, no copy. It exists for completeness, so it must not compete. */
+.sheet-row-held {
+  display: flex; align-items: baseline; gap: 12px;
+  padding: 6px 8px; margin: 0 -8px; border-radius: 5px;
+}
+.sheet-row-held:hover { background: var(--ctl); }
+.held-path {
+  flex: 1 1 auto; min-width: 0; font-size: 11.5px; color: var(--text-3); line-height: 1.5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* held rows keep the breadcrumb quiet: the leaf lifts only slightly, never to full ink */
+.sheet-row-held .path-leaf { color: var(--text-2); font-weight: 500; font-size: 11.5px; }
+.held-value {
+  flex: 0 0 auto; font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 11.5px; color: var(--text-2); text-align: right; max-width: 44%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.held-value .value-text { color: var(--text-2); font-weight: 500; }
+.held-value .value-unit { color: var(--text-3); font-weight: 400; font-size: 10px; padding-left: 1px; }
+/* display-only (lighting:false) held rows recede the MOST — the model may never set
+   these; they are pure completeness (viewport wire color, night-sky/moon detail, seeds). */
+.sheet-row-display .held-path,
+.sheet-row-display .held-path .path-leaf { color: var(--text-3); font-weight: 400; }
+.sheet-row-display .held-value, .sheet-row-display .held-value .value-text { color: var(--text-3); font-weight: 400; }
 
 /* ============================================================================
    SESSION STRIP — the filmstrip ledger. Each attempt's score is its headline number;
@@ -1800,6 +1896,13 @@ const SCHEMAS = {
     lines.push("Exactness goal: the user requires a ~99% match to the reference's lighting, not a pleasing " +
       "approximation. Be surgical, not tasteful — small, evidence-backed moves that close the measured gap beat " +
       "confident-sounding creative reinterpretation.");
+    lines.push("");
+    lines.push("Full control set, surgical output: the pack listing below is the target's COMPLETE lighting " +
+      "control set — every knob you are allowed to touch. It is deliberately exhaustive so you can find the exact " +
+      "right control, not a licence to fill it in. Emit ONLY the moves that measurably close the gap; do not set a " +
+      "control you are not deliberately changing, and never restate a control at its own default just to look " +
+      "complete. The app renders the full panel for the user and shows every control you did not move at its held " +
+      "default — so your job is the surgical delta, and a short, decisive recipe is the correct one.");
 
     if (isCorrection) {
       lines.push("");
@@ -2899,6 +3002,19 @@ const ENGINE = {
     return PACKS.lookup(this.activeTarget(), paramId);
   },
 
+  // -- sheetFor(target): the UI's complete-settings-SHEET scaffold API, delegating to
+  // PACKS.sheet for the given target (mirrors lookup()'s UI->ENGINE->PACKS boundary so
+  // the UI never reaches into PACKS directly). Returns the panel-ordered
+  // [{group, entries[]}, …] scaffold — EVERY control, lighting:true and lighting:false
+  // alike — that UI.buildSheet maps the recipe's moves onto. Unlike lookup(), it takes
+  // an explicit target rather than defaulting to the active one: the recipe area already
+  // has the active target in hand (session.activeTarget) and passing it keeps the sheet
+  // and the recipe it renders provably about the same target. Degrades to [] for an
+  // unknown target, exactly as PACKS.sheet does. ------------------------------------
+  sheetFor(target) {
+    return PACKS.sheet(target);
+  },
+
   // -- _attemptNumberForChain(chain, idx) / attemptNumberAt(idx): the MONOTONIC
   // attempt number (#8) for the stored attempt at array index `idx`. attempts[] keeps
   // only the last ATTEMPTS_CAP entries, but _attemptCount keeps climbing, so the
@@ -3404,41 +3520,118 @@ const UI = {
     return !(chain && chain.recipeApplied && chain.recipeApplied[param] === false);
   },
 
-  // -- buildSheet(recipe, target) -> human-readable copy-sheet text. Title line
-  // "<target label> — LightMatch recipe" + a baseline line naming factory defaults
-  // vs the settings screenshot in human words (not the raw enum string) + one
-  // numbered line per value: "N. <ui_path>: <value><unit> (from <from>) — <why>" for
-  // spinner/dropdown/slot rows, or "N. <ui_path>: <set> — <why>" (no unit, no "(from
-  // ...)" pair — kind:"placement" values are instructions, not a baseline-anchored
-  // measurement) for placement rows. Never throws on an unknown target — PACKS.lookup
-  // degrades to null there and this function falls back to the bare param id rather
-  // than dereferencing a null entry's .ui_path. ------------------------------------
-  buildSheet(recipe, target) {
+  // -- buildSheet(target, recipe) -> the COMPLETE settings sheet as a flat, ordered row
+  // array — the pure heart of the Phase-2 feature. It walks PACKS.sheet(target)'s
+  // panel-ordered [{group, entries[]}] scaffold and, for EVERY control (lighting:true
+  // AND lighting:false), emits one row whose shape is stable regardless of whether the
+  // model touched it:
+  //   { group, param, ui_path, kind, unit, lighting,
+  //     value, isChanged, from, confidence, why, clamped, applied }
+  // A control the recipe has a move for (matched by param id) is a CHANGED row:
+  // isChanged:true, value = the move's `set` (or `to` for a correction's moves[]),
+  // carrying from/confidence/why/clamped and its applied init-state. Every other control
+  // is a HELD row: isChanged:false, value = the control's pack `default`, with no
+  // from/why/confidence/clamped and applied left null (no toggle). `group` and the
+  // within-group order are preserved verbatim from PACKS.sheet — the sheet reads in real
+  // UI panel order top to bottom. The move array is read once into an id->move map so
+  // this stays O(controls) rather than O(controls×moves). Pure and DOM-free (testable):
+  // the render layer turns these rows into markup; the copy-sheet text builder consumes
+  // the same rows. Recipe (`values`/`set`) is the default; a correction object
+  // (`moves`/`to`) is accepted transparently so a caller could sheet either, though the
+  // recipe area only ever sheets the round-0 recipe (corrections stay delta cards).
+  // Never throws on an unknown target — PACKS.sheet degrades to [] there, so the result
+  // is simply an empty array. `applied` init-state uses UI.isRecipeApplied against the
+  // ACTIVE chain, matching the row toggles the render draws. -------------------------
+  buildSheet(target, recipe) {
+    // Reach the pack scaffold through ENGINE (UI->ENGINE->PACKS boundary), never PACKS
+    // directly — ENGINE.sheetFor is the thin wrapper for exactly this. Same [] on an
+    // unknown target.
+    const scaffold = ENGINE.sheetFor(target);
+    const r = recipe || {};
+    const isCorrection = Array.isArray(r.moves);
+    const moves = isCorrection ? r.moves : (Array.isArray(r.values) ? r.values : []);
+    const valKey = isCorrection ? "to" : "set";
+    const byParam = new Map();
+    for (const m of moves) { if (m && typeof m.param === "string" && !byParam.has(m.param)) byParam.set(m.param, m); }
+    const chain = ENGINE.activeChain();
+
+    const rows = [];
+    for (const band of scaffold) {
+      for (const e of band.entries) {
+        const move = byParam.get(e.id) || null;
+        if (move) {
+          rows.push({
+            group: band.group, param: e.id, ui_path: e.ui_path, kind: e.kind,
+            unit: e.unit || "", lighting: e.lighting === true,
+            value: move[valKey], isChanged: true,
+            from: move.from, confidence: move.confidence, why: move.why,
+            clamped: !!move.clamped,
+            applied: isCorrection ? true : this.isRecipeApplied(chain, e.id)
+          });
+        } else {
+          rows.push({
+            group: band.group, param: e.id, ui_path: e.ui_path, kind: e.kind,
+            unit: e.unit || "", lighting: e.lighting === true,
+            value: e.default, isChanged: false,
+            from: undefined, confidence: undefined, why: undefined,
+            clamped: false, applied: null
+          });
+        }
+      }
+    }
+    return rows;
+  },
+
+  // -- buildSheetText(target, recipe) -> human-readable COPY of the full settings sheet:
+  // grouped by real UI panel, EVERY control listed at its value (changed ones marked with
+  // a leading "→", held ones with a leading "·"), so what the artist pastes is the same
+  // complete panel the screen shows — not just the moves. Title line "<label> — LightMatch
+  // settings sheet", a baseline line (factory defaults vs settings screenshot, in human
+  // words not the raw enum), then per group a header with its "<n> changed · <total> total"
+  // count and one line per control: "→ <ui_path>: <value><unit> (from <from>) — <why>" for a
+  // changed spinner/dropdown/slot row, "→ <ui_path>: <value> — <why>" for a changed
+  // placement row (instruction, no unit/from pair), and "· <ui_path>: <value>" for a held
+  // row (its default, no from/why). Built from buildSheet(target, recipe)'s rows so the copy
+  // text and the on-screen sheet can never diverge. Never throws on an unknown target —
+  // buildSheet returns [] and only the header/baseline lines are emitted. --------------
+  buildSheetText(target, recipe) {
     const pack = PACKS[target];
     const label = pack ? pack.label : target;
-    const lines = [`${label} — LightMatch recipe`];
-    const baselineText = recipe.baseline === "settings_screenshot" ? "settings screenshot" : "factory defaults";
+    const r = recipe || {};
+    const lines = [`${label} — LightMatch settings sheet`];
+    const baselineText = r.baseline === "settings_screenshot" ? "settings screenshot" : "factory defaults";
     lines.push(`baseline: ${baselineText}`);
-    lines.push("");
-    const values = Array.isArray(recipe.values) ? recipe.values : (Array.isArray(recipe.moves) ? recipe.moves : []);
-    const valKey = Array.isArray(recipe.moves) ? "to" : "set";
-    values.forEach((v, i) => {
-      const entry = PACKS.lookup(target, v.param);
-      const uiPath = entry ? entry.ui_path : v.param;
-      const isPlacement = entry && entry.kind === "placement";
-      const n = i + 1;
-      const why = v.why ? ` — ${v.why}` : "";
-      if (isPlacement) {
-        lines.push(`${n}. ${uiPath}: ${v[valKey]}${why}`);
-      } else {
-        // Unit appended only for a genuinely numeric value — see the matching guard
-        // in _valueRowHtml (SECTION: UI DOM rendering) for the malformed-model-value
-        // rationale (a spinner-kind entry's value SHOULD always be numeric, but
-        // SCHEMAS.validateRecipe does not itself enforce that by kind).
-        const unit = entry && entry.unit && typeof v[valKey] === "number" ? entry.unit : "";
-        lines.push(`${n}. ${uiPath}: ${v[valKey]}${unit} (from ${v.from})${why}`);
+    const rows = this.buildSheet(target, r);
+    // Regroup the flat rows back into panel bands (buildSheet already preserves order,
+    // so a simple first-seen grouping reproduces PACKS.sheet's band order exactly).
+    const order = [];
+    const byGroup = new Map();
+    for (const row of rows) {
+      if (!byGroup.has(row.group)) { byGroup.set(row.group, []); order.push(row.group); }
+      byGroup.get(row.group).push(row);
+    }
+    for (const group of order) {
+      const groupRows = byGroup.get(group);
+      const changed = groupRows.filter(row => row.isChanged).length;
+      lines.push("");
+      lines.push(`${group}  (${changed} changed · ${groupRows.length} total)`);
+      for (const row of groupRows) {
+        // Unit appended only for a genuinely numeric value (the same malformed-model-value
+        // guard _valueRowHtml applies — a spinner value SHOULD be numeric, but the schema
+        // does not enforce that by kind).
+        const unit = row.unit && typeof row.value === "number" ? row.unit : "";
+        const isPlacement = row.kind === "placement";
+        if (!row.isChanged) {
+          lines.push(`· ${row.ui_path}: ${row.value}${unit}`);
+        } else if (isPlacement) {
+          const why = row.why ? ` — ${row.why}` : "";
+          lines.push(`→ ${row.ui_path}: ${row.value}${why}`);
+        } else {
+          const why = row.why ? ` — ${row.why}` : "";
+          lines.push(`→ ${row.ui_path}: ${row.value}${unit} (from ${row.from})${why}`);
+        }
       }
-    });
+    }
     return lines.join("\n");
   },
 
@@ -3989,8 +4182,12 @@ const UI = {
     }
   },
 
-  // -- recipe area: grouped-by-6-steps recipe card, or correction cards for attempts,
-  // or an empty-state message. -------------------------------------------------------
+  // -- recipe area: the COMPLETE settings sheet (recipe mapped onto the full pack panel,
+  // grouped by real UI `group`), or correction cards for attempts, or an empty state.
+  // STEP_HEADERS is retained: the recipe DISPLAY no longer groups by step, but the model
+  // still tags every move with a step (1..6) for its own fixed-order + degeneracy logic
+  // (SCHEMAS.systemPrompt), and these labels remain the canonical human names for those
+  // steps — kept as the single source of truth for that vocabulary, not dead code.
   STEP_HEADERS: {
     1: "1 · Lock exposure & white balance",
     2: "2 · Sun / key",
@@ -4023,16 +4220,23 @@ const UI = {
     const recipe = chain.recipe;
     const baselineText = recipe.baseline === "settings_screenshot" ? "settings screenshot" : "factory defaults";
 
-    const stepGroups = [1, 2, 3, 4, 5, 6].map(step => {
-      const rows = (recipe.values || []).filter(v => v.step === step);
-      if (!rows.length) return "";
-      return `
-        <div class="step-group" data-step="${step}">
-          <div class="step-header">${this.esc(this.STEP_HEADERS[step])}</div>
-          ${rows.map(v => this._valueRowHtml(v, target, "recipe", null)).join("")}
-        </div>
-      `;
-    }).join("");
+    // The Phase-2 sheet: the recipe now renders as the COMPLETE panel. buildSheet maps
+    // the model's moves onto PACKS.sheet(target)'s full, panel-ordered scaffold — every
+    // control, changed ones emphasized, the rest shown at their held/default value. The
+    // flat row array is regrouped back into its panel bands (order is already correct);
+    // each band renders as a quiet header ("N changed · M total") plus its rows. A band
+    // with any changed control shows open; an all-held band collapses behind its header
+    // (a native <details>) so long stretches of defaults stay out of the way while every
+    // control remains reachable. Corrections are UNCHANGED — they stay delta cards below.
+    const sheetRows = this.buildSheet(target, recipe);
+    const bandOrder = [];
+    const bandMap = new Map();
+    for (const row of sheetRows) {
+      if (!bandMap.has(row.group)) { bandMap.set(row.group, []); bandOrder.push(row.group); }
+      bandMap.get(row.group).push(row);
+    }
+    const bandsHtml = bandOrder.map(group => this._sheetBandHtml(group, bandMap.get(group), target)).join("");
+    const totalChanged = sheetRows.filter(row => row.isChanged).length;
 
     const correctionsHtml = (chain.attempts || []).map((att, idx) => this._correctionCardHtml(att, idx, target)).join("");
 
@@ -4046,7 +4250,8 @@ const UI = {
             <button class="btn-small" data-action="copy-json">Copy JSON</button>
           </div>
         </div>
-        ${stepGroups}
+        <div class="sheet-summary">${totalChanged} changed · ${sheetRows.length} controls · full panel</div>
+        <div class="sheet">${bandsHtml}</div>
         <details class="rationale-foldout">
           <summary>Rationale</summary>
           <p>${this.esc(recipe.rationale)}</p>
@@ -4058,12 +4263,108 @@ const UI = {
     `;
 
     const copySheetBtn = host.querySelector('[data-action="copy-sheet"]');
-    if (copySheetBtn) copySheetBtn.onclick = async () => { await this.copyText(this.buildSheet(recipe, target)); this.toast("Sheet copied."); };
+    if (copySheetBtn) copySheetBtn.onclick = async () => { await this.copyText(this.buildSheetText(target, recipe)); this.toast("Sheet copied."); };
     const copyJsonBtn = host.querySelector('[data-action="copy-json"]');
     if (copyJsonBtn) copyJsonBtn.onclick = async () => { await this.copyText(this.buildJSON(recipe)); this.toast("JSON copied."); };
 
     this._wireValueRowCopyButtons(host);
     this._wireAppliedToggles(host);
+  },
+
+  // -- one sheet BAND: a quiet panel header (the verbatim `group` string) with a
+  // "<n> changed · <m> total" count, then its rows. A band with at least one changed
+  // control is always open (its changed rows are focal jewels the artist must see). A
+  // band whose controls are ALL held collapses into a native <details> that is closed by
+  // default — the header stays a summary the artist can expand, so completeness holds
+  // ("even the ones without any change") without a wall of defaults dominating the page.
+  // No JS wiring needed for the collapse (details/summary is native + keyboard-accessible
+  // + survives a re-render since render() rebuilds from state each time). ------------
+  _sheetBandHtml(group, rows, target) {
+    const changed = rows.filter(r => r.isChanged).length;
+    const rowsHtml = rows.map(r => this._sheetRowHtml(r, target)).join("");
+    const countHtml = `<span class="band-count"><span class="band-count-changed ${changed ? "" : "band-count-none"}">${changed} changed</span> <span class="band-count-sep">·</span> <span class="band-count-total">${rows.length} total</span></span>`;
+    if (changed > 0) {
+      return `
+        <section class="sheet-band sheet-band-active" data-band-changed="${changed}">
+          <header class="band-header">
+            <span class="band-name">${this.esc(group)}</span>
+            ${countHtml}
+          </header>
+          <div class="band-rows">${rowsHtml}</div>
+        </section>
+      `;
+    }
+    // all-held band → collapsed by default behind its summary header.
+    return `
+      <details class="sheet-band sheet-band-held" data-band-changed="0">
+        <summary class="band-header band-header-summary">
+          <span class="band-disclosure" aria-hidden="true"></span>
+          <span class="band-name">${this.esc(group)}</span>
+          ${countHtml}
+        </summary>
+        <div class="band-rows">${rowsHtml}</div>
+      </details>
+    `;
+  },
+
+  // -- one SHEET row: the completeness unit. A CHANGED row is the focal jewel — the same
+  // treatment recipe value-rows always had: breadcrumb ui_path with a weighted leaf, a
+  // mono `from → value` jewel, confidence dot, CLAMPED flag, the applied toggle (keeping
+  // the data-recipe-applied / data-applied-param hooks + behavior), a per-row copy button,
+  // and the why line. A HELD row recedes to a single compact line: the recessed ui_path
+  // breadcrumb + its held default value, no toggle, no why, no copy — it is there for
+  // completeness, not action. A held row whose control is lighting:false (display-only,
+  // the model may never set it) is muted the most (an extra class). All model-sourced
+  // text (value when a placement string, why) is esc()'d; ui_path is trusted pack data
+  // but esc()'d anyway for defense in depth. ----------------------------------------
+  _sheetRowHtml(row, target) {
+    const isPlacement = row.kind === "placement";
+    // Presentation-only breadcrumb treatment of the verbatim ui_path (shared with
+    // _valueRowHtml): each " ▸ "-separated segment recedes, the final control name
+    // carries the weight; rendered text stays byte-identical to the verbatim ui_path.
+    const pathParts = String(row.ui_path).split(" ▸ ");
+    const pathLeaf = pathParts.pop();
+    const pathHtml = (pathParts.length ? `${pathParts.map(p => this.esc(p)).join(`<span class="path-sep"> ▸ </span>`)}<span class="path-sep"> ▸ </span>` : "")
+      + `<span class="path-leaf">${this.esc(pathLeaf)}</span>`;
+    // Unit appended only when the value is genuinely numeric (malformed-model-value guard).
+    const unit = row.unit && typeof row.value === "number" ? row.unit : "";
+
+    if (!row.isChanged) {
+      // HELD row — compact, muted; lighting:false held rows are muted the most.
+      const heldClasses = `sheet-row sheet-row-held ${row.lighting ? "" : "sheet-row-display"}`;
+      const valueHtml = isPlacement
+        ? `<span class="value-text">${this.esc(row.value)}</span>`
+        : `<span class="value-text">${this.esc(row.value)}<span class="value-unit">${this.esc(unit)}</span></span>`;
+      return `
+        <div class="${heldClasses}" data-param="${this.esc(row.param)}">
+          <div class="held-path">${pathHtml}</div>
+          <div class="held-value">${valueHtml}</div>
+        </div>
+      `;
+    }
+
+    // CHANGED row — the focal jewel.
+    const confDot = `<span class="conf-dot conf-${this.esc(row.confidence)}" title="confidence: ${this.esc(row.confidence)}"></span>`;
+    const clampedFlag = row.clamped ? `<span class="clamped-flag" title="Clamped to the parameter's legal range">clamped</span>` : "";
+    const copyText = isPlacement ? `${row.ui_path} → ${row.value}` : `${row.ui_path} → ${row.value}${unit}`;
+    const recipeChecked = row.applied !== false; // applied is true/false for a changed row
+    const appliedHtml = `<label class="applied-toggle"><input type="checkbox" ${recipeChecked ? "checked" : ""} data-recipe-applied data-applied-param="${this.esc(row.param)}" /> applied</label>`;
+    const valueDisplay = isPlacement
+      ? `<span class="value-text">${this.esc(row.value)}</span>`
+      : `<span class="from-text">${this.esc(row.from)}</span> <span class="value-arrow" aria-hidden="true">→</span> <span class="value-text">${this.esc(row.value)}<span class="value-unit">${this.esc(unit)}</span></span>`;
+
+    return `
+      <div class="value-row sheet-row sheet-row-changed ${isPlacement ? "value-row-placement" : ""}" data-param="${this.esc(row.param)}">
+        ${confDot}
+        <div class="value-row-main">
+          <div class="value-row-label">${pathHtml}</div>
+          <div class="value-row-value">${valueDisplay} ${clampedFlag}</div>
+          <div class="value-row-why">${this.esc(row.why)}</div>
+        </div>
+        ${appliedHtml}
+        <button class="row-copy-btn" data-copy-text="${this.esc(copyText)}" title="Copy">copy</button>
+      </div>
+    `;
   },
 
   // -- one value row: verbatim ui_path as the PRIMARY label (never model text), value
@@ -5334,6 +5635,17 @@ SELFTEST.suites.engine = async function () {
     this.ok(!!lookedUp && lookedUp.id === "cam.iso", `ENGINE.lookup("cam.iso") returns the pack entry for the active target (got ${JSON.stringify(lookedUp && lookedUp.id)})`);
     this.ok(ENGINE.lookup("no.such_param") === null, "ENGINE.lookup(): unknown param id -> null");
 
+    // -- sheetFor(target): thin wrapper over PACKS.sheet(target) — the UI->ENGINE->PACKS
+    // boundary for the complete-settings sheet. Takes an EXPLICIT target (not the active
+    // one) and returns the panel-ordered [{group, entries[]}] scaffold; [] for unknown. -
+    this.ok(typeof ENGINE.sheetFor === "function", "ENGINE.sheetFor is a function");
+    const engSheet = ENGINE.sheetFor("vray7max");
+    this.ok(Array.isArray(engSheet) && engSheet.length > 0, `ENGINE.sheetFor("vray7max") returns a non-empty scaffold (got length ${engSheet.length})`);
+    this.ok(JSON.stringify(engSheet) === JSON.stringify(PACKS.sheet("vray7max")), "ENGINE.sheetFor: byte-identical to PACKS.sheet for the same target (pure wrapper)");
+    this.ok(engSheet.every(b => typeof b.group === "string" && Array.isArray(b.entries)), "ENGINE.sheetFor: every band is {group:string, entries:[]}");
+    this.ok(ENGINE.sheetFor("vantage33").length > 0 && ENGINE.sheetFor("vantage33")[0].group !== engSheet[0].group, "ENGINE.sheetFor: takes an EXPLICIT target (vantage33 differs from vray7max), not the active one");
+    this.ok(Array.isArray(ENGINE.sheetFor("corona")) && ENGINE.sheetFor("corona").length === 0, "ENGINE.sheetFor: unknown target -> empty array (degrades like PACKS.sheet)");
+
     // -- persistence after every mutation: the session engine just built round-trips
     // through STORE under its own (deterministic test) id --------------------------
     const persisted = await STORE.loadLatest();
@@ -5940,10 +6252,11 @@ SELFTEST.suites.engineRetention = async function () {
 };
 
 // -- suite: ui (Task 7a UI structure) -- PURE-LOGIC ONLY, no DOM simulation. Exercises
-// UI.routePaste, UI.acceptsFile, UI.buildSheet (the copy-sheet text builder), and the
+// UI.routePaste, UI.acceptsFile, UI.buildSheet (the complete-settings-sheet ROW builder,
+// Phase 2), UI.buildSheetText (the full grouped copy-sheet TEXT builder), and the
 // UI.MODELS constant. Anything DOM-dependent (rendering, event wiring, drag/drop) is
-// verified separately by the Task 7.3 screenshot smoke, per the task's own scoping —
-// this suite must never call document.querySelector or construct real DOM nodes.
+// verified separately by the screenshot smoke, per the task's own scoping — this suite
+// must never call document.querySelector or construct real DOM nodes.
 SELFTEST.suites.ui = async function () {
   // -- UI.MODELS: exactly the two entries, value strings match STORE.PREFS_DEFAULTS'
   // model default and the plan's memory-recorded gateway ids. One constant so the
@@ -6067,10 +6380,11 @@ SELFTEST.suites.ui = async function () {
   this.ok(rEmpty.ok === false, "UI.acceptsFile: completely empty name+type rejected, does not crash");
   this.ok(rEmpty.reason === REJECT_MSG, "UI.acceptsFile: empty-type rejection carries the same spec message");
 
-  // -- UI.buildSheet(recipe, targetLabel) -> exact copy-sheet text. Title line +
-  // numbered steps: "N. <ui_path>: <value><unit> (from <from>) — <why>" for normal
-  // rows; a kind:"placement" row omits unit AND "(from ...)" entirely, per the task
-  // ("the string `set` as placement text, no unit/(from) pair"). -------------------
+  // -- UI.buildSheet(target, recipe) -> the COMPLETE settings-sheet ROW array (Phase 2).
+  // For every control in PACKS.sheet(target): a move -> isChanged:true with the move's
+  // value/from/confidence/why/clamped; else isChanged:false with value === the control's
+  // pack default. Every group present in panel order; lighting:false controls appear
+  // (held). Pure, DOM-free, never throws on an unknown target. ---------------------
   this.ok(typeof UI.buildSheet === "function", "UI.buildSheet is a function");
   const fakeRecipe = {
     baseline: "factory_defaults",
@@ -6083,41 +6397,82 @@ SELFTEST.suites.ui = async function () {
   };
   const isoEntry = PACKS.lookup("vray7max", "cam.iso");
   const azEntry = PACKS.lookup("vray7max", "sun.placement_azimuth");
-  const sheet = UI.buildSheet(fakeRecipe, "vray7max");
-  this.ok(typeof sheet === "string" && sheet.length > 0, "UI.buildSheet: returns a non-empty string");
-  const sheetLines = sheet.split("\n");
-  this.ok(sheetLines[0] === `${PACKS.vray7max.label} — LightMatch recipe`, `UI.buildSheet: title line is "<target label> — LightMatch recipe" (got ${JSON.stringify(sheetLines[0])})`);
-  this.ok(sheet.includes(isoEntry.ui_path), "UI.buildSheet: contains the spinner row's verbatim ui_path");
-  this.ok(sheet.includes(azEntry.ui_path), "UI.buildSheet: contains the placement row's verbatim ui_path");
-  const isoLine = sheetLines.find(l => l.includes(isoEntry.ui_path));
-  this.ok(!!isoLine && /^1\./.test(isoLine), `UI.buildSheet: the ISO row is numbered "1." (got ${JSON.stringify(isoLine)})`);
-  this.ok(!!isoLine && isoLine.includes("400"), "UI.buildSheet: spinner row shows its set value (400)");
-  this.ok(!!isoLine && isoLine.includes(isoEntry.unit), `UI.buildSheet: spinner row shows its unit (${isoEntry.unit})`);
-  this.ok(!!isoLine && /\(from 100\)/.test(isoLine), "UI.buildSheet: spinner row shows \"(from 100)\"");
-  this.ok(!!isoLine && isoLine.includes("brighten the plate"), "UI.buildSheet: spinner row includes its why");
-  const azLine = sheetLines.find(l => l.includes(azEntry.ui_path));
-  this.ok(!!azLine && /^2\./.test(azLine), `UI.buildSheet: the placement row is numbered "2." (got ${JSON.stringify(azLine)})`);
-  this.ok(!!azLine && azLine.includes("swing the sun to face camera-left"), "UI.buildSheet: placement row shows its set text verbatim");
-  this.ok(!!azLine && !/\(from/.test(azLine), 'UI.buildSheet: placement row has NO "(from ...)" pair (task-mandated)');
-  this.ok(!!azLine && azLine.includes("match the reference's key direction"), "UI.buildSheet: placement row includes its why");
+  const rows = UI.buildSheet("vray7max", fakeRecipe);
+  this.ok(Array.isArray(rows), "UI.buildSheet: returns an array");
+  // completeness: one row PER pack control, no more, no fewer.
+  const packCount = PACKS.vray7max.entries.length;
+  this.ok(rows.length === packCount, `UI.buildSheet: emits exactly one row per pack control (got ${rows.length}, want ${packCount})`);
+  // the 2 moves -> isChanged:true rows with the right value/from.
+  const isoRow = rows.find(r => r.param === "cam.iso");
+  this.ok(!!isoRow && isoRow.isChanged === true, "UI.buildSheet: cam.iso (has a move) -> isChanged:true");
+  this.ok(!!isoRow && isoRow.value === 400 && isoRow.from === 100, `UI.buildSheet: cam.iso row carries the move's value(400)/from(100) (got value ${isoRow && isoRow.value}, from ${isoRow && isoRow.from})`);
+  this.ok(!!isoRow && isoRow.confidence === "high" && isoRow.why === "brighten the plate", "UI.buildSheet: changed row carries confidence + why from the move");
+  this.ok(!!isoRow && isoRow.ui_path === isoEntry.ui_path && isoRow.kind === "spinner" && isoRow.unit === "ISO", "UI.buildSheet: changed row carries the pack's ui_path/kind/unit");
+  const azRow = rows.find(r => r.param === "sun.placement_azimuth");
+  this.ok(!!azRow && azRow.isChanged === true && azRow.value === "swing the sun to face camera-left", "UI.buildSheet: placement move -> isChanged:true with the string value");
+  this.ok(!!azRow && azRow.kind === "placement", "UI.buildSheet: placement row carries kind:placement");
+  // a sampled UNCHANGED control -> isChanged:false, value === its pack default.
+  const turbEntry = PACKS.lookup("vray7max", "sun.turbidity");
+  const turbRow = rows.find(r => r.param === "sun.turbidity");
+  this.ok(!!turbRow && turbRow.isChanged === false, "UI.buildSheet: sun.turbidity (no move) -> isChanged:false (held)");
+  this.ok(!!turbRow && turbRow.value === turbEntry.default, `UI.buildSheet: held row value === its pack default (got ${turbRow && turbRow.value}, want ${turbEntry.default})`);
+  this.ok(!!turbRow && turbRow.why === undefined && turbRow.applied === null, "UI.buildSheet: held row has no why + no applied toggle (applied null)");
+  // EVERY group present, in PACKS.sheet panel order.
+  const scaffoldGroups = PACKS.sheet("vray7max").map(b => b.group);
+  const rowGroupsSeen = [];
+  for (const r of rows) { if (rowGroupsSeen[rowGroupsSeen.length - 1] !== r.group) rowGroupsSeen.push(r.group); }
+  this.ok(scaffoldGroups.every(g => rows.some(r => r.group === g)), "UI.buildSheet: every PACKS.sheet group is present in the rows");
+  this.ok(JSON.stringify(rowGroupsSeen) === JSON.stringify(scaffoldGroups), "UI.buildSheet: rows preserve PACKS.sheet's exact panel/group order");
+  // a lighting:false control appears (held, display-only completeness).
+  const wireEntry = PACKS.lookup("vray7max", "light.vp_wire_color");
+  const wireRow = rows.find(r => r.param === "light.vp_wire_color");
+  this.ok(!!wireRow, "UI.buildSheet: a lighting:false control (light.vp_wire_color) appears in the sheet (completeness)");
+  this.ok(!!wireRow && wireRow.lighting === false && wireRow.isChanged === false && wireRow.value === wireEntry.default, "UI.buildSheet: the lighting:false row is held at its pack default with lighting:false");
+  // correction shape (moves[]/to) is accepted transparently.
+  const fakeCorrection = { moves: [{ param: "cam.iso", to: 250, from: 100, step: 1, confidence: "medium", why: "trim" }] };
+  const corrRows = UI.buildSheet("vray7max", fakeCorrection);
+  const corrIso = corrRows.find(r => r.param === "cam.iso");
+  this.ok(!!corrIso && corrIso.isChanged === true && corrIso.value === 250, "UI.buildSheet: a correction object (moves[]/to) is sheeted too — reads `to` as the value");
+  // unknown target -> [] (PACKS.sheet degrades), never throws.
+  let threwRows = null, rowsUnknown = null;
+  try { rowsUnknown = UI.buildSheet("corona", fakeRecipe); } catch (e) { threwRows = e; }
+  this.ok(threwRows === null, `UI.buildSheet: unknown target does not throw (got ${threwRows && threwRows.message})`);
+  this.ok(Array.isArray(rowsUnknown) && rowsUnknown.length === 0, "UI.buildSheet: unknown target -> empty array");
 
-  // baseline label appears somewhere in the sheet (human-readable, not the raw enum
-  // string) -- exact wording is a UI/copy decision, so this checks for the
-  // human-facing phrase rather than the literal "factory_defaults" token.
-  this.ok(/factory defaults/i.test(sheet), 'UI.buildSheet: mentions "factory defaults" in human-readable form for baseline:"factory_defaults"');
-
-  const fakeRecipeScreenshot = Object.assign({}, fakeRecipe, { baseline: "settings_screenshot" });
-  const sheetScreenshot = UI.buildSheet(fakeRecipeScreenshot, "vray7max");
-  this.ok(/settings screenshot/i.test(sheetScreenshot), 'UI.buildSheet: mentions "settings screenshot" in human-readable form for baseline:"settings_screenshot"');
-
-  // unknown target: must not throw, degrades gracefully (empty-ish output rather
-  // than a crash -- pack lookups return null and buildSheet must not dereference
-  // ui_path off a null entry).
-  let threwUnknownTarget = null;
-  let sheetUnknown = null;
-  try { sheetUnknown = UI.buildSheet(fakeRecipe, "corona"); } catch (e) { threwUnknownTarget = e; }
-  this.ok(threwUnknownTarget === null, `UI.buildSheet: unknown target does not throw (got ${threwUnknownTarget && threwUnknownTarget.message})`);
-  this.ok(typeof sheetUnknown === "string", "UI.buildSheet: unknown target still returns a string");
+  // -- UI.buildSheetText(target, recipe) -> the full grouped COPY text. Title +
+  // baseline line + per group a header ("<n> changed · <m> total") + one line per
+  // control: changed rows marked "→ <ui_path>: <value>[unit] (from <from>) — <why>"
+  // (placement changed: no unit/from pair), held rows "· <ui_path>: <value>". -------
+  this.ok(typeof UI.buildSheetText === "function", "UI.buildSheetText is a function");
+  const sheetText = UI.buildSheetText("vray7max", fakeRecipe);
+  this.ok(typeof sheetText === "string" && sheetText.length > 0, "UI.buildSheetText: returns a non-empty string");
+  const stLines = sheetText.split("\n");
+  this.ok(stLines[0] === `${PACKS.vray7max.label} — LightMatch settings sheet`, `UI.buildSheetText: title line is "<label> — LightMatch settings sheet" (got ${JSON.stringify(stLines[0])})`);
+  this.ok(/factory defaults/i.test(sheetText), 'UI.buildSheetText: baseline shown human-readable ("factory defaults")');
+  // changed spinner line: leading "→", value, unit, (from), why.
+  const stIso = stLines.find(l => l.includes(isoEntry.ui_path));
+  this.ok(!!stIso && /^→ /.test(stIso), `UI.buildSheetText: the CHANGED cam.iso line is marked with a leading "→" (got ${JSON.stringify(stIso)})`);
+  this.ok(!!stIso && stIso.includes("400") && stIso.includes(isoEntry.unit) && /\(from 100\)/.test(stIso) && stIso.includes("brighten the plate"), "UI.buildSheetText: changed spinner line shows value+unit+(from)+why");
+  // changed placement line: leading "→", verbatim text, NO (from) pair.
+  const stAz = stLines.find(l => l.includes(azEntry.ui_path));
+  this.ok(!!stAz && /^→ /.test(stAz) && stAz.includes("swing the sun to face camera-left") && !/\(from/.test(stAz), "UI.buildSheetText: changed placement line is marked, verbatim, with NO (from ...) pair");
+  // held line: leading "·", value === default, no from/why.
+  const stTurb = stLines.find(l => l.includes(turbEntry.ui_path));
+  this.ok(!!stTurb && /^· /.test(stTurb), `UI.buildSheetText: a HELD line is marked with a leading "·" (got ${JSON.stringify(stTurb)})`);
+  this.ok(!!stTurb && stTurb.includes(String(turbEntry.default)) && !/\(from/.test(stTurb), "UI.buildSheetText: held line shows its default value and has no (from ...) pair");
+  // every group header appears with its "changed · total" count; the sheet is COMPLETE.
+  this.ok(scaffoldGroups.every(g => sheetText.includes(g)), "UI.buildSheetText: every group header is present (full panel)");
+  this.ok(/\(\d+ changed · \d+ total\)/.test(sheetText), "UI.buildSheetText: group headers carry a \"<n> changed · <m> total\" count");
+  // a lighting:false control is present in the copy text too (completeness).
+  this.ok(sheetText.includes(wireEntry.ui_path), "UI.buildSheetText: a lighting:false control appears in the copy text (completeness)");
+  // settings-screenshot baseline wording.
+  const sheetTextShot = UI.buildSheetText("vray7max", Object.assign({}, fakeRecipe, { baseline: "settings_screenshot" }));
+  this.ok(/settings screenshot/i.test(sheetTextShot), 'UI.buildSheetText: mentions "settings screenshot" for baseline:"settings_screenshot"');
+  // unknown target: no throw, still a string (just header + baseline).
+  let threwText = null, textUnknown = null;
+  try { textUnknown = UI.buildSheetText("corona", fakeRecipe); } catch (e) { threwText = e; }
+  this.ok(threwText === null, `UI.buildSheetText: unknown target does not throw (got ${threwText && threwText.message})`);
+  this.ok(typeof textUnknown === "string", "UI.buildSheetText: unknown target still returns a string");
 
   // -- UI.isRecipeApplied(chain, param): pure init-state helper for the recipe-row
   // applied checkboxes (Task 7a follow-up). Absent chain / absent map / absent key /
