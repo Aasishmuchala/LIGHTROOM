@@ -16,6 +16,7 @@ export function DropSlot({
   onFocus,
   onFile,
   compact,
+  large,
   captionOverride,
   exrEv,
   onExrEv,
@@ -28,6 +29,8 @@ export function DropSlot({
   onFocus: () => void;
   onFile: (file: File) => void;
   compact?: boolean;
+  /** A primary input (Reference / Base): taller preview, larger label, more room. */
+  large?: boolean;
   captionOverride?: string;
   /** When this slot ingested an EXR: the current develop EV (else null/undefined). */
   exrEv?: number | null;
@@ -38,6 +41,9 @@ export function DropSlot({
   const [dragOver, setDragOver] = useState(false);
   const src = dataUrl ? safeSrc(dataUrl) : "";
   const isExr = typeof exrEv === "number" && !!onExrEv;
+  // Preview height by role: primary ports (Reference / Base) get a tall, confident
+  // thumbnail; the compact settings variant is retired but kept for safety.
+  const previewH = large ? "h-36 sm:h-40" : compact ? "h-16" : "h-24";
 
   return (
     <div
@@ -78,26 +84,41 @@ export function DropSlot({
       ].join(" ")}
       style={{ transitionDuration: "var(--dur)", transitionTimingFunction: "var(--ease-out)" }}
     >
-      <div className="flex items-center justify-between gap-2 px-3 pt-2.5">
-        <span className="text-[0.78rem] font-[620] text-[var(--color-ink)] tracking-[-0.01em]">
-          {label}
-          {hint && <span className="ml-1.5 font-normal text-[0.7rem] text-[var(--color-faint)]">({hint})</span>}
-        </span>
+      <div className={`flex justify-between gap-2 px-3 ${large ? "items-start pt-3" : "items-center pt-2.5"}`}>
+        {large ? (
+          <span className="min-w-0 flex flex-col gap-0.5">
+            <span className="text-[0.9rem] font-[640] text-[var(--color-ink)] tracking-[-0.01em] leading-none">
+              {label}
+            </span>
+            {hint && (
+              <span className="text-[0.72rem] font-normal text-[var(--color-faint)] leading-none">
+                {hint}
+              </span>
+            )}
+          </span>
+        ) : (
+          <span className="text-[0.78rem] font-[620] text-[var(--color-ink)] tracking-[-0.01em]">
+            {label}
+            {hint && (
+              <span className="ml-1.5 font-normal text-[0.7rem] text-[var(--color-faint)]">({hint})</span>
+            )}
+          </span>
+        )}
         {src && (
-          <span className="text-[0.6rem] font-semibold uppercase tracking-[0.05em] text-[var(--color-good-ink)] flex items-center gap-1">
+          <span className="text-[0.6rem] font-semibold uppercase tracking-[0.05em] text-[var(--color-good-ink)] flex items-center gap-1 flex-none">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-good)]" /> loaded
           </span>
         )}
       </div>
 
-      <div className={`px-3 pb-3 pt-2 ${compact ? "" : ""}`}>
+      <div className={`px-3 pb-3 ${large ? "pt-2.5" : "pt-2"}`}>
         {src ? (
           <div className="relative rounded-[10px] overflow-hidden bg-[var(--color-canvas-deep)] border border-[var(--color-line)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={src}
               alt={label}
-              className={`w-full object-cover ${compact ? "h-16" : "h-24"}`}
+              className={`w-full object-cover ${previewH}`}
             />
             {isExr && (
               <span
@@ -116,13 +137,24 @@ export function DropSlot({
           </div>
         ) : (
           <div
-            className={`rounded-[7px] grid place-items-center text-center ${compact ? "h-16" : "h-24"} bg-[var(--color-canvas-deep)]`}
+            className={`rounded-[8px] grid place-items-center text-center ${previewH} bg-[var(--color-canvas-deep)]`}
           >
-            <div className="px-2">
-              <div className="text-[0.72rem] text-[var(--color-muted)] leading-snug">
+            <div className="px-2 flex flex-col items-center">
+              {large && (
+                <span
+                  className="mb-2 grid place-items-center w-8 h-8 rounded-full bg-[var(--color-surface)] border border-[var(--color-line)] text-[var(--color-faint)] group-hover:text-[var(--color-accent-ink)] group-hover:border-[var(--color-accent-line)] transition-colors"
+                  aria-hidden
+                  style={{ transitionDuration: "var(--dur)" }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 3.5v9M3.5 8h9" />
+                  </svg>
+                </span>
+              )}
+              <div className={`text-[var(--color-muted)] leading-snug ${large ? "text-[0.76rem] font-medium" : "text-[0.72rem]"}`}>
                 {captionOverride || "Drop, paste, or choose a file"}
               </div>
-              <div className="mt-1 text-[0.58rem] font-medium uppercase tracking-[0.07em] text-[var(--color-faint)]">PNG · JPG · WebP · EXR</div>
+              <div className="mt-1.5 text-[0.58rem] font-medium uppercase tracking-[0.07em] text-[var(--color-faint)]">PNG · JPG · WebP · EXR</div>
             </div>
           </div>
         )}

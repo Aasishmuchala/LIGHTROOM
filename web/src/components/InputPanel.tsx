@@ -4,6 +4,11 @@ import { engineStore, useEngine } from "@/store/useEngine";
 import { DropSlot } from "./DropSlot";
 import { SLOT_DEFS, CHIP_GROUPS, acceptsFile } from "./lib";
 
+// The two primary image ports. The settings-screenshot slot was retired from the UI
+// (the engine still treats a missing settings shot as "baseline = factory defaults"),
+// so only Reference + Base render remain — and they get to be the main event.
+const PRIMARY_SLOTS = SLOT_DEFS.filter((d) => d.key !== "settings");
+
 // Numbered, teaching flow. Reads top-to-bottom: 1 drop the frames → 2 set the scene
 // → 3 Analyze → 4 Refine (only once there's a recipe). Every control is wired to the
 // engine store; nothing here reimplements engine logic. ---------------------------
@@ -43,11 +48,7 @@ export function InputPanel({
   const stepBadge = `Step ${Math.min(currentStep, totalSteps)} / ${totalSteps}`;
 
   const slotData = (key: string): string | null =>
-    key === "ref"
-      ? session.ref?.dataUrl ?? null
-      : key === "base"
-        ? session.base?.dataUrl ?? null
-        : session.settingsShot?.dataUrl ?? null;
+    key === "ref" ? session.ref?.dataUrl ?? null : session.base?.dataUrl ?? null;
 
   // Ingest a file into a slot: EXR/other reject with the verbatim message; otherwise
   // hand the File straight to the engine (it decodes/measures/downscales).
@@ -62,7 +63,7 @@ export function InputPanel({
         const { score } = await engineStore.getState().addAttempt(file);
         onToast(`Attempt scored. Look distance ${Math.round(score)}.`);
       } else {
-        await engineStore.getState().setImage(slot as "ref" | "base" | "settings", file);
+        await engineStore.getState().setImage(slot as "ref" | "base", file);
       }
       setFocusedSlot(null);
     } catch {
@@ -77,7 +78,7 @@ export function InputPanel({
 
   // Re-expose an EXR-developed named slot from its retained linear buffer (instant,
   // client-side). Errors are recorded on the store's lastError banner.
-  const onExrEv = (slot: "ref" | "base" | "settings", ev: number) => {
+  const onExrEv = (slot: "ref" | "base", ev: number) => {
     engineStore.getState().redevelopExrSlot(slot, ev).catch(() => {
       /* banner shows it */
     });
@@ -111,11 +112,11 @@ export function InputPanel({
       </div>
 
       <div className="flex flex-col">
-        {/* Step 1 — the two frames */}
+        {/* Step 1 — the two frames. These are the primary inputs: large, generous ports. */}
         <Step n={1} title="Drop your two frames" tone="key" first>
-          <div className="flex flex-col gap-2.5">
-            {SLOT_DEFS.map((def) => {
-              const exr = exrSlots[def.key as "ref" | "base" | "settings"];
+          <div className="flex flex-col gap-3">
+            {PRIMARY_SLOTS.map((def) => {
+              const exr = exrSlots[def.key as "ref" | "base"];
               return (
                 <DropSlot
                   key={def.key}
@@ -126,62 +127,91 @@ export function InputPanel({
                   focused={focusedSlot === def.key}
                   onFocus={() => setFocusedSlot(def.key)}
                   onFile={(f) => ingest(def.key, f)}
-                  compact={def.key === "settings"}
+                  large
                   exrEv={exr ? exr.ev : null}
-                  onExrEv={(ev) => onExrEv(def.key as "ref" | "base" | "settings", ev)}
+                  onExrEv={(ev) => onExrEv(def.key as "ref" | "base", ev)}
                 />
               );
             })}
           </div>
-          <p className="text-[0.72rem] text-[var(--color-faint)] mt-2.5 pl-0.5">
+          <p className="text-[0.72rem] text-[var(--color-faint)] mt-3 pl-0.5">
             Same VFB display settings every attempt.
           </p>
         </Step>
 
         {/* Step 2 — scene context (the FULL time-of-day set) */}
         <Step n={2} title="Set the scene" sub="Optional. Sharpens the match; skip if unsure.">
-          <div className="flex flex-col gap-3">
-            {CHIP_GROUPS.map((group) => (
-              <div key={group.key}>
-                <div className="eyebrow mb-1.5">{group.label}</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {group.options.map((opt) => (
-                    <button
-                      key={opt}
-                      className="btn-chip"
-                      data-on={session.context?.[group.key] === opt}
-                      onClick={() => setChip(group.key, opt)}
-                    >
-                      {opt}
-                    </button>
-                  ))}
+          <div className="flex flex-col gap-3.5">
+            {CHIP_GROUPS.map((group) => {
+              const active = group.options.filter((o) => session.context?.[group.key] === o).length > 0;
+              return (
+                <div key={group.key} className="chip-group">
+                  <div className="chip-group-label">
+                    <span>{group.label}</span>
+                    <span
+                      className={`chip-group-dot ${active ? "is-set" : ""}`}
+                      aria-hidden
+                    />
+                  </div>
+                  <div className="chip-grid">
+                    {group.options.map((opt) => (
+                      <button
+                        key={opt}
+                        className="btn-chip"
+                        data-on={session.context?.[group.key] === opt}
+                        onClick={() => setChip(group.key, opt)}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Step>
 
-        {/* Step 3 — analyze */}
+        {/* Step 3 — analyze: the commit action of the flow */}
         <Step n={3} title={hasRecipe ? "Re-analyze" : "Analyze"} last={!refining}>
-          <button className="btn btn-primary w-full" disabled={!analyzeReady || inFlight} onClick={doAnalyze}>
-            {inFlight ? (
-              <>
-                <Spinner /> Analyzing…
-              </>
-            ) : (
-              <>{hasRecipe ? "Re-analyze" : "Analyze the match"}</>
-            )}
-          </button>
-          {!analyzeReady && (
-            <p className="text-[0.72rem] text-[var(--color-faint)] mt-2 text-center">
-              Add a reference and a base render to begin.
-            </p>
-          )}
-          {refining && (
-            <button className="btn btn-secondary w-full mt-2 !text-[0.8rem]" disabled={inFlight} onClick={doReanalyzeOther}>
-              Also match for {otherTarget}
+          <div className="flex flex-col">
+            <button
+              className="btn btn-primary btn-analyze w-full"
+              disabled={!analyzeReady || inFlight}
+              onClick={doAnalyze}
+              data-busy={inFlight}
+            >
+              {inFlight ? (
+                <>
+                  <Spinner /> Analyzing…
+                </>
+              ) : (
+                <>{hasRecipe ? "Re-analyze" : "Analyze the match"}</>
+              )}
             </button>
-          )}
+
+            {!analyzeReady ? (
+              <p className="text-[0.72rem] text-[var(--color-faint)] mt-2.5 text-center leading-snug">
+                Add a reference and a base render to begin.
+              </p>
+            ) : !inFlight ? (
+              <p className="text-[0.72rem] text-[var(--color-muted)] mt-2.5 text-center leading-snug">
+                Returns an exact {session.activeTarget === "vray7max" ? "V-Ray 7" : "Chaos Vantage 3.3"} recipe.
+              </p>
+            ) : null}
+
+            {refining && (
+              <div className="mt-3 pt-3 border-t border-[var(--color-chrome-line)]">
+                <button
+                  className="btn-alt-target w-full"
+                  disabled={inFlight}
+                  onClick={doReanalyzeOther}
+                >
+                  <span className="btn-alt-target__lead" aria-hidden>+</span>
+                  <span>Also match for {otherTarget}</span>
+                </button>
+              </div>
+            )}
+          </div>
         </Step>
 
         {/* Step 4 — refine (only with a recipe) */}

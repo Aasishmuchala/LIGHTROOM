@@ -233,6 +233,87 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
 .btn-primary:not(:disabled):active { background: var(--color-accent-strong); }
 .btn-primary:disabled { box-shadow: none; background: var(--color-chrome-2); color: var(--color-faint); border-color: var(--color-chrome-line); }
 
+/* ============================================================================
+   Analyze — the commit action of the flow. A confident marigold key with a warm
+   top-light sheen (the spectrum's warm end), a taller hit area, and its own
+   busy state. Not decoration: the sheen is the light the tool is about.
+   ============================================================================ */
+.btn-analyze {
+  position: relative; overflow: hidden;
+  padding-top: 0.82rem; padding-bottom: 0.82rem;
+  font-size: 0.92rem;
+  background-image: linear-gradient(
+    180deg,
+    oklch(0.83 0.155 82) 0%,
+    var(--color-accent) 46%,
+    oklch(0.775 0.165 74) 100%
+  );
+  box-shadow: var(--shadow-accent), inset 0 1px 0 oklch(1 0 0 / 0.35);
+}
+/* a soft key-light glint that sweeps once on hover — reads as light catching a
+   physical control, gated by reduced-motion below. */
+.btn-analyze::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(105deg, transparent 30%, oklch(1 0 0 / 0.4) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform var(--dur-slow) var(--ease-out);
+  pointer-events: none;
+}
+.btn-analyze:not(:disabled):hover::after { transform: translateX(120%); }
+.btn-analyze:not(:disabled):hover {
+  background-image: linear-gradient(
+    180deg,
+    oklch(0.845 0.155 84) 0%,
+    oklch(0.81 0.16 80) 48%,
+    oklch(0.79 0.165 76) 100%
+  );
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px oklch(0.79 0.16 78 / 0.4), inset 0 1px 0 oklch(1 0 0 / 0.4);
+}
+.btn-analyze:not(:disabled):active {
+  transform: translateY(1px);
+  background-image: none; background-color: var(--color-accent-strong);
+  box-shadow: var(--shadow-sm), inset 0 1px 3px oklch(0.4 0.08 60 / 0.25);
+}
+.btn-analyze:disabled {
+  background-image: none; background-color: var(--color-chrome-2);
+  color: var(--color-faint); border-color: var(--color-chrome-line);
+  box-shadow: none;
+}
+/* Busy: hold the marigold but calm it, and let the sweep loop gently while the
+   model reads the light. */
+.btn-analyze[data-busy="true"] {
+  background-image: none; background-color: var(--color-accent);
+  color: oklch(0.27 0.09 62); cursor: progress;
+  box-shadow: var(--shadow-accent);
+}
+.btn-analyze[data-busy="true"]::after { animation: lm-sweep 1.5s var(--ease-out) infinite; transform: none; }
+
+/* The "also match the other target" affordance — a quiet, tidy secondary row
+   that sits under a hairline. Reads as a related option, never competes with
+   the primary. */
+.btn-alt-target {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+  padding: 0.5rem 0.85rem; font-size: 0.8rem; font-weight: 540;
+  border-radius: var(--radius-control); cursor: pointer;
+  background: transparent; color: var(--color-muted);
+  border: 1px dashed var(--color-line-strong);
+  transition: color var(--dur) var(--ease-out), background-color var(--dur) var(--ease-out),
+              border-color var(--dur) var(--ease-out);
+}
+.btn-alt-target__lead {
+  font-weight: 600; font-size: 0.95rem; line-height: 1;
+  color: var(--color-accent-ink); opacity: 0.75;
+  transition: opacity var(--dur) var(--ease-out);
+}
+.btn-alt-target:not(:disabled):hover {
+  color: var(--color-accent-ink); background: var(--color-accent-tint);
+  border-color: var(--color-accent-line); border-style: solid;
+}
+.btn-alt-target:not(:disabled):hover .btn-alt-target__lead { opacity: 1; }
+.btn-alt-target:not(:disabled):active { background: var(--color-accent-tint-2); }
+.btn-alt-target:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .btn-secondary {
   background: var(--color-surface); color: var(--color-ink-2);
   border-color: var(--color-line-strong); box-shadow: var(--shadow-sm);
@@ -251,17 +332,57 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
 
 /* Context chip — quiet default, marigold when selected. */
 .btn-chip {
-  padding: 0.32rem 0.66rem; font-size: 0.79rem; font-weight: 500;
+  padding: 0.34rem 0.7rem; font-size: 0.79rem; font-weight: 500;
   border-radius: 999px; background: var(--color-surface);
   border: 1px solid var(--color-chrome-line); color: var(--color-muted);
-  cursor: pointer; transition: all var(--dur-fast) var(--ease-out);
+  cursor: pointer; white-space: nowrap; text-align: center;
+  transition: color var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
 }
 .btn-chip:hover { border-color: var(--color-accent-line); color: var(--color-ink-2); background: var(--color-surface); }
 .btn-chip:active { transform: translateY(0.5px); }
 .btn-chip[data-on="true"] {
   background: var(--color-accent-tint); border-color: var(--color-accent-line);
   color: var(--color-accent-ink); font-weight: 600;
+  box-shadow: inset 0 0 0 1px oklch(0.865 0.09 80 / 0.5);
 }
+
+/* ============================================================================
+   Set-the-scene — a calm, crafted context picker. Each group is a labelled
+   band; the label carries a state dot (marigold once a choice is made). Chips
+   flow into a tidy auto-fit grid so the 10 time options wrap into even rows
+   instead of a ragged pile.
+   ============================================================================ */
+.chip-group { display: flex; flex-direction: column; gap: 0.5rem; }
+.chip-group-label {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.64rem; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--color-faint);
+}
+.chip-group-dot {
+  width: 5px; height: 5px; border-radius: 999px; flex: none;
+  background: var(--color-line-strong);
+  transition: background-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+.chip-group-dot.is-set {
+  background: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-tint);
+}
+/* Even, self-balancing rows: chips size to a comfortable min and share the
+   remaining space so no orphan sits alone on a line. */
+.chip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(4.75rem, 1fr));
+  gap: 0.4rem;
+}
+/* Scene (3) and Rig (3) read best as a snug inline row, not a stretched grid. */
+.chip-grid:has(> :nth-child(3):last-child) {
+  display: flex; flex-wrap: wrap;
+}
+.chip-grid:has(> :nth-child(3):last-child) .btn-chip { flex: 0 1 auto; }
 
 /* Small inline copy button. */
 .btn-mini {

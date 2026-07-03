@@ -66,10 +66,13 @@ export default function Home() {
       const s = engineStore.getState();
       const sess = s.session;
       const st = s.state();
+      // The settings screenshot slot was retired from the UI; paste routes only
+      // ref → base → attempt. Marking settings as "filled" keeps routePaste's shared
+      // logic byte-identical while never selecting the (now non-rendered) settings slot.
       const filled = {
         ref: !!sess.ref,
         base: !!sess.base,
-        settings: !!sess.settingsShot,
+        settings: true,
       };
       const slot = routePaste(st, focusedRef.current, filled);
       if (!slot) {
