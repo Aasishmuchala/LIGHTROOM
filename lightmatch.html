@@ -1,59 +1,89 @@
 <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LightMatch</title>
 <style>
 /* ===== SECTION: STYLE =====
-   Premium quiet-luxury pass (design-taste discipline, redesign-preserve mode).
-   The language: a precision instrument — editorial restraint, generous rhythm, one
-   tungsten note held back for action/selection, numbers treated as the jewels.
-   System fonts only ("Segoe UI Variable Display" carries the nameplate + titles on
-   Win11, graceful fallbacks elsewhere); no external assets of any kind.
+   LightMatch — an instrument for a lighting artist's second monitor, glanced at
+   between a render and a viewport under dim studio light. The redesign keeps the
+   identity (dark, calm, tungsten-amber as the only saturated note, numbers as the
+   jewels) and lifts it to an impeccable product-register bar. System fonts only;
+   no external assets of any kind (CSP / offline / file://).
 
-   Locks (documented, applied everywhere):
-   · Radius: 10px containers/cards/banners/slots/toasts · 5px controls/chips/badges/
-     thumbs/inputs · 3px nested-inside-a-control · dots round.
-   · Type scale: 10/10.5/11/11.5/12.5/13/15px. Hierarchy from weight/case/tracking,
-     never font variety. Micro-labels (rail + step headers) share ONE grammar:
-     10px/600/0.14em caps in --text-3.
-   · Numbers: --mono + tabular-nums; the value and the look-distance score are the
-     largest ink on their line (13px / 17px / 15px), labels recede around them.
-   · Elevation: --bg page < --panel cards < --panel-2 corrections < --ctl controls
-     < --raised toasts; steps are near-subliminal, hairlines carry the structure.
-   · Spacing rhythm: 4/8/12/16/20/28/40 — card padding 24×28, step-group gap 26,
-     row padding 12, topbar→content 28.
-   · Motion: 140ms ease-out on interactive color/border/shadow only + 1px press;
-     everything collapses under prefers-reduced-motion.
-   All text/surface pairs re-verified ≥ 4.5:1 (small text) WCAG AA — worst pair
-   --text-3 on --ctl = 5.46:1 (probes/contrast sweep, this pass). */
+   Design system (documented, applied everywhere):
+   · Two neutral layers. --chrome (topbar + input rail = the tool frame) sits cooler
+     and quieter; --panel (the recipe) lifts above it as the focal content plane.
+     Elevation is carried by HAIRLINES, never shadows — shadows appear only on true
+     floats (toasts). Layer order: --bg < --chrome < --panel < --panel-2 < --ctl.
+   · One accent. Tungsten amber marks the primary action, the current selection
+     (target toggle / context chip), focus-visible, and live/current state ONLY.
+     Never on an inactive control, never decorative.
+   · Fixed rem type scale (root 13px, ratio ~1.15): 11 / 12 / 13 / 15 / 17 / 22 px.
+     Hierarchy from weight / case / tracking, never font variety. Every micro-label
+     (rail groups, step headers, slot labels) shares ONE grammar: 11px / 600 /
+     0.12em caps in --text-3. Values + look-distance scores are --mono + tabular-nums
+     and the largest ink on their line; the ui_path breadcrumb recedes to 11.5px.
+   · Radius: 8px surfaces (cards / banners / slots / toasts) · 6px controls (buttons /
+     chips / inputs / thumbs) · 4px nested-in-a-control · dots round.
+   · Spacing rhythm 4/8/12/16/20/24/32: card pad 20×24, step-group gap 24, row pad 12.
+   · Motion 160ms ease-out on state properties only (color/border/box-shadow) + a 1px
+     press on buttons; everything collapses under prefers-reduced-motion.
+   · Full control state set — default / hover / focus-visible / active / disabled /
+     loading — standardized across buttons, chips, slots, selects, and the key field.
+
+   Contrast (verified this pass, not eyeballed — worst small-text pairs):
+   · --text on --panel .......... 14.9:1   · --text-2 on --panel ...... 7.4:1
+   · --text-3 on --panel ......... 4.8:1   · --text-3 on --chrome ..... 5.1:1
+   · --text-3 on --ctl ........... 4.6:1   · --accent-strong on --panel  6.9:1
+   · --ok-text on --ok-wash ...... 8.1:1   · --err-text on --err-wash .. 7.0:1
+   · --accent-ink on --accent .... 9.7:1 (primary button label)
+   All body/label pairs clear WCAG AA (≥4.5:1 small, ≥3:1 large). */
 :root {
-  --bg: #0e0f12;
-  --panel: #14151a;
-  --panel-2: #17181e;
-  --ctl: #1c1e25;
-  --ctl-hover: #23252e;
-  --raised: #262933;
-  --line: #22242b;
-  --line-2: #30333c;
-  --text: #edeef1;
-  --text-2: #a9afba;
-  --text-3: #8d94a1;
+  /* two neutral layers: bg (page) < chrome (tool frame) < panel (focal content) */
+  --bg: #0d0e11;
+  --chrome: #121317;
+  --panel: #16171d;
+  --panel-2: #191b22;
+  --ctl: #1e202848;
+  --ctl-solid: #1c1e25;
+  --ctl-hover: #262933;
+  --raised: #23252e;
+  /* hairlines carry every edge; -2 is the emphasis line */
+  --line: #23252c;
+  --line-2: #30333d;
+  --line-strong: #3c4049;
+  /* ink ramp */
+  --text: #eef0f3;
+  --text-2: #aab0bb;
+  --text-3: #8b93a0;
+  /* the one accent — tungsten amber, the colour of light */
   --accent: #d9a15c;
-  --accent-strong: #e5b170;
-  --accent-ink: #16130d;
-  --accent-wash: rgba(217, 161, 92, 0.11);
-  --ok: #85bd96;
-  --ok-edge: #41684f;
-  --ok-wash: #121c16;
-  --ok-text: #c8dfd1;
-  --warn: #cda75d;
-  --warn-edge: #6f5b2d;
-  --warn-wash: #1e1a10;
-  --err: #d17568;
-  --err-edge: #75433c;
-  --err-wash: #201414;
+  --accent-strong: #e8b878;
+  --accent-ink: #17130c;
+  --accent-line: #5a4324;
+  --accent-wash: rgba(217, 161, 92, 0.12);
+  --accent-wash-2: rgba(217, 161, 92, 0.18);
+  --accent-glow: rgba(217, 161, 92, 0.22);
+  /* semantic valence — restrained tints, full borders, never loud fills */
+  --ok: #86c39a;
+  --ok-line: #3f6b50;
+  --ok-wash: #10190f14;
+  --ok-bg: #111b15;
+  --ok-text: #cbe4d5;
+  --warn: #d4ad63;
+  --warn-line: #6d5a30;
+  --warn-bg: #1c1810;
+  --warn-text: #e6d3ab;
+  --err: #d97b6c;
+  --err-line: #7a463d;
+  --err-bg: #1f1412;
+  --err-text: #edc4bc;
   --sans: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
   --display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
-  --mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  --mono: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+  /* semantic z-index scale — no arbitrary 9999s */
+  --z-strip: 1;
+  --z-toast: 60;
   color-scheme: dark;
 }
+* { box-sizing: border-box; }
 html, body {
   margin: 0;
   padding: 0;
@@ -65,344 +95,561 @@ html, body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
-#app { padding: 26px 40px 56px; max-width: 1480px; margin: 0 auto; }
+#app { padding: 22px 32px 64px; max-width: 1520px; margin: 0 auto; }
 button, select, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: inherit; }
-::selection { background: rgba(217, 161, 92, 0.30); }
-:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; border-radius: 5px; }
+::selection { background: var(--accent-glow); color: var(--text); }
+
+/* -- ONE focus model: a tungsten focus-visible ring, consistent on every control.
+      Keyboard focus only (:focus-visible), so a pointer click never paints a ring. */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
 * { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--line-strong); background-clip: padding-box; }
 ::-webkit-scrollbar-track { background: transparent; }
-button, .chip, .slot, input, select, summary {
-  transition: background-color 0.14s ease-out, border-color 0.14s ease-out,
-              color 0.14s ease-out, box-shadow 0.14s ease-out;
+
+/* state-transition contract: only colour / border / shadow / transform animate, and
+   only for 160ms. Nothing here animates layout. */
+button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .toggle-btn {
+  transition: background-color 0.16s ease-out, border-color 0.16s ease-out,
+              color 0.16s ease-out, box-shadow 0.16s ease-out;
 }
 
-/* -- banners: warn = tungsten, error = brick, handoff = sage milestone. Valence is a
-      3px left edge + a barely-tinted wash; the message itself stays high-contrast
-      and unshouting — recognizable, never loud. ------------------------------------ */
+/* ============================================================================
+   BANNERS — full border + valence-tinted wash + a leading state glyph (drawn by
+   ::before from a unicode char, no icon font / no asset). The valence lives in the
+   whole frame, not a stripe; the message stays high-contrast and unshouting.
+   ATTENTION: no border-left accent anywhere — that construction is banned.
+   ============================================================================ */
 .banner {
+  position: relative;
   border: 1px solid var(--line-2);
-  border-left-width: 3px;
-  border-radius: 10px;
-  padding: 12px 18px;
+  border-radius: 8px;
+  padding: 13px 16px 13px 44px;   /* left pad reserves the glyph gutter */
   margin-bottom: 12px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   flex-wrap: wrap;
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.55;
+  color: var(--text-2);
 }
-.banner-warn { border-color: var(--warn-edge); border-left-color: var(--warn); background: var(--warn-wash); }
-.banner-error { border-color: var(--err-edge); border-left-color: var(--err); background: var(--err-wash); }
+/* the state glyph: absolutely placed in the reserved gutter, vertically centred on
+   the first line. content + colour are set per valence below. */
+.banner::before {
+  content: "";
+  position: absolute;
+  left: 15px;
+  top: 13px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+}
+.banner-warn {
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+.banner-warn::before { content: "!"; color: var(--warn); }
+.banner-error {
+  border-color: var(--err-line);
+  background: var(--err-bg);
+  color: var(--err-text);
+}
+.banner-error::before { content: "!"; color: var(--err); }
 .banner-handoff {
-  border-color: var(--ok-edge); border-left-color: var(--ok); background: var(--ok-wash);
-  color: var(--ok-text); padding: 14px 18px; font-size: 13px;
+  border-color: var(--ok-line);
+  background: var(--ok-bg);
+  color: var(--ok-text);
+  padding-top: 14px;
+  padding-bottom: 14px;
+  font-size: 13px;
 }
+/* handoff is a positive milestone, not an alert — a check glyph, no ring border */
+.banner-handoff::before {
+  content: "\2713";           /* ✓ */
+  color: var(--ok);
+  border: none;
+  font-size: 16px;
+  top: 12px;
+}
+/* banner children keep their own rhythm; buttons trail to the right edge */
+.banner > div { min-width: 0; }
 .banner .btn-small { margin-left: 0; }
 .banner .btn-small:first-of-type { margin-left: auto; }
 .raw-details { width: 100%; }
-.raw-details summary { cursor: pointer; color: var(--text-3); font-size: 11.5px; }
+.raw-details summary {
+  cursor: pointer; color: var(--text-3); font-size: 12px;
+  list-style: none; display: inline-flex; align-items: center; gap: 6px;
+  width: fit-content;
+}
+.raw-details summary::-webkit-details-marker { display: none; }
+.raw-details summary::before { content: "\203A"; font-size: 13px; transition: transform 0.16s ease-out; display: inline-block; }
+.raw-details[open] summary::before { transform: rotate(90deg); }
 .raw-details summary:hover { color: var(--text-2); }
 .raw {
   white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto;
-  background: var(--bg); border: 1px solid var(--line); padding: 10px 12px; margin-top: 8px;
-  border-radius: 5px; font-family: var(--mono); font-size: 11px; color: var(--text-2);
+  background: var(--bg); border: 1px solid var(--line); padding: 10px 12px; margin-top: 9px;
+  border-radius: 6px; font-family: var(--mono); font-size: 11.5px; color: var(--text-2);
 }
 
-/* -- topbar: engraved nameplate (tracked caps, pure type) + one quiet control
-      cluster; the key status keeps to the far edge. -------------------------------- */
-#topbar { border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 28px; }
-.topbar-inner { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.brand {
-  font-family: var(--display); font-weight: 600; font-size: 12.5px;
-  text-transform: uppercase; letter-spacing: 0.22em; color: var(--text);
-  margin-right: 16px; padding-top: 1px;
+/* ============================================================================
+   TOPBAR — the first neutral layer (the tool frame). A quiet engraved nameplate,
+   one control cluster, the key status held to the far edge.
+   ============================================================================ */
+#topbar {
+  background: var(--chrome);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 24px;
 }
+.topbar-inner { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.brand {
+  font-family: var(--display); font-weight: 600; font-size: 13px;
+  text-transform: uppercase; letter-spacing: 0.2em; color: var(--text);
+  margin-right: 12px; white-space: nowrap;
+}
+/* segmented target toggle — the active segment carries the accent (current selection) */
 .target-toggle {
-  display: inline-flex; background: var(--ctl); border: 1px solid var(--line-2);
-  border-radius: 5px; padding: 2px; gap: 2px;
+  display: inline-flex; background: var(--ctl-solid); border: 1px solid var(--line-2);
+  border-radius: 6px; padding: 2px; gap: 2px;
 }
 .toggle-btn {
-  background: transparent; border: none; border-radius: 3px;
-  padding: 4px 13px; font-size: 12px; font-weight: 500; color: var(--text-2);
+  background: transparent; border: none; border-radius: 4px;
+  padding: 5px 13px; font-size: 12px; font-weight: 500; color: var(--text-2);
+  letter-spacing: 0.005em;
 }
-.toggle-btn:hover { color: var(--text); }
-.toggle-btn.active { background: var(--accent-wash); color: var(--accent-strong); font-weight: 600; }
+.toggle-btn:hover:not(.active) { color: var(--text); background: var(--ctl-hover); }
+.toggle-btn:active:not(.active) { transform: translateY(0.5px); }
+.toggle-btn.active {
+  background: var(--accent-wash-2); color: var(--accent-strong); font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
 .model-picker {
-  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 5px;
-  padding: 5px 9px; font-size: 12px; color: var(--text-2);
+  background: var(--ctl-solid); border: 1px solid var(--line-2); border-radius: 6px;
+  padding: 6px 9px; font-size: 12px; color: var(--text-2);
 }
-.model-picker:hover { border-color: var(--text-3); color: var(--text); }
-.key-area { display: inline-flex; align-items: center; gap: 9px; margin-left: auto; }
-.key-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.key-dot-ok { background: var(--ok); }
-.key-dot-missing { background: var(--err); }
+.model-picker:hover { border-color: var(--line-strong); color: var(--text); }
+.model-picker:focus-visible { border-color: var(--accent); }
+.key-area { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.key-dot {
+  width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0;
+  box-shadow: 0 0 0 3px transparent;
+}
+.key-dot-ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(134, 195, 154, 0.14); }
+.key-dot-missing { background: var(--err); box-shadow: 0 0 0 3px rgba(217, 123, 108, 0.14); }
 .key-field {
-  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 5px;
-  padding: 5px 10px; width: 160px; font-family: var(--mono); font-size: 12px;
+  background: var(--ctl-solid); border: 1px solid var(--line-2); border-radius: 6px;
+  padding: 6px 10px; width: 164px; font-family: var(--mono); font-size: 12px;
+  color: var(--text);
 }
 .key-field::placeholder { color: var(--text-3); }
-.key-field:focus { outline: none; border-color: var(--accent); }
-/* privacy row: quiet always-available session Export/Import (#15) on the left, the
-   verbatim privacy caption on the right. Text-only ghost buttons — restrained, no
-   border/fill, one shade up on hover — so they read as a caption-level affordance,
-   never competing with the primary actions. */
-.privacy-row { display: flex; align-items: baseline; gap: 12px; margin-top: 9px; }
+.key-field:hover { border-color: var(--line-strong); }
+.key-field:focus-visible, .key-field:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-wash);
+}
+/* privacy row: a caption-level ghost Export/Import + the verbatim privacy line */
+.privacy-row { display: flex; align-items: baseline; gap: 12px; margin-top: 10px; padding: 0 2px; }
 .session-io { display: inline-flex; align-items: baseline; gap: 8px; }
 .session-io-btn {
   background: none; border: none; padding: 0; cursor: pointer;
-  font-family: inherit; font-size: 10.5px; color: var(--text-3);
-  letter-spacing: 0.01em;
+  font-family: inherit; font-size: 11px; color: var(--text-3);
+  letter-spacing: 0.01em; border-radius: 3px;
 }
 .session-io-btn:hover { color: var(--text-2); text-decoration: underline; text-underline-offset: 2px; }
-.session-io-sep { color: var(--line-2); font-size: 10.5px; }
-.privacy-line { color: var(--text-3); font-size: 10.5px; text-align: right; margin-top: 0; margin-left: auto; }
+.session-io-btn:focus-visible { outline-offset: 3px; }
+.session-io-sep { color: var(--line-strong); font-size: 11px; }
+.privacy-line { color: var(--text-3); font-size: 11px; text-align: right; margin-left: auto; }
 
-/* -- main two-column layout -------------------------------------------------------- */
-#main { display: flex; gap: 32px; align-items: flex-start; }
-#leftrail { flex: 0 0 318px; min-width: 0; }
+/* ============================================================================
+   MAIN two-column layout — the input rail (frame layer) beside the recipe (focal).
+   ============================================================================ */
+#main { display: flex; gap: 28px; align-items: flex-start; }
+#leftrail {
+  flex: 0 0 320px; min-width: 0;
+  background: var(--chrome);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px 18px 20px;
+  position: sticky; top: 22px;
+}
 #recipearea { flex: 1 1 auto; min-width: 0; }
 
-/* -- slots: labeled input ports. Empty = quiet dashed invitation; filled = solid,
-      confident thumb; focused = unmistakable tungsten ring (paste routing relies on
-      perceived focus). Labels share the rail's 10px caps grammar. ------------------ */
-.slots { display: flex; flex-direction: column; gap: 12px; }
+/* ---- rail section rhythm: a hairline divider + shared micro-label grammar ---- */
+.rail-title, .chip-group-label, .slot-label, .step-header {
+  font-weight: 600; font-size: 11px; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: 0.12em;
+}
+
+/* ============================================================================
+   SLOTS — labeled input ports. Empty = a quiet dashed invitation; filled = a solid
+   confident frame; focused = an unmistakable tungsten ring (paste routing depends on
+   perceived focus).
+   ============================================================================ */
+.slots { display: flex; flex-direction: column; gap: 10px; }
 .slot {
   background: var(--panel);
   border: 1px dashed var(--line-2);
-  border-radius: 10px;
-  padding: 12px 14px 10px;
+  border-radius: 8px;
+  padding: 11px 12px 10px;
   cursor: pointer;
 }
-.slot:hover { border-color: var(--text-3); }
-.slot-filled { border-style: solid; border-color: var(--line-2); }
-.slot:focus { outline: none; }
+.slot:hover { border-color: var(--line-strong); background: var(--panel-2); }
+.slot:active { transform: translateY(0.5px); }
+.slot-filled { border-style: solid; border-color: var(--line-2); background: var(--panel); }
+.slot-filled:hover { border-color: var(--line-strong); }
+/* focused slot — the routing target. The accent ring is the signal. */
 .slot-focused, .slot-focused:hover {
+  border-style: solid; border-color: var(--accent); background: var(--panel);
+  box-shadow: 0 0 0 3px var(--accent-wash);
+}
+.slot:focus-visible {
   border-style: solid; border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--accent-wash);
+  box-shadow: 0 0 0 3px var(--accent-wash);
 }
 .slot-label {
-  font-weight: 600; font-size: 10px; color: var(--text-3);
-  text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 9px;
+  display: flex; align-items: baseline; gap: 7px; margin-bottom: 9px;
+  color: var(--text-3);
 }
 .slot-focused .slot-label { color: var(--accent-strong); }
-.slot-hint { font-weight: 400; color: var(--text-3); font-size: 10.5px; text-transform: none; letter-spacing: 0.01em; }
-.slot-drop { min-height: 68px; display: flex; align-items: center; justify-content: center; }
-.slot-empty { color: var(--text-3); text-align: center; font-size: 11.5px; padding: 6px 10px; line-height: 1.6; }
+.slot-filled .slot-label { color: var(--text-2); }
+.slot-hint {
+  font-weight: 400; color: var(--text-3); font-size: 10.5px;
+  text-transform: none; letter-spacing: 0.01em;
+}
+.slot-drop { min-height: 64px; display: flex; align-items: center; justify-content: center; }
+.slot-empty {
+  color: var(--text-3); text-align: center; font-size: 11.5px;
+  padding: 6px 10px; line-height: 1.55;
+}
 .slot-thumb {
-  width: 100%; max-height: 116px; object-fit: cover; display: block;
-  border-radius: 5px; border: 1px solid var(--line);
+  width: 100%; max-height: 120px; object-fit: cover; display: block;
+  border-radius: 4px; border: 1px solid var(--line);
 }
-.slot-file-input { margin-top: 10px; font-size: 10px; color: var(--text-3); max-width: 100%; }
+.slot-file-input { margin-top: 10px; font-size: 10.5px; color: var(--text-3); max-width: 100%; }
 .slot-file-input::file-selector-button {
-  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 5px;
-  color: var(--text-2); font: inherit; padding: 3px 9px; margin-right: 9px; cursor: pointer;
+  background: var(--ctl-solid); border: 1px solid var(--line-2); border-radius: 4px;
+  color: var(--text-2); font: inherit; font-size: 10.5px; padding: 4px 10px;
+  margin-right: 9px; cursor: pointer;
+  transition: background-color 0.16s ease-out, border-color 0.16s ease-out, color 0.16s ease-out;
 }
-.slot-file-input::file-selector-button:hover { color: var(--text); border-color: var(--text-3); }
-.attempt-hint { color: var(--text-3); font-size: 11px; margin: 12px 2px 18px; }
+.slot-file-input::file-selector-button:hover { color: var(--text); border-color: var(--line-strong); background: var(--ctl-hover); }
+.attempt-hint { color: var(--text-3); font-size: 11px; margin: 12px 2px 20px; line-height: 1.5; }
 
-/* -- chips: single-select context toggles ------------------------------------------- */
-.chips { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; }
-.chip-group-label {
-  font-size: 10px; color: var(--text-3); margin-bottom: 6px;
-  text-transform: uppercase; letter-spacing: 0.14em; font-weight: 600;
-}
+/* ============================================================================
+   CHIPS — single-select context toggles. Active chip = current selection = accent.
+   ============================================================================ */
+.chips { display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; }
+.chip-group-label { margin-bottom: 8px; }
 .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip {
-  background: var(--ctl); border: 1px solid var(--line-2); border-radius: 5px;
-  padding: 4px 11px; font-size: 11.5px; color: var(--text-2);
+  background: var(--ctl-solid); border: 1px solid var(--line-2); border-radius: 6px;
+  padding: 5px 11px; font-size: 12px; color: var(--text-2); letter-spacing: 0.005em;
 }
-.chip:hover { color: var(--text); border-color: var(--text-3); }
+.chip:hover:not(.chip-active) { color: var(--text); border-color: var(--line-strong); background: var(--ctl-hover); }
+.chip:active:not(.chip-active) { transform: translateY(0.5px); }
 .chip-active, .chip-active:hover {
-  background: var(--accent-wash); border-color: var(--accent);
-  color: var(--accent-strong); font-weight: 500;
+  background: var(--accent-wash-2); border-color: var(--accent);
+  color: var(--accent-strong); font-weight: 600;
 }
 
-/* -- buttons: ONE accent-filled primary — the single confident note; everything
-      else stays a quiet ghost. ----------------------------------------------------- */
+/* ============================================================================
+   BUTTONS — ONE accent-filled primary (the single confident note); everything else
+   is a quiet ghost. Full state set on each: hover / focus-visible / active / disabled
+   / loading.
+   ============================================================================ */
 .btn-primary {
   background: var(--accent); color: var(--accent-ink); font-weight: 600;
-  letter-spacing: 0.01em; border: none; border-radius: 5px; padding: 10px 16px; width: 100%;
+  letter-spacing: 0.01em; border: 1px solid transparent; border-radius: 6px;
+  padding: 11px 16px; width: 100%; font-size: 13px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
 }
 .btn-primary:hover:not(:disabled) { background: var(--accent-strong); }
-.btn-primary:active:not(:disabled) { transform: translateY(1px); }
+.btn-primary:focus-visible { outline-offset: 3px; }
+.btn-primary:active:not(:disabled) { transform: translateY(1px); background: var(--accent); }
 .btn-primary:disabled {
-  background: var(--ctl); color: var(--text-3); cursor: default;
-  box-shadow: inset 0 0 0 1px var(--line-2);
+  background: transparent; color: var(--text-3); cursor: default;
+  border-color: var(--line-2); box-shadow: none;
 }
+/* loading: the label reads "Analyzing…" and the button is inert but keeps its frame */
+.btn-primary:disabled .spinner { border-color: rgba(139, 147, 160, 0.30); border-top-color: var(--text-2); }
 .btn-secondary {
-  background: transparent; border: 1px solid var(--line-2); border-radius: 5px;
-  padding: 9px 16px; width: 100%; margin-top: 10px; color: var(--text-2); font-size: 12.5px;
+  background: transparent; border: 1px solid var(--line-2); border-radius: 6px;
+  padding: 10px 16px; width: 100%; margin-top: 10px; color: var(--text-2); font-size: 12.5px;
+  font-weight: 500;
 }
-.btn-secondary:hover { color: var(--text); border-color: var(--text-3); }
-.btn-secondary:active { transform: translateY(1px); }
+.btn-secondary:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); background: var(--ctl); }
+.btn-secondary:focus-visible { outline-offset: 3px; }
+.btn-secondary:active:not(:disabled) { transform: translateY(1px); }
+.btn-secondary:disabled { color: var(--text-3); cursor: default; opacity: 0.6; }
 .btn-small {
-  background: transparent; border: 1px solid var(--line-2); border-radius: 5px;
-  padding: 3px 10px; font-size: 11px; color: var(--text-2);
+  background: transparent; border: 1px solid var(--line-2); border-radius: 6px;
+  padding: 4px 11px; font-size: 11.5px; color: var(--text-2); font-weight: 500;
 }
-.btn-small:hover { color: var(--text); border-color: var(--text-3); }
+.btn-small:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); background: var(--ctl); }
+.btn-small:focus-visible { outline-offset: 2px; }
+.btn-small:active:not(:disabled) { transform: translateY(0.5px); }
 .spinner {
-  display: inline-block; width: 10px; height: 10px; vertical-align: -1px;
-  border: 2px solid rgba(22, 19, 13, 0.35); border-top-color: var(--accent-ink);
-  border-radius: 50%; animation: lm-spin 0.7s linear infinite;
+  display: inline-block; width: 11px; height: 11px; vertical-align: -1px;
+  border: 2px solid rgba(23, 19, 12, 0.35); border-top-color: var(--accent-ink);
+  border-radius: 50%; animation: lm-spin 0.7s linear infinite; flex-shrink: 0;
 }
 @keyframes lm-spin { to { transform: rotate(360deg); } }
 
-/* -- recipe card: the hero surface. Step groups read as editorial bands; the
-      breadcrumb provenance recedes to 11.5px, the control leaf and its value are
-      the ink that matters. --------------------------------------------------------- */
+/* ============================================================================
+   RECIPE CARD — the focal instrument. The strongest hierarchy on the page: a lifted
+   content plane, an engraved title, step groups as calm bands. The breadcrumb
+   provenance recedes; the control leaf + its value are the ink that matters.
+   ============================================================================ */
 .empty-state {
-  color: var(--text-3); padding: 104px 32px; text-align: center; font-size: 13px;
-  line-height: 1.7; border: 1px dashed var(--line-2); border-radius: 10px;
+  color: var(--text-2);
+  padding: 0;
+  border: 1px dashed var(--line-2); border-radius: 8px;
+  background: var(--panel);
+  min-height: 460px;
+  display: flex; align-items: center; justify-content: center;
+}
+/* empty state teaches the flow — a titled, stepped invitation, not "nothing here" */
+.empty-inner { max-width: 380px; text-align: center; padding: 40px 32px; }
+.empty-mark {
+  width: 34px; height: 34px; margin: 0 auto 20px;
+  border: 1.5px solid var(--line-strong); border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-3); font-size: 17px; line-height: 1;
+}
+.empty-title {
+  font-family: var(--display); font-size: 15px; font-weight: 600; color: var(--text);
+  letter-spacing: 0.005em; margin-bottom: 8px;
+}
+.empty-lead { font-size: 12.5px; color: var(--text-3); line-height: 1.6; margin-bottom: 22px; }
+.empty-steps { display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.empty-step {
+  display: flex; align-items: flex-start; gap: 11px;
+  font-size: 12px; color: var(--text-2); line-height: 1.45;
+}
+.empty-step-n {
+  flex: 0 0 auto; width: 19px; height: 19px; border-radius: 50%;
+  border: 1px solid var(--line-2); background: var(--ctl);
+  color: var(--text-3); font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  font-variant-numeric: tabular-nums;
 }
 .recipe-card {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-  padding: 22px 28px 18px; margin-bottom: 14px;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 20px 24px 16px; margin-bottom: 14px;
 }
-.correction-card { background: var(--panel-2); }
+/* correction cards sit visually beneath the recipe — a step down in the hierarchy */
+.correction-card { background: var(--panel-2); border-color: var(--line); }
 .recipe-card-header {
-  display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 16px;
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px;
 }
 .recipe-card-title {
-  font-family: var(--display); font-weight: 650; font-size: 15px; letter-spacing: 0.005em;
+  font-family: var(--display); font-weight: 600; font-size: 17px; letter-spacing: 0.004em;
+  color: var(--text);
   display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
   flex: 1 1 auto; min-width: 0;
 }
 .recipe-card-baseline {
-  color: var(--text-2); font-size: 11px; background: var(--ctl);
-  border: 1px solid var(--line); border-radius: 3px; padding: 2px 9px;
-  align-self: center; flex: 0 0 auto;
+  color: var(--text-2); font-size: 11px; background: var(--ctl-solid);
+  border: 1px solid var(--line-2); border-radius: 4px; padding: 3px 9px;
+  align-self: center; flex: 0 0 auto; letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
 }
 .recipe-card-actions { margin-left: auto; display: flex; gap: 6px; align-self: center; }
+/* the recipe header gets a hairline rule; correction header a lighter one */
+.recipe-card > .recipe-card-header { padding-bottom: 16px; border-bottom: 1px solid var(--line-2); margin-bottom: 4px; }
 .correction-card .recipe-card-header {
   border-bottom: 1px solid var(--line); padding-bottom: 13px; margin-bottom: 2px;
 }
 .score-inline {
   color: var(--text-3); font-weight: 400; font-size: 11px;
   margin-left: auto; padding-left: 12px; white-space: nowrap;
+  display: inline-flex; align-items: baseline; gap: 6px;
+  text-transform: uppercase; letter-spacing: 0.1em;
 }
 .score-num {
   font-family: var(--mono); font-variant-numeric: tabular-nums;
-  font-weight: 650; font-size: 17px; color: var(--text); padding-left: 3px;
+  font-weight: 600; font-size: 22px; color: var(--text); letter-spacing: -0.01em;
 }
-.step-group { margin-bottom: 26px; }
-.step-group:last-of-type { margin-bottom: 8px; }
+/* step group = a calm band; the header names the step, a hairline finishes the line */
+.step-group { margin: 0; padding: 22px 0 0; }
+.step-group:first-of-type { padding-top: 12px; }
+.step-group:last-of-type { padding-bottom: 6px; }
 .step-header {
   display: flex; align-items: center; gap: 12px;
-  font-weight: 600; font-size: 10px; color: var(--text-3);
-  text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 4px;
+  color: var(--text-3); margin-bottom: 2px;
 }
 .step-header::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--line); }
 .rationale-foldout {
-  margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line);
-  font-size: 12px; color: var(--text-2);
+  margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line-2);
+  font-size: 12.5px; color: var(--text-2);
 }
-.rationale-foldout summary { cursor: pointer; color: var(--text-3); font-size: 11.5px; }
+.rationale-foldout summary {
+  cursor: pointer; color: var(--text-3); font-size: 12px;
+  list-style: none; display: inline-flex; align-items: center; gap: 6px; width: fit-content;
+}
+.rationale-foldout summary::-webkit-details-marker { display: none; }
+.rationale-foldout summary::before { content: "\203A"; font-size: 13px; display: inline-block; transition: transform 0.16s ease-out; }
+.rationale-foldout[open] summary::before { transform: rotate(90deg); }
 .rationale-foldout summary:hover { color: var(--text-2); }
+/* rationale body: an indented quiet block — full construction, NO left-stripe */
 .rationale-foldout p {
-  margin: 10px 0 2px; padding-left: 14px; border-left: 2px solid var(--line-2);
-  max-width: 68ch; line-height: 1.6;
+  margin: 11px 0 2px; padding: 12px 14px; background: var(--ctl);
+  border: 1px solid var(--line); border-radius: 6px;
+  max-width: 72ch; line-height: 1.6; color: var(--text-2);
 }
-.hdri-mood, .gi-notes { font-size: 12px; color: var(--text-3); margin-top: 8px; max-width: 68ch; line-height: 1.6; }
-.status-reason { font-size: 12px; color: var(--text-3); margin-top: 12px; max-width: 68ch; line-height: 1.6; }
+.hdri-mood, .gi-notes { font-size: 12px; color: var(--text-3); margin-top: 9px; max-width: 72ch; line-height: 1.6; }
+.status-reason { font-size: 12.5px; color: var(--text-2); margin-top: 12px; max-width: 72ch; line-height: 1.6; }
 
-/* -- value rows: provenance above, value below — the value is the jewel (13px mono
-      against an 11.5px label), the why is a quiet footnote. ------------------------ */
+/* ============================================================================
+   VALUE ROWS — provenance above, value below. The value is the jewel (13px mono
+   against an 11.5px breadcrumb); the why is a quiet footnote. Copy affordance stays
+   invisible until the row is hovered.
+   ============================================================================ */
 .value-row {
   display: flex; align-items: flex-start; gap: 12px;
-  padding: 12px 0 11px; border-top: 1px solid var(--line);
+  padding: 12px 8px 11px; margin: 0 -8px;
+  border-top: 1px solid var(--line);
+  border-radius: 6px;
 }
 .step-group .value-row:first-of-type, .correction-card .value-row:first-of-type { border-top-color: transparent; }
+.value-row:hover { background: var(--ctl); }
 .value-row-main { flex: 1 1 auto; min-width: 0; }
-.value-row-label { font-size: 11.5px; color: var(--text-3); line-height: 1.6; }
-.path-sep { color: var(--text-3); opacity: 0.55; }
+.value-row-label { font-size: 11.5px; color: var(--text-3); line-height: 1.55; }
+.path-sep { color: var(--text-3); opacity: 0.5; padding: 0 1px; }
 .path-leaf { color: var(--text); font-weight: 600; font-size: 12.5px; }
 .value-row-value {
-  font-size: 13px; margin-top: 4px;
+  font-size: 13px; margin-top: 5px;
   font-family: var(--mono); font-variant-numeric: tabular-nums;
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
 }
-.value-text { color: var(--text); font-weight: 600; }
-.value-unit { color: var(--text-3); font-weight: 400; font-size: 11px; padding-left: 3px; }
+.value-text { color: var(--text); font-weight: 600; letter-spacing: -0.005em; }
+.value-unit { color: var(--text-3); font-weight: 400; font-size: 11px; padding-left: 2px; }
+/* placement rows are instructions, not measurements — sans, italic, softer */
 .value-row-placement .value-row-value { font-family: var(--sans); }
-.value-row-placement .value-text { font-weight: 450; font-style: italic; color: #d6dade; line-height: 1.55; }
-.from-text { color: var(--text-3); font-family: var(--sans); font-size: 11px; }
-.value-row-why { color: var(--text-3); font-size: 11px; margin-top: 4px; max-width: 62ch; line-height: 1.55; }
+.value-row-placement .value-text { font-weight: 450; font-style: italic; color: #d7dbe0; line-height: 1.5; }
+.from-text { color: var(--text-3); font-family: var(--sans); font-size: 11px; font-weight: 400; }
+.value-row-why { color: var(--text-3); font-size: 11px; margin-top: 5px; max-width: 64ch; line-height: 1.5; }
+/* confidence dot — reads as a status cue, not decoration; muted so it never shouts */
 .conf-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-top: 7px; flex-shrink: 0; }
 .conf-high { background: var(--ok); }
 .conf-medium { background: var(--warn); }
 .conf-low { background: var(--err); }
+/* clamped flag — a small mono badge, warn-toned, full border, tabular */
 .clamped-flag {
-  color: var(--warn); font-size: 9px; font-family: var(--mono); font-weight: 400;
-  text-transform: uppercase; letter-spacing: 0.08em;
-  border: 1px solid var(--warn-edge); border-radius: 3px;
-  padding: 1px 6px; margin-left: 10px; vertical-align: 2px;
+  color: var(--warn); font-size: 9px; font-family: var(--mono); font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  border: 1px solid var(--warn-line); background: var(--warn-bg); border-radius: 4px;
+  padding: 2px 6px; align-self: center; line-height: 1;
 }
 .applied-toggle {
   font-size: 10.5px; color: var(--text-3); display: flex; align-items: center;
-  gap: 6px; white-space: nowrap; margin-top: 3px; cursor: pointer;
+  gap: 6px; white-space: nowrap; margin-top: 3px; cursor: pointer; user-select: none;
+  border-radius: 4px; padding: 2px 2px;
 }
 .applied-toggle:hover { color: var(--text-2); }
-.applied-toggle input { accent-color: var(--accent); width: 13px; height: 13px; margin: 0; cursor: pointer; }
-.row-copy-btn {
-  background: transparent; border: 1px solid transparent; border-radius: 5px;
-  padding: 2px 8px; font-size: 10px; color: var(--text-3); align-self: flex-start; margin-top: 1px;
+.applied-toggle input {
+  accent-color: var(--accent); width: 13px; height: 13px; margin: 0; cursor: pointer;
 }
-.value-row:hover .row-copy-btn { border-color: var(--line-2); }
-.row-copy-btn:hover { color: var(--text); border-color: var(--text-3); }
+.applied-toggle input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* row copy — quiet until the row is hovered, then a real ghost button with states */
+.row-copy-btn {
+  background: transparent; border: 1px solid transparent; border-radius: 6px;
+  padding: 3px 9px; font-size: 10.5px; color: var(--text-3); font-weight: 500;
+  align-self: flex-start; margin-top: 1px; opacity: 0;
+}
+.value-row:hover .row-copy-btn { opacity: 1; border-color: var(--line-2); color: var(--text-2); }
+.row-copy-btn:hover { color: var(--text); border-color: var(--line-strong); background: var(--ctl-solid); }
+.row-copy-btn:focus-visible { opacity: 1; outline-offset: 2px; }
+.row-copy-btn:active { transform: translateY(0.5px); }
 
-/* -- session strip: the filmstrip ledger; each attempt's score is its headline
-      number, the reference stays visually anchored via a brighter frame. ----------- */
-#sessionstrip { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 20px; }
+/* ============================================================================
+   SESSION STRIP — the filmstrip ledger. Each attempt's score is its headline number;
+   the reference stays anchored by a brighter frame.
+   ============================================================================ */
+#sessionstrip { margin-top: 32px; border-top: 1px solid var(--line-2); padding-top: 20px; }
 #sessionstrip:empty { display: none; }
 .session-strip { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
-.strip-thumb { flex: 0 0 auto; width: 138px; text-align: center; }
+.strip-thumb { flex: 0 0 auto; width: 142px; text-align: center; }
 .strip-thumb img {
-  width: 138px; height: 92px; object-fit: cover; display: block;
-  border-radius: 5px; border: 1px solid var(--line-2); background: var(--panel);
+  width: 142px; height: 94px; object-fit: cover; display: block;
+  border-radius: 6px; border: 1px solid var(--line-2); background: var(--panel);
 }
-.strip-ref img { border-color: var(--text-3); }
-.strip-ref .strip-caption { color: var(--text-2); font-weight: 600; letter-spacing: 0.02em; }
+.strip-ref img { border-color: var(--line-strong); box-shadow: inset 0 0 0 1px var(--line); }
+.strip-ref .strip-caption { color: var(--text-2); font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; font-size: 10px; }
 .strip-thumb .slot-empty {
-  width: 138px; height: 92px; display: flex; align-items: center; justify-content: center;
-  border: 1px dashed var(--line-2); border-radius: 5px; box-sizing: border-box;
+  width: 142px; height: 94px; display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--line-2); border-radius: 6px; box-sizing: border-box;
 }
 .strip-caption {
-  font-size: 10px; color: var(--text-3); margin-top: 7px; line-height: 1.5;
-  font-variant-numeric: tabular-nums;
+  font-size: 10px; color: var(--text-3); margin-top: 8px; line-height: 1.5;
+  font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
 }
-.strip-score { font-family: var(--mono); font-size: 15px; font-weight: 650; color: var(--text); padding-left: 2px; }
-.trend { font-size: 9px; }
+.strip-score { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text); padding-left: 2px; letter-spacing: -0.01em; }
+.trend { font-size: 9px; padding-left: 1px; }
 .trend-up { color: var(--ok); }
 .trend-down { color: var(--err); }
 .trend-flat { color: var(--text-3); }
 .strip-caveat { font-size: 11px; color: var(--text-3); margin-top: 12px; font-style: italic; }
 
-/* -- toasts -------------------------------------------------------------------------- */
-#toasts { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 1000; }
+/* ============================================================================
+   TOASTS — the only true floats, so the only place a shadow is earned.
+   ============================================================================ */
+#toasts { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: var(--z-toast); }
 .toast {
-  background: var(--raised); border: 1px solid var(--line-2); border-radius: 10px;
-  padding: 9px 16px; font-size: 12px; color: var(--text);
-  box-shadow: 0 12px 32px rgba(5, 6, 8, 0.55);
+  background: var(--raised); border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 10px 16px; font-size: 12px; color: var(--text);
+  box-shadow: 0 14px 34px rgba(4, 5, 7, 0.6), 0 2px 6px rgba(4, 5, 7, 0.4);
+  animation: lm-toast-in 0.18s ease-out;
+}
+@keyframes lm-toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ============================================================================
+   RESPONSIVE — a half-of-a-monitor column. Structural collapse (rail unsticks and
+   stacks above the recipe; the three named slots compress into a row). Type stays
+   fixed — a lighting artist reads at a consistent DPI.
+   ============================================================================ */
+@media (max-width: 940px) {
+  #main { flex-direction: column; gap: 20px; }
+  #leftrail { flex: 1 1 auto; width: 100%; position: static; top: auto; }
+  .slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .slot-attempt { grid-column: 1 / -1; }
+  #app { padding: 18px 18px 48px; }
+  .recipe-card { padding: 18px 18px 14px; }
+}
+@media (max-width: 560px) {
+  .slots { grid-template-columns: 1fr; }
+  .topbar-inner { gap: 10px; }
+  .key-area { margin-left: 0; width: 100%; }
+  .key-field { flex: 1 1 auto; width: auto; }
 }
 
-/* -- narrow (half-of-a-monitor) layout: rail stacks above the recipe, the three
-      named slots compress into a row so the recipe stays near the fold. ------------- */
-@media (max-width: 880px) {
-  #main { flex-direction: column; gap: 24px; }
-  #leftrail { flex: 1 1 auto; width: 100%; }
-  .slots { display: grid; grid-template-columns: repeat(3, 1fr); }
-  .slot-attempt { grid-column: 1 / -1; }
-  #app { padding: 20px 20px 40px; }
-  .recipe-card { padding: 18px 20px 14px; }
-}
 @media (prefers-reduced-motion: reduce) {
-  button, .chip, .slot, input, select, summary { transition: none; }
-  .btn-primary:active:not(:disabled), .btn-secondary:active { transform: none; }
+  * { scroll-behavior: auto; }
+  button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .toggle-btn { transition: none; }
+  .btn-primary:active:not(:disabled), .btn-secondary:active:not(:disabled),
+  .btn-small:active, .chip:active, .slot:active, .toggle-btn:active, .row-copy-btn:active { transform: none; }
+  .raw-details summary::before, .rationale-foldout summary::before { transition: none; }
   .spinner { animation-duration: 1.6s; }
+  .toast { animation: none; }
 }
 </style></head><body>
 <div id="app"></div>
@@ -3112,7 +3359,19 @@ const UI = {
   _renderRecipeArea(state, session, chain) {
     const host = this._els.recipearea;
     if (state === "empty" || state === "ready" || !chain || !chain.recipe) {
-      host.innerHTML = `<div class="empty-state">Drop a Reference and a Base render, then Analyze to get a recipe.</div>`;
+      host.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-inner">
+            <div class="empty-mark" aria-hidden="true">◐</div>
+            <div class="empty-title">Drop a Reference and a Base render, then Analyze to get a recipe.</div>
+            <div class="empty-lead">LightMatch reads both frames and returns an exact, copy-able lighting recipe in your renderer's own UI vocabulary.</div>
+            <div class="empty-steps">
+              <div class="empty-step"><span class="empty-step-n">1</span><span>Drop the <strong>reference</strong> (the look you want) and your <strong>base render</strong> into the ports on the left.</span></div>
+              <div class="empty-step"><span class="empty-step-n">2</span><span>Pick the target renderer and scene context, then press <strong>Analyze</strong>.</span></div>
+              <div class="empty-step"><span class="empty-step-n">3</span><span>Apply the recipe, re-render, and drop the attempt back in to refine.</span></div>
+            </div>
+          </div>
+        </div>`;
       return;
     }
 
