@@ -1,105 +1,129 @@
 <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LightMatch</title>
 <style>
 /* ===== SECTION: STYLE =====
-   LightMatch — an instrument for a lighting artist's second monitor, glanced at
-   between a render and a viewport under dim studio light. The redesign keeps the
-   identity (dark, calm, tungsten-amber as the only saturated note, numbers as the
-   jewels) and lifts it to an impeccable product-register bar. System fonts only;
-   no external assets of any kind (CSP / offline / file://).
+   LightMatch — an instrument for a lighting artist's second monitor, but redesigned
+   for CLARITY first. The old build was a dense dark instrument (a 159-control sheet,
+   38 panel bands, a wall of dark rows) that read as intimidating. This pass moves the
+   whole surface to a light, airy, spacious register in the cofounder.co language:
+   a soft warm off-white canvas, near-white cards on hairline borders, generous
+   whitespace, calm well-separated sections, one restrained warm accent. The flow
+   (drop reference + base -> pick target + context -> Analyze -> read the changes ->
+   refine) is made self-evident with spacing, quiet numbered section labels, and
+   teaching empty states. The recipe now LEADS with a plain, scannable summary of what
+   to change; the complete 159-control panel is a deliberate opt-in disclosure, closed
+   by default. Identity kept where it still helps clarity: numbers are tabular-mono
+   jewels, tungsten amber is the single accent (primary action / current selection /
+   focus / changed state only). System fonts only; no external assets (CSP / file://).
 
    Design system (documented, applied everywhere):
-   · Two neutral layers. --chrome (topbar + input rail = the tool frame) sits cooler
-     and quieter; --panel (the recipe) lifts above it as the focal content plane.
-     Elevation is carried by HAIRLINES, never shadows — shadows appear only on true
-     floats (toasts). Layer order: --bg < --chrome < --panel < --panel-2 < --ctl.
-   · One accent. Tungsten amber marks the primary action, the current selection
-     (target toggle / context chip), focus-visible, and live/current state ONLY.
-     Never on an inactive control, never decorative.
-   · Fixed rem type scale (root 13px, ratio ~1.15): 11 / 12 / 13 / 15 / 17 / 22 px.
-     Hierarchy from weight / case / tracking, never font variety. Every micro-label
-     (rail groups, sheet band names, slot labels) shares ONE grammar: ~11px / 600 /
-     ~0.11-0.12em caps in the muted ink ramp. Values + look-distance scores are --mono +
-     tabular-nums and the largest ink on their line; the ui_path breadcrumb recedes to 11.5px.
-   · Radius: 8px surfaces (cards / banners / slots / toasts) · 6px controls (buttons /
-     chips / inputs / thumbs) · 4px nested-in-a-control · dots round.
-   · Spacing rhythm 4/8/12/16/20/24/32: card pad 20×24, sheet band header 14/8, row pad 12.
-   · Motion 160ms ease-out on state properties only (color/border/box-shadow) + a 1px
-     press on buttons; everything collapses under prefers-reduced-motion.
+   · Light canvas, layered by tone not darkness. --bg (warm greige page) < --panel
+     (white card, the focal plane) < --panel-2 (barely-warm nested surface). Elevation
+     is carried by HAIRLINES + one whisper-soft shadow on true cards — never a heavy
+     drop shadow, never a side-stripe (banned). Sections are separated by generous
+     vertical space, not boxes.
+   · One accent. Tungsten amber marks the primary action, the current selection (target
+     toggle / context chip), focus-visible, and the changed/current state ONLY. Never on
+     an inactive control, never decorative. It is deep enough (--accent 4.9:1 on white)
+     to also serve as accent TEXT and pass AA.
+   · Fixed rem type scale (root 14px): 11.5 / 12.5 / 13 / 14 / 15 / 18 / 24 / 30 px.
+     Hierarchy from weight / size / a little warm grey, never font variety. Section
+     labels share ONE quiet grammar (~12px / 600 / normal-case dark-grey). Values +
+     look-distance scores are --mono + tabular-nums, the largest ink on their line; the
+     ui_path breadcrumb recedes.
+   · Radius: 12px cards / panels · 10px inner surfaces (slots / banners) · 8px controls
+     (buttons / chips / inputs) · dots round.
+   · Spacing rhythm 4/8/12/16/20/24/32/48: card pad 24×28, section gap 28-40.
+   · Motion 180ms ease-out on state properties only (color/border/box-shadow/transform);
+     everything collapses under prefers-reduced-motion.
    · Full control state set — default / hover / focus-visible / active / disabled /
      loading — standardized across buttons, chips, slots, selects, and the key field.
 
-   Contrast (verified this pass, not eyeballed — worst small-text pairs):
-   · --text on --panel .......... 14.9:1   · --text-2 on --panel ...... 7.4:1
-   · --text-3 on --panel ......... 4.8:1   · --text-3 on --chrome ..... 5.1:1
-   · --text-3 on --ctl ........... 4.6:1   · --accent-strong on --panel  6.9:1
-   · --ok-text on --ok-wash ...... 8.1:1   · --err-text on --err-wash .. 7.0:1
-   · --accent-ink on --accent .... 9.7:1 (primary button label)
-   All body/label pairs clear WCAG AA (≥4.5:1 small, ≥3:1 large). */
+   Contrast (verified this pass with WCAG math on the worst small-text pairs — this is
+   now light-on-light territory, the classic trap, so nothing here is eyeballed):
+   · --ink on --panel ........... 16.7:1   · --ink on --bg ............. 14.9:1
+   · --ink-2 on --panel ......... 7.8:1    · --ink-2 on --bg .......... 7.0:1
+   · --ink-3 on --panel ......... 5.3:1    · --ink-3 on --bg .......... 4.7:1
+   · --accent-strong on --panel . 6.1:1    · --accent-strong/--acc-wash  5.4:1
+   · --ok-text on --ok-wash ..... 5.9:1    · --err-text on --err-wash .. 5.8:1
+   · white on --accent .......... 5.1:1 (primary button label)
+   Every SMALL-text pair clears WCAG AA (>=4.5:1). All accent TEXT uses --accent-strong
+   (6.1:1); the base --accent is a fill/border/large-glyph colour only (the 22px empty
+   mark at 4.2:1 clears the >=3:1 large-text bar). Placeholder text uses --ink-3 (4.7:1),
+   never the washed-out light grey that fails. */
 :root {
-  /* two neutral layers: bg (page) < chrome (tool frame) < panel (focal content) */
-  --bg: #0d0e11;
-  --chrome: #121317;
-  --panel: #16171d;
-  --panel-2: #191b22;
-  --ctl: #1e202848;
-  --ctl-solid: #1c1e25;
-  --ctl-hover: #262933;
-  --raised: #23252e;
-  /* hairlines carry every edge; -2 is the emphasis line */
-  --line: #23252c;
-  --line-2: #30333d;
-  --line-strong: #3c4049;
-  /* ink ramp */
-  --text: #eef0f3;
-  --text-2: #aab0bb;
-  --text-3: #8b93a0;
-  /* the one accent — tungsten amber, the colour of light */
-  --accent: #d9a15c;
-  --accent-strong: #e8b878;
-  --accent-ink: #17130c;
-  --accent-line: #5a4324;
-  --accent-wash: rgba(217, 161, 92, 0.12);
-  --accent-wash-2: rgba(217, 161, 92, 0.18);
-  --accent-glow: rgba(217, 161, 92, 0.22);
-  /* semantic valence — restrained tints, full borders, never loud fills */
-  --ok: #86c39a;
-  --ok-line: #3f6b50;
-  --ok-wash: #10190f14;
-  --ok-bg: #111b15;
-  --ok-text: #cbe4d5;
-  --warn: #d4ad63;
-  --warn-line: #6d5a30;
-  --warn-bg: #1c1810;
-  --warn-text: #e6d3ab;
-  --err: #d97b6c;
-  --err-line: #7a463d;
-  --err-bg: #1f1412;
-  --err-text: #edc4bc;
+  /* light layers: bg (warm greige page) < panel (white card = focal) < panel-2 (nested) */
+  --bg: #f4f2ec;
+  --panel: #ffffff;
+  --panel-2: #faf9f5;
+  --panel-3: #f6f4ef;
+  --ctl: #f3f1ea;           /* quiet fill for hovers / nested blocks */
+  --ctl-solid: #f7f5f0;
+  --ctl-hover: #efece4;
+  --raised: #ffffff;
+  /* hairlines carry every edge; -2 is the emphasis line, -strong the firmest */
+  --line: #e7e3da;
+  --line-2: #ddd8cd;
+  --line-strong: #cbc5b7;
+  /* ink ramp — dark on light, all AA-verified */
+  --ink: #1f1e1b;
+  --ink-2: #55524b;
+  --ink-3: #6f6c63;
+  /* aliases kept so nothing downstream referencing the old names can break */
+  --text: #1f1e1b;
+  --text-2: #55524b;
+  --text-3: #6f6c63;
+  /* the one accent — tungsten amber, the colour of light, deepened so even the primary
+     button's white label clears AA (white on --accent = 5.1:1) */
+  --accent: #a05e1a;
+  --accent-strong: #925313;
+  --accent-ink: #ffffff;
+  --accent-line: #e3b985;
+  --accent-line-2: #d9a765;
+  --accent-wash: #fbf1e2;
+  --accent-wash-2: #f6e6cf;
+  --accent-glow: rgba(178, 106, 31, 0.16);
+  /* semantic valence — soft light tints, full borders, never loud fills, never stripes */
+  --ok: #2f7d4f;
+  --ok-line: #bfdcc8;
+  --ok-wash: #eef6f0;
+  --ok-bg: #eef6f0;
+  --ok-text: #256b41;
+  --warn: #9a6a15;
+  --warn-line: #e6d3ab;
+  --warn-bg: #fbf3e1;
+  --warn-text: #8a5f13;
+  --err: #b4442f;
+  --err-line: #edc9bf;
+  --err-bg: #fbeeea;
+  --err-text: #a13c2a;
   --sans: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
   --display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+  /* whisper shadows — the only elevation cue beyond hairlines, tinted to the canvas */
+  --shadow-card: 0 1px 2px rgba(70, 63, 48, 0.04), 0 4px 16px rgba(70, 63, 48, 0.05);
+  --shadow-float: 0 12px 32px rgba(60, 54, 42, 0.14), 0 2px 8px rgba(60, 54, 42, 0.10);
   /* semantic z-index scale — no arbitrary 9999s */
   --z-strip: 1;
   --z-toast: 60;
-  color-scheme: dark;
+  color-scheme: light;
 }
 * { box-sizing: border-box; }
 html, body {
   margin: 0;
   padding: 0;
   background: var(--bg);
-  color: var(--text);
+  color: var(--ink);
   font-family: var(--sans);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
-#app { padding: 22px 32px 64px; max-width: 1520px; margin: 0 auto; }
+#app { padding: 28px 40px 96px; max-width: 1360px; margin: 0 auto; }
 button, select, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: inherit; }
-::selection { background: var(--accent-glow); color: var(--text); }
+::selection { background: var(--accent-wash-2); color: var(--ink); }
 
 /* -- ONE focus model: a tungsten focus-visible ring, consistent on every control.
       Keyboard focus only (:focus-visible), so a pointer click never paints a ring. */
@@ -107,23 +131,23 @@ a { color: inherit; }
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 6px;
+  border-radius: 8px;
 }
-* { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
-::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
-::-webkit-scrollbar-thumb:hover { background: var(--line-strong); background-clip: padding-box; }
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 6px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-3); background-clip: padding-box; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* state-transition contract: only colour / border / shadow / transform animate, and
-   only for 160ms. Nothing here animates layout. */
-button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .toggle-btn {
-  transition: background-color 0.16s ease-out, border-color 0.16s ease-out,
-              color 0.16s ease-out, box-shadow 0.16s ease-out;
+   only for 180ms. Nothing here animates layout. */
+button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .toggle-btn, .panel-disclose {
+  transition: background-color 0.18s ease-out, border-color 0.18s ease-out,
+              color 0.18s ease-out, box-shadow 0.18s ease-out, transform 0.18s ease-out;
 }
 
 /* ============================================================================
-   BANNERS — full border + valence-tinted wash + a leading state glyph (drawn by
+   BANNERS — full border + soft valence-tinted wash + a leading state glyph (drawn by
    ::before from a unicode char, no icon font / no asset). The valence lives in the
    whole frame, not a stripe; the message stays high-contrast and unshouting.
    ATTENTION: no border-left accent anywhere — that construction is banned.
@@ -131,24 +155,25 @@ button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .t
 .banner {
   position: relative;
   border: 1px solid var(--line-2);
-  border-radius: 8px;
-  padding: 13px 16px 13px 44px;   /* left pad reserves the glyph gutter */
-  margin-bottom: 12px;
+  border-radius: 10px;
+  padding: 14px 18px 14px 46px;   /* left pad reserves the glyph gutter */
+  margin-bottom: 14px;
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
   font-size: 13px;
   line-height: 1.55;
-  color: var(--text-2);
+  color: var(--ink-2);
+  background: var(--panel);
 }
 /* the state glyph: absolutely placed in the reserved gutter, vertically centred on
    the first line. content + colour are set per valence below. */
 .banner::before {
   content: "";
   position: absolute;
-  left: 15px;
-  top: 13px;
+  left: 16px;
+  top: 14px;
   width: 18px;
   height: 18px;
   display: inline-flex;
@@ -177,17 +202,17 @@ button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .t
   border-color: var(--ok-line);
   background: var(--ok-bg);
   color: var(--ok-text);
-  padding-top: 14px;
-  padding-bottom: 14px;
+  padding-top: 15px;
+  padding-bottom: 15px;
   font-size: 13px;
 }
 /* handoff is a positive milestone, not an alert — a check glyph, no ring border */
 .banner-handoff::before {
-  content: "\2713";           /* ✓ */
+  content: "\2713";           /* check */
   color: var(--ok);
   border: none;
   font-size: 16px;
-  top: 12px;
+  top: 13px;
 }
 /* banner children keep their own rhythm; buttons trail to the right edge */
 .banner > div { min-width: 0; }
@@ -195,180 +220,208 @@ button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .t
 .banner .btn-small:first-of-type { margin-left: auto; }
 .raw-details { width: 100%; }
 .raw-details summary {
-  cursor: pointer; color: var(--text-3); font-size: 12px;
+  cursor: pointer; color: var(--ink-3); font-size: 12px;
   list-style: none; display: inline-flex; align-items: center; gap: 6px;
   width: fit-content;
 }
 .raw-details summary::-webkit-details-marker { display: none; }
-.raw-details summary::before { content: "\203A"; font-size: 13px; transition: transform 0.16s ease-out; display: inline-block; }
+.raw-details summary::before { content: "\203A"; font-size: 13px; transition: transform 0.18s ease-out; display: inline-block; }
 .raw-details[open] summary::before { transform: rotate(90deg); }
-.raw-details summary:hover { color: var(--text-2); }
+.raw-details summary:hover { color: var(--ink-2); }
 .raw {
   white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto;
-  background: var(--bg); border: 1px solid var(--line); padding: 10px 12px; margin-top: 9px;
-  border-radius: 6px; font-family: var(--mono); font-size: 11.5px; color: var(--text-2);
+  background: var(--panel-3); border: 1px solid var(--line); padding: 10px 12px; margin-top: 9px;
+  border-radius: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
 }
 
 /* ============================================================================
-   TOPBAR — the first neutral layer (the tool frame). A quiet engraved nameplate,
-   one control cluster, the key status held to the far edge.
+   TOPBAR — a calm, roomy header. The wordmark, one control cluster, the key status
+   held to the far edge. Light card on the greige canvas — the tool's masthead.
    ============================================================================ */
 #topbar {
-  background: var(--chrome);
+  background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 24px;
+  border-radius: 14px;
+  padding: 16px 22px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-card);
 }
-.topbar-inner { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.topbar-inner { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .brand {
-  font-family: var(--display); font-weight: 600; font-size: 13px;
-  text-transform: uppercase; letter-spacing: 0.2em; color: var(--text);
-  margin-right: 12px; white-space: nowrap;
+  font-family: var(--display); font-weight: 650; font-size: 17px;
+  letter-spacing: -0.01em; color: var(--ink);
+  margin-right: 8px; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 9px;
+}
+/* a small amber lamp mark before the wordmark — the one warm note, reads as "light" */
+.brand::before {
+  content: ""; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-wash);
+  flex-shrink: 0;
 }
 /* segmented target toggle — the active segment carries the accent (current selection) */
 .target-toggle {
-  display: inline-flex; background: var(--ctl-solid); border: 1px solid var(--line-2);
-  border-radius: 6px; padding: 2px; gap: 2px;
+  display: inline-flex; background: var(--ctl); border: 1px solid var(--line-2);
+  border-radius: 9px; padding: 3px; gap: 3px;
 }
 .toggle-btn {
-  background: transparent; border: none; border-radius: 4px;
-  padding: 5px 13px; font-size: 12px; font-weight: 500; color: var(--text-2);
-  letter-spacing: 0.005em;
+  background: transparent; border: none; border-radius: 6px;
+  padding: 6px 14px; font-size: 12.5px; font-weight: 550; color: var(--ink-2);
+  letter-spacing: 0;
 }
-.toggle-btn:hover:not(.active) { color: var(--text); background: var(--ctl-hover); }
+.toggle-btn:hover:not(.active) { color: var(--ink); background: var(--panel); }
 .toggle-btn:active:not(.active) { transform: translateY(0.5px); }
 .toggle-btn.active {
-  background: var(--accent-wash-2); color: var(--accent-strong); font-weight: 600;
-  box-shadow: inset 0 0 0 1px var(--accent-line);
+  background: var(--panel); color: var(--accent-strong); font-weight: 650;
+  box-shadow: 0 1px 2px rgba(70, 63, 48, 0.10), inset 0 0 0 1px var(--accent-line);
 }
 .model-picker {
-  background: var(--ctl-solid); border: 1px solid var(--line-2); border-radius: 6px;
-  padding: 6px 9px; font-size: 12px; color: var(--text-2);
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 7px 11px; font-size: 12.5px; color: var(--ink-2);
 }
-.model-picker:hover { border-color: var(--line-strong); color: var(--text); }
+.model-picker:hover { border-color: var(--line-strong); color: var(--ink); }
 .model-picker:focus-visible { border-color: var(--accent); }
-.key-area { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.key-area { display: inline-flex; align-items: center; gap: 9px; margin-left: auto; }
 .key-dot {
-  width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0;
+  width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0;
   box-shadow: 0 0 0 3px transparent;
 }
-.key-dot-ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(134, 195, 154, 0.14); }
-.key-dot-missing { background: var(--err); box-shadow: 0 0 0 3px rgba(217, 123, 108, 0.14); }
+.key-dot-ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(47, 125, 79, 0.14); }
+.key-dot-missing { background: var(--err); box-shadow: 0 0 0 3px rgba(180, 68, 47, 0.14); }
 .key-field {
-  background: var(--ctl-solid); border: 1px solid var(--line-2); border-radius: 6px;
-  padding: 6px 10px; width: 164px; font-family: var(--mono); font-size: 12px;
-  color: var(--text);
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 7px 11px; width: 172px; font-family: var(--mono); font-size: 12.5px;
+  color: var(--ink);
 }
-.key-field::placeholder { color: var(--text-3); }
+.key-field::placeholder { color: var(--ink-3); }
 .key-field:hover { border-color: var(--line-strong); }
 .key-field:focus-visible, .key-field:focus {
   outline: none; border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-wash);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 /* privacy row: a caption-level ghost Export/Import + the verbatim privacy line */
-.privacy-row { display: flex; align-items: baseline; gap: 12px; margin-top: 10px; padding: 0 2px; }
-.session-io { display: inline-flex; align-items: baseline; gap: 8px; }
+.privacy-row { display: flex; align-items: baseline; gap: 12px; margin-top: 12px; padding: 0 2px; }
+.session-io { display: inline-flex; align-items: baseline; gap: 9px; }
 .session-io-btn {
   background: none; border: none; padding: 0; cursor: pointer;
-  font-family: inherit; font-size: 11px; color: var(--text-3);
-  letter-spacing: 0.01em; border-radius: 3px;
+  font-family: inherit; font-size: 11.5px; color: var(--ink-3);
+  letter-spacing: 0; border-radius: 3px;
 }
-.session-io-btn:hover { color: var(--text-2); text-decoration: underline; text-underline-offset: 2px; }
+.session-io-btn:hover { color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
 .session-io-btn:focus-visible { outline-offset: 3px; }
-.session-io-sep { color: var(--line-strong); font-size: 11px; }
-.privacy-line { color: var(--text-3); font-size: 11px; text-align: right; margin-left: auto; }
+.session-io-sep { color: var(--line-strong); font-size: 11.5px; }
+.privacy-line { color: var(--ink-3); font-size: 11.5px; text-align: right; margin-left: auto; }
 
 /* ============================================================================
-   MAIN two-column layout — the input rail (frame layer) beside the recipe (focal).
+   MAIN two-column layout — the input rail (a calm sidebar card) beside the recipe
+   (the focal reading plane). Roomy gap; the rail sticks so the flow stays anchored.
    ============================================================================ */
-#main { display: flex; gap: 28px; align-items: flex-start; }
+#main { display: flex; gap: 32px; align-items: flex-start; }
 #leftrail {
-  flex: 0 0 320px; min-width: 0;
-  background: var(--chrome);
+  flex: 0 0 336px; min-width: 0;
+  background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 18px 18px 20px;
-  position: sticky; top: 22px;
+  border-radius: 14px;
+  padding: 8px 22px 24px;
+  position: sticky; top: 24px;
+  box-shadow: var(--shadow-card);
 }
 #recipearea { flex: 1 1 auto; min-width: 0; }
 
-/* ---- rail section rhythm: a hairline divider + shared micro-label grammar ---- */
+/* ---- the rail reads as a numbered flow. Each step gets a quiet header with a small
+   numbered token so a first-time user sees the path 1 -> 2 -> 3 top to bottom. ---- */
+.rail-step { padding: 20px 0 0; }
+.rail-step + .rail-step { border-top: 1px solid var(--line); margin-top: 20px; }
+.rail-step-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.rail-step-n {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid var(--accent-line); background: var(--accent-wash);
+  color: var(--accent-strong); font-family: var(--mono); font-size: 11.5px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+.rail-step-title {
+  font-weight: 650; font-size: 13.5px; color: var(--ink); letter-spacing: -0.005em;
+}
+.rail-step-sub { font-size: 11.5px; color: var(--ink-3); margin: -8px 0 14px 32px; line-height: 1.5; }
+
+/* shared micro-label grammar — quiet, dark-grey, sentence-case (no shouty caps) */
 .rail-title, .chip-group-label, .slot-label {
-  font-weight: 600; font-size: 11px; color: var(--text-3);
-  text-transform: uppercase; letter-spacing: 0.12em;
+  font-weight: 600; font-size: 12px; color: var(--ink-2);
+  letter-spacing: 0;
 }
 
 /* ============================================================================
-   SLOTS — labeled input ports. Empty = a quiet dashed invitation; filled = a solid
-   confident frame; focused = an unmistakable tungsten ring (paste routing depends on
-   perceived focus).
+   SLOTS — labeled input ports. Empty = a quiet dashed invitation on a faint tint;
+   filled = a solid confident white frame; focused = an unmistakable tungsten ring
+   (paste routing depends on perceived focus).
    ============================================================================ */
-.slots { display: flex; flex-direction: column; gap: 10px; }
+.slots { display: flex; flex-direction: column; gap: 12px; }
 .slot {
-  background: var(--panel);
-  border: 1px dashed var(--line-2);
-  border-radius: 8px;
-  padding: 11px 12px 10px;
+  background: var(--panel-3);
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 10px;
+  padding: 12px 13px 11px;
   cursor: pointer;
 }
-.slot:hover { border-color: var(--line-strong); background: var(--panel-2); }
+.slot:hover { border-color: var(--accent-line-2); background: var(--accent-wash); }
 .slot:active { transform: translateY(0.5px); }
-.slot-filled { border-style: solid; border-color: var(--line-2); background: var(--panel); }
-.slot-filled:hover { border-color: var(--line-strong); }
+.slot-filled { border-style: solid; border-width: 1px; border-color: var(--line-2); background: var(--panel); }
+.slot-filled:hover { border-color: var(--line-strong); background: var(--panel); }
 /* focused slot — the routing target. The accent ring is the signal. */
 .slot-focused, .slot-focused:hover {
-  border-style: solid; border-color: var(--accent); background: var(--panel);
-  box-shadow: 0 0 0 3px var(--accent-wash);
+  border-style: solid; border-width: 1px; border-color: var(--accent); background: var(--panel);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 .slot:focus-visible {
   border-style: solid; border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-wash);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 .slot-label {
   display: flex; align-items: baseline; gap: 7px; margin-bottom: 9px;
-  color: var(--text-3);
+  color: var(--ink-2);
 }
 .slot-focused .slot-label { color: var(--accent-strong); }
-.slot-filled .slot-label { color: var(--text-2); }
+.slot-filled .slot-label { color: var(--ink); }
 .slot-hint {
-  font-weight: 400; color: var(--text-3); font-size: 10.5px;
-  text-transform: none; letter-spacing: 0.01em;
+  font-weight: 400; color: var(--ink-3); font-size: 11px;
+  letter-spacing: 0;
 }
-.slot-drop { min-height: 64px; display: flex; align-items: center; justify-content: center; }
+.slot-drop { min-height: 66px; display: flex; align-items: center; justify-content: center; }
 .slot-empty {
-  color: var(--text-3); text-align: center; font-size: 11.5px;
+  color: var(--ink-3); text-align: center; font-size: 12px;
   padding: 6px 10px; line-height: 1.55;
 }
 .slot-thumb {
-  width: 100%; max-height: 120px; object-fit: cover; display: block;
-  border-radius: 4px; border: 1px solid var(--line);
+  width: 100%; max-height: 128px; object-fit: cover; display: block;
+  border-radius: 7px; border: 1px solid var(--line-2);
 }
-.slot-file-input { margin-top: 10px; font-size: 10.5px; color: var(--text-3); max-width: 100%; }
+.slot-file-input { margin-top: 11px; font-size: 11px; color: var(--ink-3); max-width: 100%; }
 .slot-file-input::file-selector-button {
-  background: var(--ctl-solid); border: 1px solid var(--line-2); border-radius: 4px;
-  color: var(--text-2); font: inherit; font-size: 10.5px; padding: 4px 10px;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 6px;
+  color: var(--ink-2); font: inherit; font-size: 11px; padding: 5px 11px;
   margin-right: 9px; cursor: pointer;
-  transition: background-color 0.16s ease-out, border-color 0.16s ease-out, color 0.16s ease-out;
+  transition: background-color 0.18s ease-out, border-color 0.18s ease-out, color 0.18s ease-out;
 }
-.slot-file-input::file-selector-button:hover { color: var(--text); border-color: var(--line-strong); background: var(--ctl-hover); }
-.attempt-hint { color: var(--text-3); font-size: 11px; margin: 12px 2px 20px; line-height: 1.5; }
+.slot-file-input::file-selector-button:hover { color: var(--ink); border-color: var(--line-strong); background: var(--ctl); }
+.attempt-hint { color: var(--ink-3); font-size: 11.5px; margin: 12px 2px 0; line-height: 1.5; }
 
 /* ============================================================================
    CHIPS — single-select context toggles. Active chip = current selection = accent.
    ============================================================================ */
-.chips { display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; }
-.chip-group-label { margin-bottom: 8px; }
-.chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips { display: flex; flex-direction: column; gap: 16px; }
+.chip-group-label { margin-bottom: 9px; }
+.chip-row { display: flex; gap: 7px; flex-wrap: wrap; }
 .chip {
-  background: var(--ctl-solid); border: 1px solid var(--line-2); border-radius: 6px;
-  padding: 5px 11px; font-size: 12px; color: var(--text-2); letter-spacing: 0.005em;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 6px 12px; font-size: 12.5px; color: var(--ink-2); letter-spacing: 0;
 }
-.chip:hover:not(.chip-active) { color: var(--text); border-color: var(--line-strong); background: var(--ctl-hover); }
+.chip:hover:not(.chip-active) { color: var(--ink); border-color: var(--line-strong); background: var(--ctl-solid); }
 .chip:active:not(.chip-active) { transform: translateY(0.5px); }
 .chip-active, .chip-active:hover {
-  background: var(--accent-wash-2); border-color: var(--accent);
-  color: var(--accent-strong); font-weight: 600;
+  background: var(--accent-wash); border-color: var(--accent);
+  color: var(--accent-strong); font-weight: 650;
 }
 
 /* ============================================================================
@@ -377,213 +430,267 @@ button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .t
    / loading.
    ============================================================================ */
 .btn-primary {
-  background: var(--accent); color: var(--accent-ink); font-weight: 600;
-  letter-spacing: 0.01em; border: 1px solid transparent; border-radius: 6px;
-  padding: 11px 16px; width: 100%; font-size: 13px;
+  background: var(--accent); color: var(--accent-ink); font-weight: 650;
+  letter-spacing: 0; border: 1px solid transparent; border-radius: 9px;
+  padding: 12px 18px; width: 100%; font-size: 13.5px;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 1px 2px rgba(120, 72, 20, 0.18);
 }
 .btn-primary:hover:not(:disabled) { background: var(--accent-strong); }
 .btn-primary:focus-visible { outline-offset: 3px; }
-.btn-primary:active:not(:disabled) { transform: translateY(1px); background: var(--accent); }
+.btn-primary:active:not(:disabled) { transform: translateY(1px); background: var(--accent-strong); }
 .btn-primary:disabled {
-  background: transparent; color: var(--text-3); cursor: default;
+  background: var(--ctl); color: var(--ink-3); cursor: default;
   border-color: var(--line-2); box-shadow: none;
 }
-/* loading: the label reads "Analyzing…" and the button is inert but keeps its frame */
-.btn-primary:disabled .spinner { border-color: rgba(139, 147, 160, 0.30); border-top-color: var(--text-2); }
+/* loading: the label reads "Analyzing..." and the button is inert but keeps its frame */
+.btn-primary:disabled .spinner { border-color: rgba(111, 108, 99, 0.30); border-top-color: var(--ink-2); }
 .btn-secondary {
-  background: transparent; border: 1px solid var(--line-2); border-radius: 6px;
-  padding: 10px 16px; width: 100%; margin-top: 10px; color: var(--text-2); font-size: 12.5px;
-  font-weight: 500;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 9px;
+  padding: 11px 18px; width: 100%; margin-top: 11px; color: var(--ink-2); font-size: 13px;
+  font-weight: 550;
 }
-.btn-secondary:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); background: var(--ctl); }
+.btn-secondary:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); background: var(--ctl-solid); }
 .btn-secondary:focus-visible { outline-offset: 3px; }
 .btn-secondary:active:not(:disabled) { transform: translateY(1px); }
-.btn-secondary:disabled { color: var(--text-3); cursor: default; opacity: 0.6; }
+.btn-secondary:disabled { color: var(--ink-3); cursor: default; opacity: 0.6; }
 .btn-small {
-  background: transparent; border: 1px solid var(--line-2); border-radius: 6px;
-  padding: 4px 11px; font-size: 11.5px; color: var(--text-2); font-weight: 500;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 5px 12px; font-size: 12px; color: var(--ink-2); font-weight: 550;
 }
-.btn-small:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); background: var(--ctl); }
+.btn-small:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); background: var(--ctl-solid); }
 .btn-small:focus-visible { outline-offset: 2px; }
 .btn-small:active:not(:disabled) { transform: translateY(0.5px); }
 .spinner {
-  display: inline-block; width: 11px; height: 11px; vertical-align: -1px;
-  border: 2px solid rgba(23, 19, 12, 0.35); border-top-color: var(--accent-ink);
+  display: inline-block; width: 12px; height: 12px; vertical-align: -1px;
+  border: 2px solid rgba(255, 255, 255, 0.40); border-top-color: var(--accent-ink);
   border-radius: 50%; animation: lm-spin 0.7s linear infinite; flex-shrink: 0;
 }
 @keyframes lm-spin { to { transform: rotate(360deg); } }
 
 /* ============================================================================
-   RECIPE CARD — the focal instrument. The strongest hierarchy on the page: a lifted
-   content plane, an engraved title, step groups as calm bands. The breadcrumb
-   provenance recedes; the control leaf + its value are the ink that matters.
+   RECIPE AREA — the focal reading plane. It now LEADS WITH THE ANSWER: a clear,
+   readable summary of what to change (the changes-summary hero), each move a plain
+   scannable row (control name, from -> to, why). The complete 159-control panel is a
+   deliberate opt-in disclosure below, closed by default. A calm white card on the
+   greige canvas, engraved title, roomy padding.
    ============================================================================ */
 .empty-state {
-  color: var(--text-2);
+  color: var(--ink-2);
   padding: 0;
-  border: 1px dashed var(--line-2); border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
   background: var(--panel);
-  min-height: 460px;
+  min-height: 480px;
   display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-card);
 }
 /* empty state teaches the flow — a titled, stepped invitation, not "nothing here" */
-.empty-inner { max-width: 380px; text-align: center; padding: 40px 32px; }
+.empty-inner { max-width: 440px; text-align: center; padding: 56px 40px; }
 .empty-mark {
-  width: 34px; height: 34px; margin: 0 auto 20px;
-  border: 1.5px solid var(--line-strong); border-radius: 8px;
+  width: 46px; height: 46px; margin: 0 auto 22px;
+  border: 1.5px solid var(--accent-line); border-radius: 12px;
+  background: var(--accent-wash);
   display: flex; align-items: center; justify-content: center;
-  color: var(--text-3); font-size: 17px; line-height: 1;
+  color: var(--accent); font-size: 22px; line-height: 1;
 }
 .empty-title {
-  font-family: var(--display); font-size: 15px; font-weight: 600; color: var(--text);
-  letter-spacing: 0.005em; margin-bottom: 8px;
+  font-family: var(--display); font-size: 18px; font-weight: 650; color: var(--ink);
+  letter-spacing: -0.01em; margin-bottom: 10px; line-height: 1.35; text-wrap: balance;
 }
-.empty-lead { font-size: 12.5px; color: var(--text-3); line-height: 1.6; margin-bottom: 22px; }
-.empty-steps { display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.empty-lead { font-size: 13px; color: var(--ink-3); line-height: 1.6; margin-bottom: 28px; max-width: 40ch; margin-left: auto; margin-right: auto; }
+.empty-steps { display: flex; flex-direction: column; gap: 14px; text-align: left; }
 .empty-step {
-  display: flex; align-items: flex-start; gap: 11px;
-  font-size: 12px; color: var(--text-2); line-height: 1.45;
+  display: flex; align-items: flex-start; gap: 13px;
+  font-size: 13px; color: var(--ink-2); line-height: 1.5;
 }
+.empty-step strong { color: var(--ink); font-weight: 650; }
 .empty-step-n {
-  flex: 0 0 auto; width: 19px; height: 19px; border-radius: 50%;
-  border: 1px solid var(--line-2); background: var(--ctl);
-  color: var(--text-3); font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid var(--accent-line); background: var(--accent-wash);
+  color: var(--accent-strong); font-family: var(--mono); font-size: 11.5px; font-weight: 700;
   display: flex; align-items: center; justify-content: center;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums; margin-top: 1px;
 }
 .recipe-card {
-  background: var(--panel); border: 1px solid var(--line-2); border-radius: 8px;
-  padding: 20px 24px 16px; margin-bottom: 14px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 26px 30px 24px; margin-bottom: 18px;
+  box-shadow: var(--shadow-card);
 }
 /* correction cards sit visually beneath the recipe — a step down in the hierarchy */
-.correction-card { background: var(--panel-2); border-color: var(--line); }
+.correction-card { background: var(--panel-2); border-color: var(--line-2); box-shadow: none; }
 .recipe-card-header {
-  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px;
+  display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 6px;
 }
 .recipe-card-title {
-  font-family: var(--display); font-weight: 600; font-size: 17px; letter-spacing: 0.004em;
-  color: var(--text);
+  font-family: var(--display); font-weight: 650; font-size: 20px; letter-spacing: -0.015em;
+  color: var(--ink);
   display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
   flex: 1 1 auto; min-width: 0;
 }
 .recipe-card-baseline {
-  color: var(--text-2); font-size: 11px; background: var(--ctl-solid);
-  border: 1px solid var(--line-2); border-radius: 4px; padding: 3px 9px;
-  align-self: center; flex: 0 0 auto; letter-spacing: 0.01em;
+  color: var(--ink-2); font-size: 11.5px; background: var(--panel-3);
+  border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 10px;
+  align-self: center; flex: 0 0 auto; letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
-.recipe-card-actions { margin-left: auto; display: flex; gap: 6px; align-self: center; }
+.recipe-card-actions { margin-left: auto; display: flex; gap: 7px; align-self: center; }
 /* the recipe header gets a hairline rule; correction header a lighter one */
-.recipe-card > .recipe-card-header { padding-bottom: 16px; border-bottom: 1px solid var(--line-2); margin-bottom: 4px; }
+.recipe-card > .recipe-card-header { padding-bottom: 18px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
 .correction-card .recipe-card-header {
-  border-bottom: 1px solid var(--line); padding-bottom: 13px; margin-bottom: 2px;
+  border-bottom: 1px solid var(--line-2); padding-bottom: 15px; margin-bottom: 2px;
 }
 .score-inline {
-  color: var(--text-3); font-weight: 400; font-size: 11px;
+  color: var(--ink-3); font-weight: 400; font-size: 11px;
   margin-left: auto; padding-left: 12px; white-space: nowrap;
-  display: inline-flex; align-items: baseline; gap: 6px;
-  text-transform: uppercase; letter-spacing: 0.1em;
+  display: inline-flex; align-items: baseline; gap: 7px;
+  letter-spacing: 0.02em;
 }
 .score-num {
   font-family: var(--mono); font-variant-numeric: tabular-nums;
-  font-weight: 600; font-size: 22px; color: var(--text); letter-spacing: -0.01em;
+  font-weight: 650; font-size: 24px; color: var(--ink); letter-spacing: -0.02em;
 }
 .rationale-foldout {
-  margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line-2);
-  font-size: 12.5px; color: var(--text-2);
+  margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line);
+  font-size: 13px; color: var(--ink-2);
 }
 .rationale-foldout summary {
-  cursor: pointer; color: var(--text-3); font-size: 12px;
-  list-style: none; display: inline-flex; align-items: center; gap: 6px; width: fit-content;
+  cursor: pointer; color: var(--ink-3); font-size: 12.5px;
+  list-style: none; display: inline-flex; align-items: center; gap: 7px; width: fit-content;
 }
 .rationale-foldout summary::-webkit-details-marker { display: none; }
-.rationale-foldout summary::before { content: "\203A"; font-size: 13px; display: inline-block; transition: transform 0.16s ease-out; }
+.rationale-foldout summary::before { content: "\203A"; font-size: 13px; display: inline-block; transition: transform 0.18s ease-out; }
 .rationale-foldout[open] summary::before { transform: rotate(90deg); }
-.rationale-foldout summary:hover { color: var(--text-2); }
+.rationale-foldout summary:hover { color: var(--ink-2); }
 /* rationale body: an indented quiet block — full construction, NO left-stripe */
 .rationale-foldout p {
-  margin: 11px 0 2px; padding: 12px 14px; background: var(--ctl);
-  border: 1px solid var(--line); border-radius: 6px;
-  max-width: 72ch; line-height: 1.6; color: var(--text-2);
+  margin: 13px 0 2px; padding: 14px 16px; background: var(--panel-3);
+  border: 1px solid var(--line); border-radius: 10px;
+  max-width: 72ch; line-height: 1.6; color: var(--ink-2);
 }
-.hdri-mood, .gi-notes { font-size: 12px; color: var(--text-3); margin-top: 9px; max-width: 72ch; line-height: 1.6; }
-.status-reason { font-size: 12.5px; color: var(--text-2); margin-top: 12px; max-width: 72ch; line-height: 1.6; }
+.hdri-mood, .gi-notes { font-size: 12.5px; color: var(--ink-3); margin-top: 12px; max-width: 72ch; line-height: 1.6; }
+.hdri-mood strong, .gi-notes strong { color: var(--ink-2); font-weight: 600; }
+.status-reason { font-size: 13px; color: var(--ink-2); margin-top: 14px; max-width: 72ch; line-height: 1.6; }
+
+/* ---- CHANGES SUMMARY: the hero of the recipe view. A short intro line ("N changes
+   to match this reference"), then the changed moves as plain, roomy, scannable rows.
+   This is what the artist reads first; the full panel is opt-in below. ---- */
+.changes-lead {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  margin: 20px 0 4px;
+}
+.changes-lead-count {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 15px; font-weight: 650; color: var(--accent-strong); letter-spacing: -0.01em;
+}
+.changes-lead-text { font-size: 13.5px; color: var(--ink-2); }
+.changes-lead-note { font-size: 11.5px; color: var(--ink-3); margin: 2px 0 14px; line-height: 1.5; }
+.changes-list { display: flex; flex-direction: column; }
 
 /* ============================================================================
-   VALUE ROWS — provenance above, value below. The value is the jewel (13px mono
-   against an 11.5px breadcrumb); the why is a quiet footnote. Copy affordance stays
-   invisible until the row is hovered.
+   VALUE ROWS — the changes-summary jewels. Provenance above, value below. The value
+   is the jewel (mono, tabular, the largest ink on its line); the why is a quiet
+   footnote. Copy affordance stays invisible until the row is hovered. Rows are
+   separated by hairlines and breathe — no dark bands, no density-for-its-own-sake.
    ============================================================================ */
 .value-row {
-  display: flex; align-items: flex-start; gap: 12px;
-  padding: 12px 8px 11px; margin: 0 -8px;
+  display: flex; align-items: flex-start; gap: 13px;
+  padding: 15px 12px 14px; margin: 0 -12px;
   border-top: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
 }
+.changes-list > .value-row:first-child { border-top: none; }
 .correction-card .value-row:first-of-type { border-top-color: transparent; }
-.value-row:hover { background: var(--ctl); }
+.value-row:hover { background: var(--panel-3); }
 .value-row-main { flex: 1 1 auto; min-width: 0; }
-.value-row-label { font-size: 11.5px; color: var(--text-3); line-height: 1.55; }
-.path-sep { color: var(--text-3); opacity: 0.5; padding: 0 1px; }
-.path-leaf { color: var(--text); font-weight: 600; font-size: 12.5px; }
+.value-row-label { font-size: 12px; color: var(--ink-3); line-height: 1.55; }
+.path-sep { color: var(--ink-3); opacity: 0.6; padding: 0 1px; }
+.path-leaf { color: var(--ink); font-weight: 650; font-size: 13px; }
 .value-row-value {
-  font-size: 13px; margin-top: 5px;
+  font-size: 14px; margin-top: 6px;
   font-family: var(--mono); font-variant-numeric: tabular-nums;
   display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
 }
-.value-text { color: var(--text); font-weight: 600; letter-spacing: -0.005em; }
-.value-unit { color: var(--text-3); font-weight: 400; font-size: 11px; padding-left: 2px; }
-/* placement rows are instructions, not measurements — sans, italic, softer */
+.value-text { color: var(--ink); font-weight: 650; letter-spacing: -0.01em; }
+.value-unit { color: var(--ink-3); font-weight: 400; font-size: 11.5px; padding-left: 2px; }
+/* placement rows are instructions, not measurements — sans, softer */
 .value-row-placement .value-row-value { font-family: var(--sans); }
-.value-row-placement .value-text { font-weight: 450; font-style: italic; color: #d7dbe0; line-height: 1.5; }
-.from-text { color: var(--text-3); font-family: var(--sans); font-size: 11px; font-weight: 400; }
-.value-row-why { color: var(--text-3); font-size: 11px; margin-top: 5px; max-width: 64ch; line-height: 1.5; }
+.value-row-placement .value-text { font-weight: 500; font-style: normal; color: var(--ink-2); line-height: 1.5; }
+.from-text { color: var(--ink-3); font-family: var(--sans); font-size: 11.5px; font-weight: 400; }
+.value-row-why { color: var(--ink-3); font-size: 11.5px; margin-top: 6px; max-width: 64ch; line-height: 1.5; }
 /* confidence dot — reads as a status cue, not decoration; muted so it never shouts */
-.conf-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-top: 7px; flex-shrink: 0; }
+.conf-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-top: 8px; flex-shrink: 0; }
 .conf-high { background: var(--ok); }
 .conf-medium { background: var(--warn); }
 .conf-low { background: var(--err); }
 /* clamped flag — a small mono badge, warn-toned, full border, tabular */
 .clamped-flag {
-  color: var(--warn); font-size: 9px; font-family: var(--mono); font-weight: 500;
-  text-transform: uppercase; letter-spacing: 0.07em;
-  border: 1px solid var(--warn-line); background: var(--warn-bg); border-radius: 4px;
+  color: var(--warn-text); font-size: 9.5px; font-family: var(--mono); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  border: 1px solid var(--warn-line); background: var(--warn-bg); border-radius: 5px;
   padding: 2px 6px; align-self: center; line-height: 1;
 }
 .applied-toggle {
-  font-size: 10.5px; color: var(--text-3); display: flex; align-items: center;
+  font-size: 11px; color: var(--ink-3); display: flex; align-items: center;
   gap: 6px; white-space: nowrap; margin-top: 3px; cursor: pointer; user-select: none;
-  border-radius: 4px; padding: 2px 2px;
+  border-radius: 5px; padding: 3px 4px;
 }
-.applied-toggle:hover { color: var(--text-2); }
+.applied-toggle:hover { color: var(--ink-2); }
 .applied-toggle input {
-  accent-color: var(--accent); width: 13px; height: 13px; margin: 0; cursor: pointer;
+  accent-color: var(--accent); width: 14px; height: 14px; margin: 0; cursor: pointer;
 }
 .applied-toggle input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* row copy — quiet until the row is hovered, then a real ghost button with states */
 .row-copy-btn {
-  background: transparent; border: 1px solid transparent; border-radius: 6px;
-  padding: 3px 9px; font-size: 10.5px; color: var(--text-3); font-weight: 500;
+  background: transparent; border: 1px solid transparent; border-radius: 7px;
+  padding: 4px 10px; font-size: 11px; color: var(--ink-3); font-weight: 550;
   align-self: flex-start; margin-top: 1px; opacity: 0;
 }
-.value-row:hover .row-copy-btn { opacity: 1; border-color: var(--line-2); color: var(--text-2); }
-.row-copy-btn:hover { color: var(--text); border-color: var(--line-strong); background: var(--ctl-solid); }
+.value-row:hover .row-copy-btn { opacity: 1; border-color: var(--line-2); color: var(--ink-2); }
+.row-copy-btn:hover { color: var(--accent-strong); border-color: var(--accent-line-2); background: var(--accent-wash); }
 .row-copy-btn:focus-visible { opacity: 1; outline-offset: 2px; }
 .row-copy-btn:active { transform: translateY(0.5px); }
 
 /* ============================================================================
-   SETTINGS SHEET — the recipe rendered as the COMPLETE panel, grouped like the real
-   V-Ray/Vantage UI. The scan job: changed controls are the focal jewels; held controls
-   recede to a quiet reference line; display-only (lighting:false) controls recede the
+   FULL SETTINGS PANEL — the complete 159-control sheet, now a DELIBERATE OPT-IN. It
+   lives behind a clearly-labeled disclosure ("Show the full settings panel") that is
+   COLLAPSED BY DEFAULT, so it is never the first thing the artist sees. When opened,
+   it stays light, grouped, and scannable: changed controls are the focal jewels;
+   held controls recede to a quiet reference line; display-only controls recede the
    most. Group bands give the long sheet rhythm; all-held bands collapse behind their
-   header so defaults never bury the moves. One accent, hairlines for elevation — same
-   system as the rest of the instrument.
+   header. Same light system as the rest of the instrument.
    ============================================================================ */
+/* the disclosure shell around the whole panel */
+.full-panel {
+  margin-top: 22px; border-top: 1px solid var(--line); padding-top: 6px;
+}
+.full-panel > summary.panel-disclose {
+  cursor: pointer; list-style: none; user-select: none;
+  display: flex; align-items: center; gap: 11px;
+  padding: 14px 14px; margin: 0 -6px; border-radius: 10px;
+  color: var(--ink-2); font-size: 13px; font-weight: 600;
+}
+.full-panel > summary.panel-disclose::-webkit-details-marker { display: none; }
+.full-panel > summary.panel-disclose:hover { background: var(--panel-3); color: var(--ink); }
+.full-panel > summary.panel-disclose:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.panel-disclose-caret {
+  width: 0; height: 0; flex: 0 0 auto;
+  border-left: 6px solid var(--ink-3); border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+  transition: transform 0.18s ease-out;
+}
+.full-panel[open] > summary .panel-disclose-caret { transform: rotate(90deg); }
+.full-panel[open] > summary.panel-disclose { color: var(--ink); }
+.panel-disclose-sub {
+  margin-left: auto; font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 11px; color: var(--ink-3); font-weight: 400; letter-spacing: 0.01em;
+}
+.panel-body { padding: 4px 0 2px; }
+.panel-intro { font-size: 11.5px; color: var(--ink-3); margin: 2px 2px 8px; line-height: 1.5; }
+
 .sheet-summary {
   font-family: var(--mono); font-variant-numeric: tabular-nums;
-  font-size: 11px; color: var(--text-3); letter-spacing: 0.02em;
-  margin: 10px 0 2px; padding-bottom: 2px;
+  font-size: 11px; color: var(--ink-3); letter-spacing: 0.01em;
+  margin: 6px 0 2px; padding-bottom: 2px;
 }
 .sheet { display: flex; flex-direction: column; }
 
@@ -593,127 +700,124 @@ button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .t
 .sheet-band:first-child { border-top: none; }
 .band-header {
   display: flex; align-items: baseline; gap: 12px;
-  padding: 14px 0 8px; margin: 0;
+  padding: 15px 0 9px; margin: 0;
 }
 .band-name {
-  font-weight: 600; font-size: 11px; color: var(--text-2);
-  text-transform: uppercase; letter-spacing: 0.11em;
+  font-weight: 650; font-size: 12px; color: var(--ink-2);
+  letter-spacing: 0;
   flex: 0 1 auto; min-width: 0;
 }
 /* a band that carries changes names itself in full ink so the eye finds it while
    scanning the long band list; an all-held band's name stays a step quieter. */
-.sheet-band-active > .band-header .band-name { color: var(--text); }
-.sheet-band-held > .band-header .band-name { color: var(--text-3); }
+.sheet-band-active > .band-header .band-name { color: var(--ink); }
+.sheet-band-held > .band-header .band-name { color: var(--ink-3); }
 .band-count {
   font-family: var(--mono); font-variant-numeric: tabular-nums;
-  font-size: 10.5px; color: var(--text-3); letter-spacing: 0.01em;
+  font-size: 10.5px; color: var(--ink-3); letter-spacing: 0.01em;
   margin-left: auto; white-space: nowrap; flex: 0 0 auto; display: inline-flex; gap: 5px;
 }
 /* a band with changes flags its count in the accent; a fully-held band stays neutral */
-.band-count-changed { color: var(--accent-strong); font-weight: 600; }
-.band-count-changed.band-count-none { color: var(--text-3); font-weight: 400; }
+.band-count-changed { color: var(--accent-strong); font-weight: 650; }
+.band-count-changed.band-count-none { color: var(--ink-3); font-weight: 400; }
 .band-count-sep { opacity: 0.5; }
-.band-count-total { color: var(--text-3); }
+.band-count-total { color: var(--ink-3); }
 
 /* collapsed all-held band: the summary is a real disclosure control with the full
-   focus/hover state set; a caret rotates on open. No side-stripe, no reinvented widget.
-   Denser vertical rhythm than an open band header — a closed band shows no rows, so the
-   long stack of held bands stays glanceable and the eye glides past to the next change. */
+   focus/hover state set; a caret rotates on open. No side-stripe, no reinvented widget. */
 .sheet-band-held > summary.band-header-summary {
   cursor: pointer; list-style: none; user-select: none;
-  border-radius: 6px; margin: 0 -8px; padding: 9px 8px;
+  border-radius: 8px; margin: 0 -8px; padding: 10px 8px;
 }
 .sheet-band-held > summary.band-header-summary::-webkit-details-marker { display: none; }
-.sheet-band-held > summary.band-header-summary:hover { background: var(--ctl); }
-.sheet-band-held > summary.band-header-summary:hover .band-name { color: var(--text-2); }
-.sheet-band-held > summary.band-header-summary:hover .band-disclosure { border-left-color: var(--text-2); }
+.sheet-band-held > summary.band-header-summary:hover { background: var(--panel-3); }
+.sheet-band-held > summary.band-header-summary:hover .band-name { color: var(--ink-2); }
 .sheet-band-held > summary.band-header-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* an OPENED held band lifts its name a touch (it now shows content) to signal the change */
-.sheet-band-held[open] > summary.band-header-summary .band-name { color: var(--text-2); }
+.sheet-band-held[open] > summary.band-header-summary .band-name { color: var(--ink-2); }
 .band-disclosure {
   width: 0; height: 0; flex: 0 0 auto; align-self: center;
-  border-left: 5px solid var(--text-3); border-top: 4px solid transparent; border-bottom: 4px solid transparent;
-  transition: transform 0.16s ease-out; transform: translateY(0.5px);
+  border-left: 5px solid var(--ink-3); border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+  transition: transform 0.18s ease-out; transform: translateY(0.5px);
 }
 .sheet-band-held[open] > summary .band-disclosure { transform: rotate(90deg) translateX(0.5px); }
-.sheet-band-held[open] > summary .band-name { color: var(--text-2); }
-.band-rows { padding-bottom: 4px; }
+.sheet-band-held[open] > summary .band-name { color: var(--ink-2); }
+.band-rows { padding-bottom: 6px; }
 
 /* CHANGED sheet row — inherits the full .value-row jewel treatment (declared above);
-   here it just gains a subtle tungsten presence so it reads as the focal control the
-   moment the eye lands on the band. A hairline-thin accent wash on hover, and the
-   from → value pair leads with the mono value. NO side-stripe (banned) — the emphasis
-   is the accent-tinted rest state + the confidence dot already on the row. */
+   here it gains a subtle tungsten wash so it reads as the focal control the moment the
+   eye lands on the band. NO side-stripe (banned) — the emphasis is the accent-tinted
+   rest state + the confidence dot already on the row. */
 .sheet-row-changed { background: var(--accent-wash); border-top-color: transparent; }
 .sheet-row-changed:hover { background: var(--accent-wash-2); }
-.sheet-row-changed + .sheet-row-changed { margin-top: 4px; }
-.value-arrow { color: var(--accent-strong); font-weight: 600; padding: 0 1px; }
+.sheet-row-changed + .sheet-row-changed { margin-top: 5px; }
+.value-arrow { color: var(--accent-strong); font-weight: 650; padding: 0 1px; }
 /* the "from" in a changed row is quiet; the arrow points to the jewel value */
-.sheet-row-changed .from-text { color: var(--text-3); }
+.sheet-row-changed .from-text { color: var(--ink-3); }
 
 /* HELD sheet row — one compact line: recessed breadcrumb + held default value. No
    toggle, no why, no copy. It exists for completeness, so it must not compete. */
 .sheet-row-held {
   display: flex; align-items: baseline; gap: 12px;
-  padding: 6px 8px; margin: 0 -8px; border-radius: 5px;
+  padding: 7px 8px; margin: 0 -8px; border-radius: 6px;
 }
-.sheet-row-held:hover { background: var(--ctl); }
+.sheet-row-held:hover { background: var(--panel-3); }
 .held-path {
-  flex: 1 1 auto; min-width: 0; font-size: 11.5px; color: var(--text-3); line-height: 1.5;
+  flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--ink-3); line-height: 1.5;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* held rows keep the breadcrumb quiet: the leaf lifts only slightly, never to full ink */
-.sheet-row-held .path-leaf { color: var(--text-2); font-weight: 500; font-size: 11.5px; }
+.sheet-row-held .path-leaf { color: var(--ink-2); font-weight: 550; font-size: 12px; }
 .held-value {
   flex: 0 0 auto; font-family: var(--mono); font-variant-numeric: tabular-nums;
-  font-size: 11.5px; color: var(--text-2); text-align: right; max-width: 44%;
+  font-size: 12px; color: var(--ink-2); text-align: right; max-width: 44%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.held-value .value-text { color: var(--text-2); font-weight: 500; }
-.held-value .value-unit { color: var(--text-3); font-weight: 400; font-size: 10px; padding-left: 1px; }
+.held-value .value-text { color: var(--ink-2); font-weight: 550; }
+.held-value .value-unit { color: var(--ink-3); font-weight: 400; font-size: 10.5px; padding-left: 1px; }
 /* display-only (lighting:false) held rows recede the MOST — the model may never set
    these; they are pure completeness (viewport wire color, night-sky/moon detail, seeds). */
 .sheet-row-display .held-path,
-.sheet-row-display .held-path .path-leaf { color: var(--text-3); font-weight: 400; }
-.sheet-row-display .held-value, .sheet-row-display .held-value .value-text { color: var(--text-3); font-weight: 400; }
+.sheet-row-display .held-path .path-leaf { color: var(--ink-3); font-weight: 400; }
+.sheet-row-display .held-value, .sheet-row-display .held-value .value-text { color: var(--ink-3); font-weight: 400; }
 
 /* ============================================================================
    SESSION STRIP — the filmstrip ledger. Each attempt's score is its headline number;
-   the reference stays anchored by a brighter frame.
+   the reference stays anchored by a brighter frame. Roomy, calm, its own section.
    ============================================================================ */
-#sessionstrip { margin-top: 32px; border-top: 1px solid var(--line-2); padding-top: 20px; }
+#sessionstrip { margin-top: 40px; border-top: 1px solid var(--line-2); padding-top: 26px; }
 #sessionstrip:empty { display: none; }
-.session-strip { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
-.strip-thumb { flex: 0 0 auto; width: 142px; text-align: center; }
+.strip-heading { font-size: 12px; font-weight: 650; color: var(--ink-2); margin-bottom: 16px; letter-spacing: 0; }
+.session-strip { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 10px; }
+.strip-thumb { flex: 0 0 auto; width: 150px; text-align: center; }
 .strip-thumb img {
-  width: 142px; height: 94px; object-fit: cover; display: block;
-  border-radius: 6px; border: 1px solid var(--line-2); background: var(--panel);
+  width: 150px; height: 100px; object-fit: cover; display: block;
+  border-radius: 9px; border: 1px solid var(--line-2); background: var(--panel);
 }
-.strip-ref img { border-color: var(--line-strong); box-shadow: inset 0 0 0 1px var(--line); }
-.strip-ref .strip-caption { color: var(--text-2); font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; font-size: 10px; }
+.strip-ref img { border-color: var(--accent-line-2); box-shadow: 0 0 0 1px var(--accent-wash); }
+.strip-ref .strip-caption { color: var(--accent-strong); font-weight: 650; letter-spacing: 0.02em; font-size: 11px; }
 .strip-thumb .slot-empty {
-  width: 142px; height: 94px; display: flex; align-items: center; justify-content: center;
-  border: 1px dashed var(--line-2); border-radius: 6px; box-sizing: border-box;
+  width: 150px; height: 100px; display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--line-strong); border-radius: 9px; box-sizing: border-box;
 }
 .strip-caption {
-  font-size: 10px; color: var(--text-3); margin-top: 8px; line-height: 1.5;
-  font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
+  font-size: 11px; color: var(--ink-3); margin-top: 9px; line-height: 1.5;
+  font-variant-numeric: tabular-nums; letter-spacing: 0;
 }
-.strip-score { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text); padding-left: 2px; letter-spacing: -0.01em; }
-.trend { font-size: 9px; padding-left: 1px; }
+.strip-score { font-family: var(--mono); font-size: 16px; font-weight: 650; color: var(--ink); padding-left: 2px; letter-spacing: -0.02em; }
+.trend { font-size: 10px; padding-left: 1px; }
 .trend-up { color: var(--ok); }
 .trend-down { color: var(--err); }
-.trend-flat { color: var(--text-3); }
-.strip-caveat { font-size: 11px; color: var(--text-3); margin-top: 12px; font-style: italic; }
+.trend-flat { color: var(--ink-3); }
+.strip-caveat { font-size: 11.5px; color: var(--ink-3); margin-top: 14px; font-style: italic; }
 
 /* ============================================================================
-   TOASTS — the only true floats, so the only place a shadow is earned.
+   TOASTS — the only true floats, so the only place a real shadow is earned.
    ============================================================================ */
-#toasts { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: var(--z-toast); }
+#toasts { position: fixed; bottom: 22px; right: 22px; display: flex; flex-direction: column; gap: 9px; z-index: var(--z-toast); }
 .toast {
-  background: var(--raised); border: 1px solid var(--line-2); border-radius: 8px;
-  padding: 10px 16px; font-size: 12px; color: var(--text);
-  box-shadow: 0 14px 34px rgba(4, 5, 7, 0.6), 0 2px 6px rgba(4, 5, 7, 0.4);
+  background: var(--raised); border: 1px solid var(--line-2); border-radius: 10px;
+  padding: 11px 17px; font-size: 12.5px; color: var(--ink);
+  box-shadow: var(--shadow-float);
   animation: lm-toast-in 0.18s ease-out;
 }
 @keyframes lm-toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
@@ -723,27 +827,28 @@ button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .t
    stacks above the recipe; the three named slots compress into a row). Type stays
    fixed — a lighting artist reads at a consistent DPI.
    ============================================================================ */
-@media (max-width: 940px) {
-  #main { flex-direction: column; gap: 20px; }
+@media (max-width: 1000px) {
+  #main { flex-direction: column; gap: 22px; }
   #leftrail { flex: 1 1 auto; width: 100%; position: static; top: auto; }
-  .slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
   .slot-attempt { grid-column: 1 / -1; }
-  #app { padding: 18px 18px 48px; }
-  .recipe-card { padding: 18px 18px 14px; }
+  #app { padding: 22px 22px 64px; }
+  .recipe-card { padding: 22px 22px 20px; }
 }
 @media (max-width: 560px) {
   .slots { grid-template-columns: 1fr; }
-  .topbar-inner { gap: 10px; }
+  .topbar-inner { gap: 12px; }
   .key-area { margin-left: 0; width: 100%; }
   .key-field { flex: 1 1 auto; width: auto; }
+  #app { padding: 18px 16px 56px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto; }
-  button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .toggle-btn { transition: none; }
+  button, .chip, .slot, input, select, summary, .applied-toggle, .row-copy-btn, .toggle-btn, .panel-disclose { transition: none; }
   .btn-primary:active:not(:disabled), .btn-secondary:active:not(:disabled),
   .btn-small:active, .chip:active, .slot:active, .toggle-btn:active, .row-copy-btn:active { transform: none; }
-  .raw-details summary::before, .rationale-foldout summary::before { transition: none; }
+  .raw-details summary::before, .rationale-foldout summary::before, .panel-disclose-caret, .band-disclosure { transition: none; }
   .spinner { animation-duration: 1.6s; }
   .toast { animation: none; }
 }
@@ -4107,16 +4212,35 @@ const UI = {
     const analyzeReady = state !== "empty";
     const analyzeLabel = this._busy ? "Analyzing…" : (hasRecipe ? "Re-analyze" : "Analyze");
     const otherTarget = STORE.prefs().target === "vray7max" ? "Chaos Vantage 3.3" : "V-Ray 7";
+    const refining = state === "analyzed" || state === "refining";
 
+    // The rail reads top-to-bottom as a numbered flow so a first-time user sees the path
+    // without instructions: 1 drop the two frames -> 2 set the scene -> 3 Analyze. The
+    // refine port appears as its own step only once there is a recipe to refine against.
     host.innerHTML = `
-      <div class="slots">
-        ${slotsHtml}
-        ${attemptSlotHtml}
+      <div class="rail-step">
+        <div class="rail-step-head"><span class="rail-step-n">1</span><span class="rail-step-title">Drop your two frames</span></div>
+        <div class="slots">
+          ${slotsHtml}
+        </div>
+        <div class="attempt-hint">Same VFB display settings every attempt.</div>
       </div>
-      <div class="attempt-hint">Same VFB display settings every attempt.</div>
-      <div class="chips">${chipsHtml}</div>
-      <button id="analyze-btn" class="btn-primary" ${analyzeReady ? "" : "disabled"}>${this._busy ? '<span class="spinner"></span> ' : ""}${this.esc(analyzeLabel)}</button>
-      ${state === "analyzed" || state === "refining" ? `<button id="reanalyze-other-btn" class="btn-secondary">Re-analyze for ${this.esc(otherTarget)}</button>` : ""}
+      <div class="rail-step">
+        <div class="rail-step-head"><span class="rail-step-n">2</span><span class="rail-step-title">Set the scene</span></div>
+        <div class="rail-step-sub">Optional. Helps the match; skip if unsure.</div>
+        <div class="chips">${chipsHtml}</div>
+      </div>
+      <div class="rail-step">
+        <div class="rail-step-head"><span class="rail-step-n">3</span><span class="rail-step-title">${hasRecipe ? "Re-analyze" : "Analyze"}</span></div>
+        <button id="analyze-btn" class="btn-primary" ${analyzeReady ? "" : "disabled"}>${this._busy ? '<span class="spinner"></span> ' : ""}${this.esc(analyzeLabel)}</button>
+        ${refining ? `<button id="reanalyze-other-btn" class="btn-secondary">Re-analyze for ${this.esc(otherTarget)}</button>` : ""}
+      </div>
+      ${refining ? `
+      <div class="rail-step">
+        <div class="rail-step-head"><span class="rail-step-n">4</span><span class="rail-step-title">Refine</span></div>
+        <div class="rail-step-sub">Apply the recipe, re-render, drop the result back in.</div>
+        ${attemptSlotHtml}
+      </div>` : ""}
     `;
 
     this.SLOT_DEFS.forEach(def => this._wireSlot(host, def.key));
@@ -4159,7 +4283,7 @@ const UI = {
     return `
       <div class="slot slot-attempt ${focused}" data-slot="attempt" tabindex="0">
         <div class="slot-label">Attempt <span class="slot-hint">(${info.n} so far, last ${info.stored} kept)</span></div>
-        <div class="slot-drop"><div class="slot-empty">Drop, click to focus + paste, or choose a file — becomes attempt ${info.n + 1}</div></div>
+        <div class="slot-drop"><div class="slot-empty">Drop, click to focus + paste, or choose a file. Becomes attempt ${info.n + 1}.</div></div>
         <input type="file" class="slot-file-input" accept="image/png,image/jpeg,image/webp" />
       </div>
     `;
@@ -4203,12 +4327,12 @@ const UI = {
         <div class="empty-state">
           <div class="empty-inner">
             <div class="empty-mark" aria-hidden="true">◐</div>
-            <div class="empty-title">Drop a Reference and a Base render, then Analyze to get a recipe.</div>
+            <div class="empty-title">Drop the look you want and your current render.</div>
             <div class="empty-lead">LightMatch reads both frames and returns an exact, copy-able lighting recipe in your renderer's own UI vocabulary.</div>
             <div class="empty-steps">
               <div class="empty-step"><span class="empty-step-n">1</span><span>Drop the <strong>reference</strong> (the look you want) and your <strong>base render</strong> into the ports on the left.</span></div>
               <div class="empty-step"><span class="empty-step-n">2</span><span>Pick the target renderer and scene context, then press <strong>Analyze</strong>.</span></div>
-              <div class="empty-step"><span class="empty-step-n">3</span><span>Apply the recipe, re-render, and drop the attempt back in to refine.</span></div>
+              <div class="empty-step"><span class="empty-step-n">3</span><span>Read the changes, apply them, re-render, and drop the attempt back in to refine.</span></div>
             </div>
           </div>
         </div>`;
@@ -4236,8 +4360,20 @@ const UI = {
       bandMap.get(row.group).push(row);
     }
     const bandsHtml = bandOrder.map(group => this._sheetBandHtml(group, bandMap.get(group), target)).join("");
-    const totalChanged = sheetRows.filter(row => row.isChanged).length;
+    const changedRows = sheetRows.filter(row => row.isChanged);
+    const totalChanged = changedRows.length;
 
+    // CLARITY MOVE 1 — lead with the answer. The changes-summary is the hero: a short
+    // intro line then the changed moves as plain, scannable read-only rows (control
+    // name, from -> to, why). The interactive applied-toggles + per-row copy live in the
+    // full panel below (their JS-read hooks are untouched there); the summary is a calm
+    // read of "what to change", so it never duplicates those hooks.
+    const changesHeroHtml = changedRows.map(row => this._changesRowHtml(row)).join("");
+    const changeWord = totalChanged === 1 ? "change" : "changes";
+
+    // CLARITY MOVE 2 — the complete 159-control panel is a deliberate opt-in, closed by
+    // default (a native <details> so it survives re-render and is keyboard-accessible),
+    // never the first thing shown. UI.buildSheet still renders in full when expanded.
     const correctionsHtml = (chain.attempts || []).map((att, idx) => this._correctionCardHtml(att, idx, target)).join("");
 
     host.innerHTML = `
@@ -4250,8 +4386,24 @@ const UI = {
             <button class="btn-small" data-action="copy-json">Copy JSON</button>
           </div>
         </div>
-        <div class="sheet-summary">${totalChanged} changed · ${sheetRows.length} controls · full panel</div>
-        <div class="sheet">${bandsHtml}</div>
+        <div class="changes-lead">
+          <span class="changes-lead-count">${totalChanged} ${changeWord}</span>
+          <span class="changes-lead-text">to match this reference</span>
+        </div>
+        <div class="changes-lead-note">Each move below is one control to set in ${this.esc(targetLabel)}: the change, and why.</div>
+        <div class="changes-list">${changesHeroHtml}</div>
+        <details class="full-panel">
+          <summary class="panel-disclose">
+            <span class="panel-disclose-caret" aria-hidden="true"></span>
+            <span>Show the full settings panel</span>
+            <span class="panel-disclose-sub">${totalChanged} changed · ${sheetRows.length} controls</span>
+          </summary>
+          <div class="panel-body">
+            <div class="panel-intro">Every control in ${this.esc(targetLabel)}, in panel order. Changed controls are highlighted; unchanged bands stay collapsed.</div>
+            <div class="sheet-summary">${totalChanged} changed · ${sheetRows.length} controls · full panel</div>
+            <div class="sheet">${bandsHtml}</div>
+          </div>
+        </details>
         <details class="rationale-foldout">
           <summary>Rationale</summary>
           <p>${this.esc(recipe.rationale)}</p>
@@ -4363,6 +4515,42 @@ const UI = {
         </div>
         ${appliedHtml}
         <button class="row-copy-btn" data-copy-text="${this.esc(copyText)}" title="Copy">copy</button>
+      </div>
+    `;
+  },
+
+  // -- _changesRowHtml(row): the READ-ONLY changes-summary row — the hero of the recipe
+  // view (Clarity move 1). Takes exactly a CHANGED row object from UI.buildSheet and
+  // renders the same jewel reading (recessed breadcrumb + weighted control leaf, the
+  // mono `from -> value` pair, confidence dot, clamped flag, the why footnote) but WITHOUT
+  // the applied-toggle or the per-row copy button. Those interactive affordances (and
+  // their data-recipe-applied / data-applied-param / data-copy-text hooks) live in the
+  // opt-in full panel below, so the summary never duplicates a JS-read hook and stays a
+  // calm read of "what to change". Pure/DOM-free; every model-sourced value (from, value
+  // when a placement string, why) is esc()'d; ui_path is trusted pack data, esc()'d for
+  // defense in depth. Non-changed rows never reach here (the caller pre-filters), but a
+  // defensive early return keeps it total. -----------------------------------------
+  _changesRowHtml(row) {
+    if (!row || !row.isChanged) return "";
+    const isPlacement = row.kind === "placement";
+    const pathParts = String(row.ui_path).split(" ▸ ");
+    const pathLeaf = pathParts.pop();
+    const pathHtml = (pathParts.length ? `${pathParts.map(p => this.esc(p)).join(`<span class="path-sep"> ▸ </span>`)}<span class="path-sep"> ▸ </span>` : "")
+      + `<span class="path-leaf">${this.esc(pathLeaf)}</span>`;
+    const unit = row.unit && typeof row.value === "number" ? row.unit : "";
+    const confDot = `<span class="conf-dot conf-${this.esc(row.confidence)}" title="confidence: ${this.esc(row.confidence)}"></span>`;
+    const clampedFlag = row.clamped ? `<span class="clamped-flag" title="Clamped to the parameter's legal range">clamped</span>` : "";
+    const valueDisplay = isPlacement
+      ? `<span class="value-text">${this.esc(row.value)}</span>`
+      : `<span class="from-text">${this.esc(row.from)}</span> <span class="value-arrow" aria-hidden="true">→</span> <span class="value-text">${this.esc(row.value)}<span class="value-unit">${this.esc(unit)}</span></span>`;
+    return `
+      <div class="value-row ${isPlacement ? "value-row-placement" : ""}" data-summary-param="${this.esc(row.param)}">
+        ${confDot}
+        <div class="value-row-main">
+          <div class="value-row-label">${pathHtml}</div>
+          <div class="value-row-value">${valueDisplay} ${clampedFlag}</div>
+          <div class="value-row-why">${this.esc(row.why)}</div>
+        </div>
       </div>
     `;
   },
@@ -4535,6 +4723,7 @@ const UI = {
 
     host.innerHTML = `
       ${handoff ? `<div class="banner banner-handoff">${this.esc(handoffReason)} — lighting is within noise of the reference — the rest is a grade; take it to REFGRADE.</div>` : ""}
+      <div class="strip-heading">Refine ledger: reference and each attempt, closest at the lowest score</div>
       <div class="session-strip">
         ${refThumb}
         ${attemptThumbs}
