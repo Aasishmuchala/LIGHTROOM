@@ -228,6 +228,72 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
 .select:focus { outline: none; border-color: var(--color-accent-strong); box-shadow: 0 0 0 3px var(--color-accent-tint); }
 
 /* ============================================================================
+   EXR exposure slider — the develop control on an EXR-backed drop slot. The track is
+   the warm→cool light spectrum (the identity motif); the thumb is the marigold key.
+   ============================================================================ */
+.exr-ev-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+}
+.exr-ev-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--spectrum-cool) 0%,
+    var(--spectrum-day) 45%,
+    var(--spectrum-key) 72%,
+    var(--spectrum-warm) 100%
+  );
+  border: 1px solid var(--color-line);
+}
+.exr-ev-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--spectrum-cool) 0%,
+    var(--spectrum-day) 45%,
+    var(--spectrum-key) 72%,
+    var(--spectrum-warm) 100%
+  );
+  border: 1px solid var(--color-line);
+}
+.exr-ev-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-top: -5.5px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 2px solid var(--color-accent-strong);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--dur-fast) var(--ease-out), border-color var(--dur) var(--ease-out);
+}
+.exr-ev-slider::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 2px solid var(--color-accent-strong);
+  box-shadow: var(--shadow-sm);
+}
+.exr-ev-slider:hover::-webkit-slider-thumb { transform: scale(1.12); border-color: var(--color-accent); }
+.exr-ev-slider:focus-visible { outline: none; }
+.exr-ev-slider:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--color-accent-strong);
+  outline-offset: 2px;
+}
+.exr-ev-slider:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--color-accent-strong);
+  outline-offset: 2px;
+}
+
+/* ============================================================================
    The photometric value jewel — mono, tabular. from → to.
    ============================================================================ */
 .jewel { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }

@@ -20,6 +20,9 @@ export function InputPanel({
   const state = useEngine((s) => s.state());
   const inFlight = useEngine((s) => !!s._inFlight);
   const chain = useEngine((s) => s.activeChain());
+  // EXR develop state per named slot (drives the exposure slider). Reading the whole
+  // record (stable ref unless an EXR slot changes) is fine for a selector.
+  const exrSlots = useEngine((s) => s.exrSlots);
   // Derive attempt counts from the (stable-ref) chain rather than calling
   // attemptInfo() in the selector, which returns a fresh object each render and
   // would loop useSyncExternalStore.
@@ -67,6 +70,14 @@ export function InputPanel({
     engineStore.getState().setContext({ [group]: cur === value ? "" : value });
   };
 
+  // Re-expose an EXR-developed named slot from its retained linear buffer (instant,
+  // client-side). Errors are recorded on the store's lastError banner.
+  const onExrEv = (slot: "ref" | "base" | "settings", ev: number) => {
+    engineStore.getState().redevelopExrSlot(slot, ev).catch(() => {
+      /* banner shows it */
+    });
+  };
+
   const doAnalyze = async () => {
     try {
       await engineStore.getState().analyze();
@@ -89,19 +100,24 @@ export function InputPanel({
       {/* Step 1 — the two frames */}
       <Step n={1} title="Drop your two frames" tone="key">
         <div className="flex flex-col gap-2.5">
-          {SLOT_DEFS.map((def) => (
-            <DropSlot
-              key={def.key}
-              slotKey={def.key}
-              label={def.label}
-              hint={def.hint}
-              dataUrl={slotData(def.key)}
-              focused={focusedSlot === def.key}
-              onFocus={() => setFocusedSlot(def.key)}
-              onFile={(f) => ingest(def.key, f)}
-              compact={def.key === "settings"}
-            />
-          ))}
+          {SLOT_DEFS.map((def) => {
+            const exr = exrSlots[def.key as "ref" | "base" | "settings"];
+            return (
+              <DropSlot
+                key={def.key}
+                slotKey={def.key}
+                label={def.label}
+                hint={def.hint}
+                dataUrl={slotData(def.key)}
+                focused={focusedSlot === def.key}
+                onFocus={() => setFocusedSlot(def.key)}
+                onFile={(f) => ingest(def.key, f)}
+                compact={def.key === "settings"}
+                exrEv={exr ? exr.ev : null}
+                onExrEv={(ev) => onExrEv(def.key as "ref" | "base" | "settings", ev)}
+              />
+            );
+          })}
         </div>
         <p className="text-[0.72rem] text-[var(--color-faint)] mt-2 pl-0.5">
           Same VFB display settings every attempt.

@@ -60,18 +60,30 @@ export const STEP_HEADERS: Record<number, string> = {
   6: "Atmosphere / weather",
 };
 
-// -- File accept: exactly the three canvas-decodable types; the EXR reject message
-// is verbatim and load-bearing. ---------------------------------------------------
+// -- File accept: the three canvas-decodable types PLUS EXR (decoded + developed
+// client-side). EXR carries an empty MIME in every browser, so it is matched by the
+// .exr filename extension here (the store additionally verifies the EXR magic bytes
+// before decoding). The reject message now names only the genuinely-unsupported
+// formats and notes EXR is developed automatically. -------------------------------
 export const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
+// EXR MIME is inconsistent/empty across browsers; accept these if a file ever reports one.
+export const EXR_TYPES = ["image/x-exr", "image/aces", "image/exr"];
 export const REJECT_MESSAGE =
-  "LightMatch reads display-referred sRGB screenshots/saves — PNG or JPG from the VFB/Vantage, not linear EXR.";
+  "LightMatch reads PNG, JPG, or WebP from the VFB/Vantage — or a linear EXR, which is developed to a viewable exposure automatically. Formats like HEIC, TIFF, or PSD aren't supported; export one of those instead.";
 
-export function acceptsFile(file: { type?: string } | null | undefined): {
-  ok: boolean;
-  reason: string;
-} {
+/** True if a filename ends in .exr (case-insensitive). Mirrors lib/exr hasExrExtension,
+ *  kept local so this pure UI helper has no client-only import. */
+export function isExrName(name: string | null | undefined): boolean {
+  return typeof name === "string" && /\.exr$/i.test(name.trim());
+}
+
+export function acceptsFile(
+  file: { type?: string; name?: string } | null | undefined
+): { ok: boolean; reason: string } {
   const type = (file && file.type) || "";
+  const name = (file && file.name) || "";
   if (ACCEPTED_TYPES.includes(type)) return { ok: true, reason: "" };
+  if (EXR_TYPES.includes(type) || isExrName(name)) return { ok: true, reason: "" };
   return { ok: false, reason: REJECT_MESSAGE };
 }
 

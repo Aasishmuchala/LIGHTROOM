@@ -16,6 +16,8 @@ export function DropSlot({
   onFile,
   compact,
   captionOverride,
+  exrEv,
+  onExrEv,
 }: {
   slotKey: string;
   label: string;
@@ -26,10 +28,15 @@ export function DropSlot({
   onFile: (file: File) => void;
   compact?: boolean;
   captionOverride?: string;
+  /** When this slot ingested an EXR: the current develop EV (else null/undefined). */
+  exrEv?: number | null;
+  /** Called (debounced by the browser's input events) when the user drags the EV slider. */
+  onExrEv?: (ev: number) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const src = dataUrl ? safeSrc(dataUrl) : "";
+  const isExr = typeof exrEv === "number" && !!onExrEv;
 
   return (
     <div
@@ -89,6 +96,15 @@ export function DropSlot({
               alt={label}
               className={`w-full object-cover ${compact ? "h-16" : "h-24"}`}
             />
+            {isExr && (
+              <span
+                className="absolute top-1.5 left-1.5 text-[0.6rem] font-semibold tracking-[0.02em] text-white bg-black/55 rounded px-1.5 py-0.5 backdrop-blur-sm flex items-center gap-1"
+                title="This EXR was decoded and tone-mapped to a viewable sRGB exposure."
+              >
+                <span className="w-1.5 h-1.5 rounded-full spectrum-bar" aria-hidden />
+                EXR · developed
+              </span>
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-1.5">
               <span className="text-[0.62rem] font-medium text-white bg-black/50 rounded px-1.5 py-0.5 backdrop-blur-sm">
                 replace
@@ -103,8 +119,45 @@ export function DropSlot({
               <div className="text-[0.72rem] text-[var(--color-muted)] leading-snug">
                 {captionOverride || "Drop, paste, or choose a file"}
               </div>
-              <div className="text-[0.62rem] text-[var(--color-faint)] mt-0.5">PNG · JPG · WebP</div>
+              <div className="text-[0.62rem] text-[var(--color-faint)] mt-0.5">PNG · JPG · WebP · EXR</div>
             </div>
+          </div>
+        )}
+
+        {/* Exposure control — only for an EXR-developed slot. Re-develops the preview from
+            the retained linear buffer and re-measures on every change (instant, client-
+            side), so the user can match what they saw in the VFB. Stops propagation so
+            dragging never triggers the port's focus/replace click. */}
+        {isExr && (
+          <div
+            className="mt-2.5 rounded-[9px] bg-[var(--color-surface-2)] border border-[var(--color-line)] px-2.5 py-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <label
+                htmlFor={`exr-ev-${slotKey}`}
+                className="text-[0.62rem] font-semibold uppercase tracking-[0.06em] text-[var(--color-faint)]"
+              >
+                Exposure
+              </label>
+              <span className="jewel text-[0.68rem] text-[var(--color-accent-ink)] font-semibold tabular-nums">
+                {(exrEv as number) >= 0 ? "+" : ""}
+                {(exrEv as number).toFixed(2)} EV
+              </span>
+            </div>
+            <input
+              id={`exr-ev-${slotKey}`}
+              type="range"
+              min={-5}
+              max={5}
+              step={0.1}
+              value={exrEv as number}
+              aria-label={`${label} exposure in stops`}
+              className="exr-ev-slider w-full"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              onChange={(e) => onExrEv?.(parseFloat(e.target.value))}
+            />
           </div>
         )}
       </div>
@@ -112,7 +165,7 @@ export function DropSlot({
       <input
         ref={inputRef}
         type="file"
-        accept="image/png,image/jpeg,image/webp"
+        accept="image/png,image/jpeg,image/webp,.exr,image/x-exr"
         className="hidden"
         onClick={(e) => e.stopPropagation()}
         onChange={(e) => {

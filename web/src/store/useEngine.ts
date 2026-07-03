@@ -33,6 +33,8 @@ import {
   scoreVectors,
   type DrawableSource,
 } from "@/lib/metrics";
+import { decodeExrFile, isExrFile } from "@/lib/exr";
+import { developExr, autoExposureEV, EV_MIN, EV_MAX } from "@/lib/develop";
 import { PACKS } from "@/lib/packs";
 import { systemPrompt, validateRecipe, EMIT_RECIPE, EMIT_CORRECTION } from "@/lib/schemas";
 import { STORE, type StoredSession } from "@/lib/store";
@@ -60,6 +62,22 @@ export interface ImageSlot {
   dataUrl: string;
   metrics: MetricVector;
 }
+
+/** In-memory (NON-persisted) state for a slot whose source file was an EXR. Holds the
+ *  retained scene-referred linear buffer so exposure can be re-applied without
+ *  re-decoding, plus the developed EV and dimensions. Kept OUT of the persisted session
+ *  (a raw Float32Array is huge and IndexedDB should not hold it; the developed sRGB
+ *  dataUrl is what persists). Rebuilding this requires re-dropping the EXR after a
+ *  reload — the developed thumbnail/metrics survive; only the live exposure slider does
+ *  not. */
+export interface ExrSlotState {
+  linear: Float32Array;
+  width: number;
+  height: number;
+  ev: number;
+}
+export const EXR_SLOTS = ["ref", "base", "settings"] as const;
+export type ExrSlotName = (typeof EXR_SLOTS)[number];
 export interface AttemptEntry {
   dataUrl: string;
   metrics: MetricVector;
@@ -163,6 +181,10 @@ export interface EngineStore {
   _analyze: typeof analyzeViaApi;
   // test seam: a deterministic session id for STORE round-trips.
   _testSessionId: string | null;
+  // In-memory EXR state per named slot (ref/base/settings) — the retained linear buffer
+  // + developed EV. NOT persisted (see ExrSlotState). Reset on reset()/boot(). A slot
+  // whose entry is present is an EXR-developed slot; the UI shows the exposure slider.
+  exrSlots: Record<ExrSlotName, ExrSlotState | null>;
 
   // -- derived reads --
   state(): EngineState;
@@ -178,6 +200,12 @@ export interface EngineStore {
   setContext(patch: Partial<Session["context"]>): Promise<Session>;
   setActiveTarget(target: TargetId | string): Promise<Session>;
   setImage(slot: ImageSlotName, input: ImageInput): Promise<ImageSlot | { dataUrl: string }>;
+  /** Re-develop an EXR-backed named slot at a new EV from its retained linear buffer,
+   *  then re-measure so metrics track the visible exposure. Instant, client-side. No-op
+   *  (returns null) if the slot has no retained EXR buffer. */
+  redevelopExrSlot(slot: ExrSlotName, ev: number): Promise<ImageSlot | { dataUrl: string } | null>;
+  /** The EV currently developed for an EXR-backed slot, or null if the slot is not EXR. */
+  exrEv(slot: ExrSlotName): number | null;
   analyze(): Promise<Recipe>;
   addAttempt(input: ImageInput): Promise<{ score: number; correction: Correction }>;
   reanalyzeOtherTarget(): Promise<Recipe>;
@@ -340,6 +368,41 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     }
   };
 
+  // -- EXR develop path: decode the EXR File to a scene-referred linear buffer, choose
+  // an auto-EV (or use a supplied ev), develop to a display-referred sRGB canvas, and
+  // return BOTH that canvas (a DrawableSource the existing captureSlot pipeline measures/
+  // downscales unchanged) AND the retained linear buffer + ev so the slot's exposure can
+  // be re-applied later without re-decoding. Throws an annotated DecodeError on failure.
+  const developExrToCanvas = async (
+    file: File | Blob,
+    ev?: number
+  ): Promise<{ canvas: HTMLCanvasElement; linear: Float32Array; width: number; height: number; ev: number }> => {
+    let decoded;
+    try {
+      decoded = await decodeExrFile(file);
+    } catch (e) {
+      throw annotateError(
+        new DecodeError((e as Error)?.message || "Could not decode EXR file.")
+      );
+    }
+    const chosenEv = ev === undefined ? autoExposureEV(decoded.data) : ev;
+    let result;
+    try {
+      result = developExr(decoded.data, decoded.width, decoded.height, { ev: chosenEv });
+    } catch (e) {
+      throw annotateError(
+        new DecodeError("Could not develop EXR: " + ((e as Error)?.message || String(e)))
+      );
+    }
+    return {
+      canvas: result.canvas,
+      linear: decoded.data,
+      width: decoded.width,
+      height: decoded.height,
+      ev: result.ev,
+    };
+  };
+
   // -- attempt-number helpers (monotonic per-chain; matches "ATTEMPT N:" labels). ----
   const attemptNumberForChain = (chain: Chain | null, idx: number): number => {
     if (!chain || !Array.isArray(chain.attempts)) return idx + 1;
@@ -470,7 +533,17 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     }
     const target = s.activeTarget;
     const chain = s.chains[target];
-    const captured = await captureSlot(input);
+    // EXR attempts are decoded + developed (auto-EV) to a display-referred canvas first,
+    // then measured/downscaled by the SAME captureSlot path. A stored attempt is an
+    // immutable ledger row (re-scoring history would corrupt the refine chain), so the
+    // exposure slider is offered only on the named ref/base/settings slots, not here.
+    let captured: { dataUrl: string; metrics: MetricVector };
+    if (input instanceof Blob && (await isExrFile(input as File))) {
+      const dev = await developExrToCanvas(input);
+      captured = await captureSlot(dev.canvas as unknown as DrawableSource);
+    } else {
+      captured = await captureSlot(input);
+    }
     const score = scoreVectors(s.ref!.metrics, captured.metrics);
 
     const metricsBundle = {
@@ -532,6 +605,7 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     _inFlight: null,
     _analyze: analyzeViaApi,
     _testSessionId: null,
+    exrSlots: { ref: null, base: null, settings: null },
 
     // ---- derived reads ----
     state() {
@@ -568,7 +642,7 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     // ---- actions ----
     reset() {
       const s = blankSession(get()._testSessionId);
-      set({ session: s, lastError: null });
+      set({ session: s, lastError: null, exrSlots: { ref: null, base: null, settings: null } });
       return s;
     },
 
@@ -598,7 +672,37 @@ export const engineStore = createStore<EngineStore>((set, get) => {
         );
       }
       set({ lastError: null });
-      const captured = await captureSlot(input, { lossless: slot === "settings" });
+
+      // EXR path: a dropped/pasted/picked .exr (or a File whose magic bytes are EXR) is
+      // decoded + developed (auto-EV) to a display-referred sRGB canvas FIRST; that canvas
+      // then feeds the EXISTING captureSlot pipeline (downscale + measure) unchanged, so
+      // metrics stay display-referred. The retained linear buffer + EV are recorded in the
+      // (non-persisted) exrSlots side channel so the slot's exposure can be re-applied.
+      let captured: { dataUrl: string; metrics: MetricVector };
+      const isNamedExrSlot = slot === "ref" || slot === "base" || slot === "settings";
+      if (isNamedExrSlot && input instanceof Blob && (await isExrFile(input as File))) {
+        const dev = await developExrToCanvas(input);
+        captured = await captureSlot(dev.canvas as unknown as DrawableSource, {
+          lossless: slot === "settings",
+        });
+        const nextExr = { ...get().exrSlots } as Record<ExrSlotName, ExrSlotState | null>;
+        nextExr[slot as ExrSlotName] = {
+          linear: dev.linear,
+          width: dev.width,
+          height: dev.height,
+          ev: dev.ev,
+        };
+        set({ exrSlots: nextExr });
+      } else {
+        captured = await captureSlot(input, { lossless: slot === "settings" });
+        // A non-EXR replacement clears any prior EXR state on this slot.
+        if (isNamedExrSlot && get().exrSlots[slot as ExrSlotName]) {
+          const nextExr = { ...get().exrSlots };
+          nextExr[slot as ExrSlotName] = null;
+          set({ exrSlots: nextExr });
+        }
+      }
+
       const s = get().session;
       const next = { ...s };
       if (slot === "ref") next.ref = captured;
@@ -608,6 +712,50 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       set({ session: next });
       await persist();
       return slot === "settings" ? { dataUrl: captured.dataUrl } : captured;
+    },
+
+    async redevelopExrSlot(slot, ev) {
+      if (get()._inFlight) {
+        throw annotateError(
+          new BusyError(
+            "redevelopExrSlot(): a call is already in flight — wait for it to finish before re-exposing."
+          )
+        );
+      }
+      const exr = get().exrSlots[slot];
+      if (!exr) return null;
+      set({ lastError: null });
+      let clamped = ev;
+      if (clamped < EV_MIN) clamped = EV_MIN;
+      if (clamped > EV_MAX) clamped = EV_MAX;
+      // Re-develop from the retained linear buffer at the new EV, then re-measure so the
+      // metrics (and thus the model input + score) track exactly what the user sees.
+      let result;
+      try {
+        result = developExr(exr.linear, exr.width, exr.height, { ev: clamped });
+      } catch (e) {
+        throw annotateError(
+          new DecodeError("Could not re-develop EXR: " + ((e as Error)?.message || String(e)))
+        );
+      }
+      const captured = await captureSlot(result.canvas as unknown as DrawableSource, {
+        lossless: slot === "settings",
+      });
+      const nextExr = { ...get().exrSlots };
+      nextExr[slot] = { ...exr, ev: clamped };
+      const s = get().session;
+      const next = { ...s };
+      if (slot === "ref") next.ref = captured;
+      else if (slot === "base") next.base = captured;
+      else if (slot === "settings") next.settingsShot = { dataUrl: captured.dataUrl };
+      set({ session: next, exrSlots: nextExr });
+      await persist();
+      return slot === "settings" ? { dataUrl: captured.dataUrl } : captured;
+    },
+
+    exrEv(slot) {
+      const exr = get().exrSlots[slot];
+      return exr ? exr.ev : null;
     },
 
     analyze() {
@@ -673,6 +821,9 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     },
 
     async boot() {
+      // A restored session has no live EXR linear buffers (they are never persisted);
+      // clear the side channel so a stale slider can't appear over a re-hydrated slot.
+      set({ exrSlots: { ref: null, base: null, settings: null } });
       try {
         const latest = await STORE.loadLatest();
         set({ session: (latest as unknown as Session) || blankSession(get()._testSessionId) });
