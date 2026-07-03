@@ -107,10 +107,13 @@ export default function Home() {
     <div className="min-h-full flex flex-col">
       <Header />
 
-      <main className="flex-1 mx-auto w-full max-w-[1320px] px-4 sm:px-6 py-5 sm:py-7">
-        <div className="grid gap-5 lg:gap-7 lg:grid-cols-[340px_minmax(0,1fr)]">
-          {/* LEFT: the numbered input flow (sticky on desktop) */}
-          <aside className="lg:sticky lg:top-[88px] lg:self-start">
+      <main className="flex-1 mx-auto w-full max-w-[1320px] px-4 sm:px-6 py-5 sm:py-8">
+        {/* The optical bench: a control RAIL (chrome plane) and the WORK surface,
+            joined by the light-spectrum spine. The spine is the tool's axis made
+            structural — not a decorative stripe. */}
+        <div className="grid gap-5 lg:gap-0 lg:grid-cols-[336px_3px_minmax(0,1fr)] items-stretch">
+          {/* LEFT: the control rail (sticky on desktop) */}
+          <aside className="lg:sticky lg:top-[84px] lg:self-start lg:pr-8">
             <InputPanel
               focusedSlot={focusedSlot}
               setFocusedSlot={setFocusedSlot}
@@ -118,8 +121,15 @@ export default function Home() {
             />
           </aside>
 
+          {/* the spectrum spine — the seam between chrome and work planes, and the
+              tool's axis made structural. Runs the full height of the bench with a
+              soft bloom; reads as an intentional light-guide, not a hairline. */}
+          <div aria-hidden className="hidden lg:block relative w-[3px]">
+            <span className="absolute inset-y-0 left-0 w-full rounded-full spectrum-spine shadow-[0_0_12px_0_oklch(0.86_0.15_85_/_0.5)]" />
+          </div>
+
           {/* RIGHT: the working surface */}
-          <section className="min-w-0 flex flex-col gap-4">
+          <section className="min-w-0 flex flex-col gap-4 lg:pl-8">
             <StorageBanner onToast={showToast} />
             <ErrorBanner error={lastError} />
 
@@ -133,7 +143,7 @@ export default function Home() {
             ) : (
               <>
                 {inFlight && (
-                  <div className="rounded-[var(--radius-card)] border border-[var(--color-accent-line)] bg-[var(--color-accent-tint)] px-4 py-2.5 flex items-center gap-2.5 animate-fade">
+                  <div className="rounded-[var(--radius-control)] border border-[var(--color-accent-line)] bg-[var(--color-accent-tint)] px-4 py-2.5 flex items-center gap-2.5 animate-fade">
                     <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-[var(--color-accent-strong)] border-t-transparent animate-spin" />
                     <span className="text-[0.82rem] font-medium text-[var(--color-accent-ink)]">
                       Working on the match…

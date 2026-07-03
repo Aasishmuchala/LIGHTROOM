@@ -1,78 +1,100 @@
 @import "tailwindcss";
 
 /* ============================================================================
-   LightMatch design system — Tailwind v4, CSS-first @theme.
-   Identity: a bright, optimistic lighting-match tool. The motif is LIGHT itself —
-   a warm→cool photometric spectrum. The vivid accent is MARIGOLD (the color of a
-   key light at golden hour), giving LightMatch its own confident identity while
-   holding the friendly, effortless register of the reference. Canvas is a soft
-   cool-tinted paper (NOT cream/greige). System font stack only — works offline.
-   OKLCH throughout.
+   LightMatch — "the optical bench".
+   A photometric instrument for matching a render's light to a reference, designed
+   the way a densitometer or a pro grading panel is designed: a cool control RAIL
+   (chrome) against a bright WORK surface (the focal plane), with the warm→cool
+   light spectrum as a structural spine rather than decoration. Light theme,
+   marigold key-light accent. System fonts only (offline / file://). OKLCH.
    ============================================================================ */
 
 @theme {
-  /* -- Type: system stack, no network fonts. Display uses the same stack heavier;
-        mono is the "jewel" face for photometric values. --------------------------- */
+  /* -- Type: system stack, no network fonts. Mono is the "jewel" face for the
+        photometric values — every recipe value and score is tabular. ------------- */
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", "SF Mono", "Segoe UI Mono", "Roboto Mono", Menlo, Consolas, monospace;
 
-  /* -- Canvas / surfaces. Cool-tinted near-whites (hue ~240, tiny chroma toward the
-        brand's cool counterpart), never warm cream. ------------------------------- */
-  --color-canvas: oklch(0.983 0.006 240);      /* app background */
-  --color-canvas-deep: oklch(0.965 0.008 240); /* recessed wells */
-  --color-surface: oklch(1 0 0);               /* cards */
-  --color-surface-2: oklch(0.987 0.004 240);   /* nested tint */
+  /* -- Two neutral planes. The RAIL/chrome plane is cooler + deeper; the WORK
+        plane is the bright focal surface where the recipe reads. ------------------ */
+  --color-canvas: oklch(0.984 0.005 244);      /* app background (work plane base) */
+  --color-canvas-deep: oklch(0.958 0.008 246); /* recessed wells */
+  --color-surface: oklch(1 0 0);               /* the work surface (recipe) */
+  --color-surface-2: oklch(0.986 0.004 244);   /* nested tint on the work plane */
 
-  /* -- Ink ramp (cool near-black → muted). ------------------------------------- */
-  --color-ink: oklch(0.235 0.02 262);          /* headings */
-  --color-ink-2: oklch(0.375 0.018 262);       /* body */
-  --color-muted: oklch(0.50 0.017 262);        /* secondary — AA on surface & wells */
-  --color-faint: oklch(0.53 0.017 262);        /* tertiary / held rows — AA (>=4.5) on canvas-deep */
+  /* The chrome plane — the control rail + topbar. Distinctly cooler & a touch
+     deeper than the work plane so the rail reads as instrument chrome, not a card. */
+  --color-chrome: oklch(0.945 0.009 250);      /* rail field */
+  --color-chrome-2: oklch(0.925 0.011 250);    /* rail wells / recessed */
+  --color-chrome-line: oklch(0.885 0.012 252); /* hairlines on the chrome plane */
 
-  /* -- Lines. ------------------------------------------------------------------ */
-  --color-line: oklch(0.915 0.008 250);
-  --color-line-strong: oklch(0.86 0.01 250);
+  /* -- Ink ramp (cool near-black → muted). All body/secondary verified >=4.5:1
+        on both the work plane and the chrome plane (see contrast notes). ---------- */
+  --color-ink: oklch(0.225 0.021 264);         /* headings / leaf values */
+  --color-ink-2: oklch(0.365 0.019 264);       /* body */
+  --color-muted: oklch(0.475 0.018 264);       /* secondary — AA on surface, wells, chrome */
+  --color-faint: oklch(0.508 0.017 264);       /* tertiary / held rows — AA (>=4.5) on canvas-deep & chrome */
 
-  /* -- MARIGOLD accent (the key light). The identity color. --------------------- */
-  --color-accent: oklch(0.79 0.16 78);         /* marigold — fills, buttons, borders */
-  --color-accent-strong: oklch(0.7 0.17 66);   /* deeper marigold — fills/press/focus ring only (NOT text: 2.8:1 on white) */
-  --color-accent-ink: oklch(0.34 0.11 62);     /* deep marigold — the accent TEXT shade (12:1 on white, 10.9:1 on tint; AA/AAA) */
+  /* -- Lines (work plane). ----------------------------------------------------- */
+  --color-line: oklch(0.912 0.008 252);
+  --color-line-strong: oklch(0.855 0.011 252);
+
+  /* -- MARIGOLD accent — the key light. The one saturated color. --------------- */
+  --color-accent: oklch(0.79 0.16 78);         /* marigold — fills, buttons, the live tick */
+  --color-accent-strong: oklch(0.70 0.17 66);  /* deeper marigold — press/focus ring/thumb (NOT text) */
+  --color-accent-ink: oklch(0.34 0.11 62);     /* the accent TEXT shade (12:1 on white, AAA) */
   --color-accent-tint: oklch(0.965 0.035 82);  /* accent wash */
-  --color-accent-line: oklch(0.88 0.09 80);
+  --color-accent-tint-2: oklch(0.945 0.05 82); /* deeper wash — selected bands */
+  --color-accent-line: oklch(0.865 0.09 80);
 
-  /* -- Spectrum: the warm→cool light axis (sunrise → daylight → blue hour).
-        Used for the hero meter and the look-distance scale. ----------------------- */
+  /* -- Spectrum: the warm→cool light axis (dawn → key → daylight → blue hour).
+        The signature. Drives the spine, the calibration read-out, the EV track,
+        and the look-distance scale. ---------------------------------------------- */
   --spectrum-warm: oklch(0.82 0.16 55);        /* dawn amber */
-  --spectrum-key: oklch(0.86 0.15 85);          /* marigold key */
-  --spectrum-day: oklch(0.93 0.05 200);         /* daylight */
-  --spectrum-cool: oklch(0.72 0.13 245);        /* blue hour */
+  --spectrum-key: oklch(0.86 0.15 85);         /* marigold key */
+  --spectrum-day: oklch(0.93 0.05 200);        /* daylight */
+  --spectrum-cool: oklch(0.72 0.13 245);       /* blue hour */
+  --spectrum-grad: linear-gradient(
+    90deg,
+    var(--spectrum-warm) 0%,
+    var(--spectrum-key) 30%,
+    var(--spectrum-day) 62%,
+    var(--spectrum-cool) 100%
+  );
 
-  /* -- Signal colors (cool-hued, calm — not alarm-loud). ----------------------- */
-  --color-good: oklch(0.72 0.14 158);          /* match / closer */
+  /* -- Signal colors (cool-hued, calm — not alarm-loud). Each has a darker "-ink"
+        shade for when the color is used as TEXT (AA >=4.5 on light surfaces); the
+        base shade is for dots, fills, borders, and icon backgrounds. -------------- */
+  --color-good: oklch(0.70 0.14 158);          /* match / closer — dot/fill */
+  --color-good-ink: oklch(0.48 0.12 162);      /* the good TEXT shade (6:1 on white, AA on chrome) */
   --color-good-tint: oklch(0.965 0.03 160);
   --color-warn: oklch(0.75 0.15 62);
-  --color-danger: oklch(0.62 0.19 22);
+  --color-warn-ink: oklch(0.47 0.11 62);       /* warn TEXT shade */
+  --color-danger: oklch(0.605 0.19 22);        /* icon-bg / border */
+  --color-danger-ink: oklch(0.505 0.19 24);    /* danger TEXT shade (AA on white & tint) */
   --color-danger-tint: oklch(0.965 0.03 25);
-  --color-info: oklch(0.68 0.12 245);          /* handoff / grade */
+  --color-info: oklch(0.66 0.12 245);          /* handoff / grade — icon-bg / border */
+  --color-info-ink: oklch(0.48 0.13 250);      /* info TEXT shade */
   --color-info-tint: oklch(0.965 0.03 245);
 
   /* -- Confidence dots. -------------------------------------------------------- */
-  --color-conf-high: oklch(0.72 0.14 158);
+  --color-conf-high: oklch(0.70 0.14 158);
   --color-conf-medium: oklch(0.79 0.15 78);
   --color-conf-low: oklch(0.66 0.16 30);
 
-  /* -- Radii: one soft system. Pills for interactive, 14px cards, 9px controls. - */
-  --radius-control: 9px;
-  --radius-card: 14px;
-  --radius-lg: 20px;
+  /* -- Radii: crisper than the SaaS-default. Controls 8px, cards 12px. --------- */
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-lg: 16px;
 
-  /* -- Shadows: tinted to the cool canvas hue, never pure black. ---------------- */
-  --shadow-sm: 0 1px 2px oklch(0.5 0.03 262 / 0.06), 0 1px 1px oklch(0.5 0.03 262 / 0.04);
-  --shadow-md: 0 2px 4px oklch(0.5 0.03 262 / 0.05), 0 8px 20px oklch(0.5 0.03 262 / 0.07);
-  --shadow-lg: 0 4px 8px oklch(0.5 0.03 262 / 0.06), 0 18px 44px oklch(0.5 0.03 262 / 0.1);
-  --shadow-accent: 0 6px 20px oklch(0.79 0.16 78 / 0.28);
+  /* -- Shadows: tinted to the cool plane, never pure black. Elevation is carried
+        by hairlines; shadows only on true floats. -------------------------------- */
+  --shadow-sm: 0 1px 2px oklch(0.5 0.03 264 / 0.05), 0 1px 1px oklch(0.5 0.03 264 / 0.03);
+  --shadow-md: 0 2px 4px oklch(0.5 0.03 264 / 0.05), 0 8px 20px oklch(0.5 0.03 264 / 0.06);
+  --shadow-lg: 0 4px 8px oklch(0.5 0.03 264 / 0.06), 0 18px 44px oklch(0.5 0.03 264 / 0.10);
+  --shadow-accent: 0 4px 14px oklch(0.79 0.16 78 / 0.30);
 
-  /* -- Motion: exponential ease-out, 150–250ms. -------------------------------- */
+  /* -- Motion: exponential ease-out, 150–250ms. State, not choreography. -------- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-fast: 150ms;
   --dur: 200ms;
@@ -99,6 +121,13 @@ body {
   font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.55;
+  /* faint instrument grid on the work plane — reads as engineering paper, not a
+     flat void. Extremely subtle; carries the "bench" texture without noise. */
+  background-image:
+    linear-gradient(oklch(0.5 0.03 264 / 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.5 0.03 264 / 0.018) 1px, transparent 1px);
+  background-size: 27px 27px, 27px 27px;
+  background-position: -1px -1px;
 }
 ::selection { background: var(--color-accent-tint); color: var(--color-accent-ink); }
 
@@ -111,62 +140,124 @@ body {
 
 h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
 
+/* Micro-label: the structural voice of the instrument (small, uppercase, tracked,
+   tabular where it counts). Used once per structural region, never as a per-section
+   eyebrow. */
+.eyebrow {
+  font-size: 0.66rem; font-weight: 600; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--color-faint);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ============================================================================
-   Signature: the light spectrum bar. The recurring identity element.
+   Signature: the light spectrum. Structural, not decorative.
+   - .spectrum-bar : the warm→cool axis fill (used in the calibration read-out,
+     the look-distance legend, the EV track).
+   - .spectrum-spine : the vertical seam between rail (chrome) and work surface.
    ============================================================================ */
-.spectrum-bar {
+.spectrum-bar { background: var(--spectrum-grad); }
+
+.spectrum-spine {
+  background: var(--spectrum-grad);
+  /* runs top→bottom as a vertical axis */
   background: linear-gradient(
-    90deg,
+    180deg,
     var(--spectrum-warm) 0%,
-    var(--spectrum-key) 30%,
+    var(--spectrum-key) 26%,
     var(--spectrum-day) 62%,
     var(--spectrum-cool) 100%
   );
 }
 
+/* The calibration read-out: a spectrum scale with a live tick at the matched
+   temperature. The tick is the marigold key-light marker. */
+.calib-scale {
+  position: relative; height: 6px; border-radius: 999px;
+  background: var(--spectrum-grad);
+  box-shadow: inset 0 0 0 1px oklch(0.5 0.03 264 / 0.08);
+}
+.calib-tick {
+  position: absolute; top: 50%; width: 3px; height: 16px;
+  border-radius: 999px; background: var(--color-surface);
+  box-shadow: 0 0 0 2px var(--color-accent-strong), var(--shadow-sm);
+  transform: translate(-50%, -50%);
+}
+
 /* ============================================================================
-   Buttons.
+   The two planes.
+   - .rail : the control chrome plane (cooler/deeper). Not a card — a panel.
+   - .work-card : the bright focal surface on the work plane.
+   - .rail-cell : a recessed grouping inside the rail (steps).
+   ============================================================================ */
+.rail {
+  background: var(--color-chrome);
+  border: 1px solid var(--color-chrome-line);
+  border-radius: var(--radius-lg);
+}
+.rail-cell {
+  background: var(--color-chrome-2);
+  border: 1px solid var(--color-chrome-line);
+  border-radius: var(--radius-card);
+}
+
+.card, .work-card {
+  background: var(--color-surface); border: 1px solid var(--color-line);
+  border-radius: var(--radius-card); box-shadow: var(--shadow-sm);
+}
+/* the recipe (the hero) sits on the strongest hairline + a hair more lift */
+.work-card--hero { box-shadow: var(--shadow-md); }
+
+/* ============================================================================
+   Buttons — one shape system, full states.
    ============================================================================ */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
   font-weight: 560; font-size: 0.9rem; line-height: 1;
-  border-radius: 999px; padding: 0.7rem 1.15rem; cursor: pointer;
+  border-radius: var(--radius-control); padding: 0.7rem 1.15rem; cursor: pointer;
   border: 1px solid transparent; white-space: nowrap;
   transition: transform var(--dur-fast) var(--ease-out),
               background-color var(--dur) var(--ease-out),
               box-shadow var(--dur) var(--ease-out),
-              border-color var(--dur) var(--ease-out);
+              border-color var(--dur) var(--ease-out),
+              color var(--dur) var(--ease-out);
 }
 .btn:active { transform: translateY(1px); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:disabled { cursor: not-allowed; }
 
 .btn-primary {
-  background: var(--color-accent); color: oklch(0.28 0.09 62);
+  background: var(--color-accent); color: oklch(0.27 0.09 62);
   box-shadow: var(--shadow-accent);
-  font-weight: 620;
+  font-weight: 640; letter-spacing: 0.005em;
 }
-.btn-primary:not(:disabled):hover { background: oklch(0.81 0.16 80); transform: translateY(-1px); }
-.btn-primary:disabled { box-shadow: none; background: var(--color-line-strong); color: var(--color-faint); }
+.btn-primary:not(:disabled):hover { background: oklch(0.81 0.16 80); transform: translateY(-1px); box-shadow: 0 6px 18px oklch(0.79 0.16 78 / 0.36); }
+.btn-primary:not(:disabled):active { background: var(--color-accent-strong); }
+.btn-primary:disabled { box-shadow: none; background: var(--color-chrome-2); color: var(--color-faint); border-color: var(--color-chrome-line); }
 
 .btn-secondary {
   background: var(--color-surface); color: var(--color-ink-2);
   border-color: var(--color-line-strong); box-shadow: var(--shadow-sm);
 }
 .btn-secondary:not(:disabled):hover { border-color: var(--color-accent-line); background: var(--color-accent-tint); color: var(--color-accent-ink); }
+.btn-secondary:not(:disabled):active { background: var(--color-accent-tint-2); }
+.btn-secondary:disabled { opacity: 0.5; }
 
 .btn-ghost {
   background: transparent; color: var(--color-muted);
-  padding: 0.45rem 0.7rem; font-size: 0.82rem;
+  padding: 0.45rem 0.7rem; font-size: 0.82rem; border-radius: var(--radius-control);
 }
-.btn-ghost:hover { background: var(--color-canvas-deep); color: var(--color-ink-2); }
+.btn-ghost:hover { background: oklch(0.5 0.03 264 / 0.06); color: var(--color-ink-2); }
+.btn-ghost:active { background: oklch(0.5 0.03 264 / 0.10); }
+.btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Context chip — quiet default, marigold when selected. */
 .btn-chip {
-  padding: 0.34rem 0.7rem; font-size: 0.8rem; font-weight: 520;
+  padding: 0.32rem 0.66rem; font-size: 0.79rem; font-weight: 500;
   border-radius: 999px; background: var(--color-surface);
-  border-color: var(--color-line); color: var(--color-muted);
-  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-chrome-line); color: var(--color-muted);
+  cursor: pointer; transition: all var(--dur-fast) var(--ease-out);
 }
-.btn-chip:hover { border-color: var(--color-accent-line); color: var(--color-ink-2); }
+.btn-chip:hover { border-color: var(--color-accent-line); color: var(--color-ink-2); background: var(--color-surface); }
+.btn-chip:active { transform: translateY(0.5px); }
 .btn-chip[data-on="true"] {
   background: var(--color-accent-tint); border-color: var(--color-accent-line);
   color: var(--color-accent-ink); font-weight: 600;
@@ -175,27 +266,22 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
 /* Small inline copy button. */
 .btn-mini {
   font-size: 0.72rem; font-weight: 560; letter-spacing: 0.01em;
-  padding: 0.28rem 0.6rem; border-radius: 7px;
+  padding: 0.28rem 0.6rem; border-radius: 6px;
   background: var(--color-surface-2); border: 1px solid var(--color-line);
   color: var(--color-muted); cursor: pointer;
   transition: all var(--dur-fast) var(--ease-out);
 }
 .btn-mini:hover { border-color: var(--color-accent-line); color: var(--color-accent-ink); background: var(--color-accent-tint); }
 .btn-mini:active { transform: translateY(1px); }
+.btn-mini:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ============================================================================
-   Cards / surfaces.
+   Segmented toggle (target renderer) — lives on the chrome plane.
    ============================================================================ */
-.card {
-  background: var(--color-surface); border: 1px solid var(--color-line);
-  border-radius: var(--radius-card); box-shadow: var(--shadow-sm);
-}
-
-/* Segmented toggle (target renderer). */
-.segmented { display: inline-flex; padding: 3px; gap: 2px; background: var(--color-canvas-deep); border-radius: 999px; border: 1px solid var(--color-line); }
+.segmented { display: inline-flex; padding: 3px; gap: 2px; background: var(--color-chrome-2); border-radius: var(--radius-control); border: 1px solid var(--color-chrome-line); }
 .segmented-btn {
   padding: 0.4rem 0.85rem; font-size: 0.82rem; font-weight: 540;
-  border-radius: 999px; color: var(--color-muted); cursor: pointer;
+  border-radius: 6px; color: var(--color-muted); cursor: pointer;
   border: 1px solid transparent; background: transparent;
   transition: all var(--dur) var(--ease-out);
 }
@@ -205,7 +291,9 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
   box-shadow: var(--shadow-sm); font-weight: 600;
 }
 
-/* Inputs. */
+/* ============================================================================
+   Inputs.
+   ============================================================================ */
 .field {
   width: 100%; font-size: 0.85rem; font-family: var(--font-mono);
   padding: 0.5rem 0.7rem; border-radius: var(--radius-control);
@@ -213,6 +301,7 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
   color: var(--color-ink); transition: border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
 }
 .field::placeholder { color: var(--color-faint); }
+.field:hover { border-color: var(--color-muted); }
 .field:focus { outline: none; border-color: var(--color-accent-strong); box-shadow: 0 0 0 3px var(--color-accent-tint); }
 
 .select {
@@ -222,14 +311,14 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%23808a99' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 0.6rem center;
-  transition: border-color var(--dur) var(--ease-out);
+  transition: border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
 }
-.select:hover { border-color: var(--color-line-strong); }
+.select:hover { border-color: var(--color-muted); }
 .select:focus { outline: none; border-color: var(--color-accent-strong); box-shadow: 0 0 0 3px var(--color-accent-tint); }
 
 /* ============================================================================
-   EXR exposure slider — the develop control on an EXR-backed drop slot. The track is
-   the warm→cool light spectrum (the identity motif); the thumb is the marigold key.
+   EXR exposure slider — the develop control on an EXR-backed drop slot. The track
+   is the warm→cool light spectrum (the identity motif); the thumb is the key.
    ============================================================================ */
 .exr-ev-slider {
   -webkit-appearance: none;
@@ -294,14 +383,15 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
 }
 
 /* ============================================================================
-   The photometric value jewel — mono, tabular. from → to.
+   The photometric value jewel — mono, tabular. from → to. Set like a light-meter
+   printout: the OLD value struck through and receding, the NEW value the jewel.
    ============================================================================ */
 .jewel { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
 .jewel-from { color: var(--color-faint); text-decoration: line-through; text-decoration-color: var(--color-line-strong); }
 .jewel-to { color: var(--color-accent-ink); font-weight: 600; }
 .jewel-arrow { color: var(--color-accent); }
 
-/* Breadcrumb path (ui_path). */
+/* Breadcrumb path (ui_path). The renderer UI location recedes; the control leaf leads. */
 .path-seg { color: var(--color-faint); }
 .path-sep { color: var(--color-line-strong); margin: 0 0.15em; }
 .path-leaf { color: var(--color-ink); font-weight: 560; }
@@ -315,7 +405,7 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
 /* ============================================================================
    Motion: reveal + shimmer. All gated by reduced-motion.
    ============================================================================ */
-@keyframes lm-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes lm-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes lm-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes lm-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
 @keyframes lm-sweep { 0%, 100% { transform: translateX(-30%); } 50% { transform: translateX(130%); } }
@@ -332,7 +422,7 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
   border-radius: var(--radius-control);
 }
 
-/* The analyzing sweep on the hero meter. */
+/* The analyzing sweep on the hero read-out. */
 .analyzing-sweep { position: relative; overflow: hidden; }
 .analyzing-sweep::after {
   content: ""; position: absolute; inset: 0; width: 40%;
@@ -358,4 +448,5 @@ details[open] > summary .caret { transform: rotate(90deg); }
     transition-duration: 0.001ms !important;
   }
   .animate-rise, .animate-fade { animation: lm-fade 0.001ms both; }
+  body { background-image: none; }
 }

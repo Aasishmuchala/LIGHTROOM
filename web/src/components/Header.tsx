@@ -5,19 +5,22 @@ import { engineStore, useEngine } from "@/store/useEngine";
 import { STORE } from "@/lib/store";
 import { MODELS, TARGETS } from "./lib";
 
-// The wordmark carries the identity: "Light" with a spectrum underline that IS the
-// warm→cool light axis the tool works on. Bright, distinctive, unmistakably about
-// light — not a generic SaaS logotype. --------------------------------------------
+// The wordmark IS the instrument's axis: the warm→cool spectrum rendered as a set of
+// calibration ticks with the marigold key marked, then the wordmark set tight. Reads
+// as a light-meter faceplate, not a SaaS logotype. --------------------------------
 function Wordmark() {
   return (
     <div className="flex items-center gap-2.5 select-none">
-      <span aria-hidden className="relative grid place-items-center w-8 h-8 rounded-[10px] shadow-[var(--shadow-sm)] overflow-hidden bg-[var(--color-surface)] border border-[var(--color-line)]">
-        {/* a tiny sun over a spectrum horizon — the product mark */}
-        <span className="absolute inset-x-0 bottom-0 h-3 spectrum-bar opacity-90" />
-        <span className="absolute w-3 h-3 rounded-full bg-[var(--color-accent)] shadow-[0_0_10px_var(--color-accent)] top-1.5" />
+      <span aria-hidden className="relative flex items-end gap-[3px] h-8 pb-0.5">
+        {/* five graduated ticks = the spectrum axis; the key (marigold) tallest */}
+        <span className="w-[3px] h-3 rounded-full" style={{ background: "var(--spectrum-warm)" }} />
+        <span className="w-[3px] h-5 rounded-full" style={{ background: "var(--spectrum-key)", boxShadow: "0 0 8px var(--color-accent)" }} />
+        <span className="w-[3px] h-4 rounded-full" style={{ background: "var(--spectrum-day)" }} />
+        <span className="w-[3px] h-6 rounded-full" style={{ background: "var(--color-accent)" }} />
+        <span className="w-[3px] h-3.5 rounded-full" style={{ background: "var(--spectrum-cool)" }} />
       </span>
       <div className="leading-none">
-        <div className="text-[1.05rem] font-[680] tracking-[-0.02em] text-[var(--color-ink)]">
+        <div className="text-[1.06rem] font-[680] tracking-[-0.025em] text-[var(--color-ink)]">
           Light<span className="text-[var(--color-accent-ink)]">Match</span>
         </div>
       </div>
@@ -87,7 +90,7 @@ export function Header() {
 
   return (
     <header
-      className="sticky top-0 backdrop-blur-md bg-[oklch(0.983_0.006_240_/_0.82)] border-b border-[var(--color-line)]"
+      className="sticky top-0 backdrop-blur-md bg-[oklch(0.945_0.009_250_/_0.86)] border-b border-[var(--color-chrome-line)]"
       style={{ zIndex: "var(--z-sticky)" as unknown as number }}
     >
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6">

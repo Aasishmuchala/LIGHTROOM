@@ -41,14 +41,14 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
           style={{ borderColor: "var(--color-info)", background: "var(--color-info-tint)" }}
         >
           <span
-            className="flex-none grid place-items-center w-6 h-6 rounded-full text-white text-[0.8rem]"
+            className="flex-none grid place-items-center w-7 h-7 rounded-full text-white text-[0.82rem] font-bold"
             style={{ background: "var(--color-info)" }}
             aria-hidden
           >
             ✓
           </span>
           <div>
-            <div className="text-[0.9rem] font-[620] text-[var(--color-ink)]">
+            <div className="text-[0.95rem] font-[660] text-[var(--color-ink)] tracking-[-0.01em]">
               Lighting matched. The rest is a grade.
             </div>
             <p className="text-[0.82rem] text-[var(--color-ink-2)] mt-1 leading-snug max-w-[70ch]">
@@ -60,9 +60,11 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
       )}
 
       {/* Filmstrip: reference + each attempt, closest at the lowest score. */}
-      <section className="card p-4">
+      <section className="work-card p-4">
         <div className="flex items-center justify-between gap-2 mb-3">
-          <h3 className="text-[0.92rem] font-[620] text-[var(--color-ink)]">Refine ledger</h3>
+          <div className="flex items-center gap-2.5">
+            <span className="eyebrow">Refine ledger</span>
+          </div>
           <span className="text-[0.72rem] text-[var(--color-faint)]">closest at the lowest score</span>
         </div>
 
@@ -112,11 +114,12 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
 }
 
 function scoreTone(score: number): { color: string; bg: string } {
-  // low score = close = good (cool→green), high = far (warm).
-  if (score <= 12) return { color: "var(--color-good)", bg: "var(--color-good-tint)" };
-  if (score <= 30) return { color: "var(--color-info)", bg: "var(--color-info-tint)" };
-  if (score <= 55) return { color: "var(--color-warn)", bg: "var(--color-accent-tint)" };
-  return { color: "var(--color-danger)", bg: "var(--color-danger-tint)" };
+  // low score = close = good (cool→green), high = far (warm). The `color` is used as
+  // TEXT on the tint `bg`, so it uses the AA-safe -ink shades.
+  if (score <= 12) return { color: "var(--color-good-ink)", bg: "var(--color-good-tint)" };
+  if (score <= 30) return { color: "var(--color-info-ink)", bg: "var(--color-info-tint)" };
+  if (score <= 55) return { color: "var(--color-warn-ink)", bg: "var(--color-accent-tint)" };
+  return { color: "var(--color-danger-ink)", bg: "var(--color-danger-tint)" };
 }
 
 function FilmstripAttempt({
@@ -135,9 +138,9 @@ function FilmstripAttempt({
   if (prev) {
     trend =
       att.score < prev.score ? (
-        <span className="text-[var(--color-good)]" title="Closer to reference">▲</span>
+        <span className="text-[var(--color-good-ink)]" title="Closer to reference">▲</span>
       ) : att.score > prev.score ? (
-        <span className="text-[var(--color-danger)]" title="Further from reference">▼</span>
+        <span className="text-[var(--color-danger-ink)]" title="Further from reference">▼</span>
       ) : (
         <span className="text-[var(--color-faint)]">–</span>
       );
@@ -195,10 +198,10 @@ function CorrectionCard({
   };
 
   return (
-    <section className="card overflow-hidden animate-rise">
+    <section className="work-card overflow-hidden animate-rise">
       <div className="flex items-center justify-between gap-3 px-5 pt-3.5 pb-3 border-b border-[var(--color-line)]">
         <div className="flex items-center gap-2.5">
-          <h3 className="text-[0.92rem] font-[620] text-[var(--color-ink)]">Correction · attempt {n}</h3>
+          <h3 className="text-[0.9rem] font-[640] text-[var(--color-ink)] tracking-[-0.01em]">Correction · attempt {n}</h3>
           <span
             className="jewel text-[0.72rem] font-bold rounded-md px-2 py-0.5"
             style={{ color: tone.color, background: tone.bg }}

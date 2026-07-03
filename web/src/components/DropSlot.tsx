@@ -67,10 +67,9 @@ export function DropSlot({
         if (file) onFile(file);
       }}
       className={[
-        "group relative rounded-[var(--radius-card)] cursor-pointer transition-all",
+        "group relative rounded-[var(--radius-control)] cursor-pointer transition-all",
         "border overflow-hidden text-left",
-        compact ? "" : "",
-        src ? "border-[var(--color-line)] bg-[var(--color-surface)]" : "border-dashed bg-[var(--color-surface-2)]",
+        src ? "border-[var(--color-line)] bg-[var(--color-surface)]" : "border-dashed bg-[var(--color-surface)]",
         dragOver
           ? "border-[var(--color-accent)] bg-[var(--color-accent-tint)] scale-[1.01]"
           : focused && !src
@@ -80,12 +79,12 @@ export function DropSlot({
       style={{ transitionDuration: "var(--dur)", transitionTimingFunction: "var(--ease-out)" }}
     >
       <div className="flex items-center justify-between gap-2 px-3 pt-2.5">
-        <span className="text-[0.78rem] font-semibold text-[var(--color-ink)]">
+        <span className="text-[0.78rem] font-[620] text-[var(--color-ink)] tracking-[-0.01em]">
           {label}
           {hint && <span className="ml-1.5 font-normal text-[0.7rem] text-[var(--color-faint)]">({hint})</span>}
         </span>
         {src && (
-          <span className="text-[0.62rem] font-medium text-[var(--color-good)] flex items-center gap-1">
+          <span className="text-[0.6rem] font-semibold uppercase tracking-[0.05em] text-[var(--color-good-ink)] flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-good)]" /> loaded
           </span>
         )}
@@ -117,13 +116,13 @@ export function DropSlot({
           </div>
         ) : (
           <div
-            className={`rounded-[10px] grid place-items-center text-center ${compact ? "h-16" : "h-24"} bg-[var(--color-canvas-deep)]`}
+            className={`rounded-[7px] grid place-items-center text-center ${compact ? "h-16" : "h-24"} bg-[var(--color-canvas-deep)]`}
           >
             <div className="px-2">
               <div className="text-[0.72rem] text-[var(--color-muted)] leading-snug">
                 {captionOverride || "Drop, paste, or choose a file"}
               </div>
-              <div className="text-[0.62rem] text-[var(--color-faint)] mt-0.5">PNG · JPG · WebP · EXR</div>
+              <div className="mt-1 text-[0.58rem] font-medium uppercase tracking-[0.07em] text-[var(--color-faint)]">PNG · JPG · WebP · EXR</div>
             </div>
           </div>
         )}

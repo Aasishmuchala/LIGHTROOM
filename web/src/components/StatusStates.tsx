@@ -1,25 +1,34 @@
 "use client";
 
-// Busy state: a skeleton that matches the recipe layout's shape (changes hero +
-// rows), with the signature spectrum bar sweeping — never a bare spinner. ----------
+// Busy state: a skeleton that matches the recipe layout's shape (hero numeral +
+// calibration read-out + ledger rows), with the signature spectrum sweeping on the
+// scale — never a bare spinner. -----------------------------------------------------
 export function AnalyzingState() {
   return (
-    <div className="card overflow-hidden animate-fade">
-      <div className="h-1.5 spectrum-bar analyzing-sweep" />
+    <div className="work-card work-card--hero overflow-hidden animate-fade">
+      <div className="px-5 pt-4 pb-3 border-b border-[var(--color-line)] flex items-center gap-2.5">
+        <span className="inline-block w-4 h-4 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
+        <span className="text-[0.92rem] font-[640] text-[var(--color-ink)] tracking-[-0.01em]">Reading the light…</span>
+      </div>
       <div className="px-5 pt-5 pb-4">
-        <div className="flex items-center gap-2.5">
-          <span className="inline-block w-4 h-4 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
-          <span className="text-[0.92rem] font-[600] text-[var(--color-ink)]">Reading the light…</span>
-        </div>
-        <p className="text-[0.8rem] text-[var(--color-muted)] mt-1.5 max-w-[56ch]">
+        <p className="text-[0.8rem] text-[var(--color-muted)] max-w-[56ch] leading-snug">
           Measuring both frames, then translating the gap into exact moves in your renderer’s vocabulary.
         </p>
 
-        <div className="mt-5 flex items-center gap-2">
-          <div className="skeleton h-9 w-14 rounded-lg" />
-          <div className="skeleton h-5 w-64" />
+        {/* hero numeral placeholder + label */}
+        <div className="mt-5 flex items-center gap-4">
+          <div className="skeleton h-14 w-16 rounded-[10px]" />
+          <div className="flex-1 flex flex-col gap-2">
+            <div className="skeleton h-4 w-2/3" />
+            <div className="skeleton h-3 w-1/2" />
+          </div>
         </div>
-        <div className="mt-4 flex flex-col gap-2.5">
+
+        {/* the calibration scale sweeping */}
+        <div className="mt-5 calib-scale analyzing-sweep" />
+
+        {/* ledger rows */}
+        <div className="mt-5 flex flex-col gap-3">
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className="flex items-center gap-3">
               <div className="skeleton h-2 w-2 !rounded-full" />
@@ -36,18 +45,28 @@ export function AnalyzingState() {
   );
 }
 
-// Ready state: both frames in, no recipe yet — a calm prompt to press Analyze. -----
+// Ready state: both frames in, no recipe yet — a calm, decisive prompt to press
+// Analyze. The mark is the spectrum axis with a marked key, echoing the empty-state
+// bench so the identity carries through. --------------------------------------------
 export function ReadyState({ target }: { target: string }) {
   const label = target === "vantage33" ? "Chaos Vantage 3.3" : "V-Ray 7";
   return (
-    <div className="card overflow-hidden animate-rise">
-      <div className="h-1.5 spectrum-bar" />
-      <div className="px-6 py-10 text-center">
-        <div className="mx-auto grid place-items-center w-14 h-14 rounded-full bg-[var(--color-accent-tint)] mb-4">
-          <span className="text-[1.5rem]" aria-hidden>◐</span>
+    <div className="work-card work-card--hero overflow-hidden animate-rise">
+      <div className="px-6 sm:px-9 py-10 sm:py-12 text-center flex flex-col items-center">
+        <div className="w-40 max-w-full">
+          <div className="relative h-2 rounded-full spectrum-bar shadow-[inset_0_0_0_1px_oklch(0.5_0.03_264_/_0.08)]">
+            <span
+              className="absolute top-1/2 left-1/2 w-3 h-3 rounded-full -translate-x-1/2 -translate-y-1/2 bg-[var(--color-surface)]"
+              style={{ boxShadow: "0 0 0 3px var(--color-accent-strong), var(--shadow-sm)" }}
+              aria-hidden
+            />
+          </div>
         </div>
-        <h2 className="text-[1.2rem] font-[680] text-[var(--color-ink)]">Both frames are in.</h2>
-        <p className="text-[0.88rem] text-[var(--color-muted)] mt-2 max-w-[46ch] mx-auto leading-relaxed">
+        <span className="eyebrow mt-4">Both frames loaded</span>
+        <h2 className="mt-2 text-[1.5rem] font-[720] tracking-[-0.03em] text-[var(--color-ink)]">
+          Ready to read the light.
+        </h2>
+        <p className="text-[0.88rem] text-[var(--color-muted)] mt-2.5 max-w-[46ch] leading-relaxed">
           Press <strong className="text-[var(--color-ink)]">Analyze the match</strong> on the left and
           LightMatch will return an exact {label} lighting recipe, leading with the changes to make.
         </p>

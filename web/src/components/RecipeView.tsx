@@ -59,21 +59,17 @@ export function RecipeView({ onToast }: { onToast: (m: string) => void }) {
 
   return (
     <div className="animate-rise">
-      <div className="card overflow-hidden">
-        {/* header */}
-        <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3 border-b border-[var(--color-line)]">
-          <div>
-            <div className="text-[0.72rem] font-medium text-[var(--color-faint)] uppercase tracking-[0.06em]">
-              Lighting recipe
-            </div>
-            <div className="text-[1.05rem] font-[660] text-[var(--color-ink)] leading-tight mt-0.5">
+      <div className="work-card work-card--hero overflow-hidden">
+        {/* faceplate: what this is + the target + copy affordances */}
+        <div className="flex items-center justify-between gap-3 px-5 pt-3.5 pb-3 border-b border-[var(--color-line)]">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="eyebrow">Lighting recipe</span>
+            <span className="w-1 h-1 rounded-full bg-[var(--color-line-strong)]" aria-hidden />
+            <span className="text-[0.82rem] font-[620] text-[var(--color-ink)] truncate tracking-[-0.01em]">
               {targetLabel}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[0.7rem] text-[var(--color-faint)] hidden sm:block">
-              baseline: <span className="text-[var(--color-muted)]">{baselineText}</span>
             </span>
+          </div>
+          <div className="flex items-center gap-2 flex-none">
             <button className="btn-mini" onClick={onCopySheet}>
               Copy sheet
             </button>
@@ -83,24 +79,38 @@ export function RecipeView({ onToast }: { onToast: (m: string) => void }) {
           </div>
         </div>
 
-        {/* CHANGES HERO — the answer, first. */}
-        <div className="px-5 pt-4 pb-2">
-          <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-[1.7rem] font-[720] tracking-[-0.02em] leading-none tabular-nums text-[var(--color-accent-ink)]">
-              {totalChanged}
-            </span>
-            <span className="text-[1.05rem] font-[600] text-[var(--color-ink)]">
-              {changeWord} to match this reference
-            </span>
+        {/* CHANGES HERO — the answer, first. Oversized tabular numeral leads; the
+            calibration read-out (the spectrum with a live tick) makes the match
+            feel measured, not asserted. */}
+        <div className="px-5 pt-5 pb-4">
+          <div className="flex items-start gap-4 sm:gap-5">
+            <div className="flex items-baseline gap-1 flex-none">
+              <span className="text-[3.4rem] sm:text-[4rem] font-[760] tracking-[-0.045em] leading-[0.82] tabular-nums text-[var(--color-ink)]">
+                {totalChanged}
+              </span>
+            </div>
+            <div className="min-w-0 pt-1">
+              <div className="text-[1.12rem] sm:text-[1.2rem] font-[660] text-[var(--color-ink)] leading-tight tracking-[-0.015em]">
+                {changeWord} to match this reference
+              </div>
+              <p className="text-[0.8rem] text-[var(--color-muted)] mt-1.5 max-w-[58ch] leading-snug">
+                Each move is one control to set in {targetLabel}. Everything you don’t touch stays at its
+                held default — baseline: <span className="text-[var(--color-ink-2)]">{baselineText}</span>.
+              </p>
+            </div>
           </div>
-          <p className="text-[0.8rem] text-[var(--color-muted)] mt-1.5 max-w-[62ch]">
-            Each move is one control to set in {targetLabel}: the change, and why. Everything you don’t
-            touch stays at its held default.
-          </p>
+
+          {/* calibration read-out — the signature spectrum, load-bearing: the axis the
+              tool measures on, with the matched temperature marked. */}
+          <CalibrationReadout changed={totalChanged} total={rows.length} />
         </div>
 
-        {/* changed rows */}
-        <div className="px-3 sm:px-4 pb-3 flex flex-col gap-1">
+        {/* changed rows — the light-meter ledger */}
+        <div className="px-3 sm:px-4 pb-3 flex flex-col">
+          <div className="flex items-center gap-3 px-3 pb-1.5">
+            <span className="eyebrow">The moves</span>
+            <span className="h-px flex-1 bg-[var(--color-line)]" aria-hidden />
+          </div>
           {changedRows.map((row, i) => (
             <ChangeRow key={row.param} row={row} index={i} />
           ))}
@@ -166,7 +176,38 @@ export function RecipeView({ onToast }: { onToast: (m: string) => void }) {
   );
 }
 
-// -- one changed move in the hero list — the focal jewel + applied toggle. --------
+// -- the calibration read-out: the signature spectrum axis with a live tick at the
+// matched temperature. Meaningful mapping — a fully-matched recipe (no moves) reads at
+// the cool/settled end; more changes push the tick warm (more light-energy to move).
+// This is the spectrum used AS an instrument, not a decorative stripe. --------------
+function CalibrationReadout({ changed, total }: { changed: number; total: number }) {
+  // fraction of the panel that changed → tick position. Clamp so it always sits
+  // clearly inside the scale. Cool (left, settled) → warm (right, more to move).
+  const frac = total > 0 ? Math.min(1, changed / Math.max(8, total * 0.35)) : 0;
+  const pct = 6 + frac * 88; // keep the tick off the very edges
+  return (
+    <div className="mt-4">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="eyebrow">Calibration</span>
+        <span className="jewel text-[0.68rem] text-[var(--color-muted)] tabular-nums">
+          <span className="text-[var(--color-accent-ink)] font-semibold">{changed}</span>
+          <span className="mx-0.5">/</span>
+          {total} controls
+        </span>
+      </div>
+      <div className="calib-scale" role="presentation">
+        <span className="calib-tick" style={{ left: `${pct}%` }} />
+      </div>
+      <div className="flex items-center justify-between mt-1.5">
+        <span className="text-[0.62rem] font-medium text-[var(--color-faint)]">settled</span>
+        <span className="text-[0.62rem] font-medium text-[var(--color-faint)]">more to move</span>
+      </div>
+    </div>
+  );
+}
+
+// -- one changed move in the hero ledger — breadcrumb + jewel + applied toggle. Rows
+// are separated by hairlines so the list reads as a printed spec sheet. ------------
 function ChangeRow({ row, index }: { row: SheetRow; index: number }) {
   const onToggle = async (applied: boolean) => {
     try {
@@ -177,7 +218,7 @@ function ChangeRow({ row, index }: { row: SheetRow; index: number }) {
   };
   return (
     <div
-      className="group flex items-start gap-3 rounded-[10px] px-3 py-2.5 hover:bg-[var(--color-surface-2)] transition-colors animate-rise"
+      className="group flex items-start gap-3 rounded-[8px] px-3 py-2.5 hover:bg-[var(--color-surface-2)] transition-colors animate-rise border-b border-[var(--color-line)] last:border-b-0"
       style={{ animationDelay: `${Math.min(index * 40, 320)}ms` }}
     >
       <ConfDot confidence={row.confidence} />
@@ -238,9 +279,9 @@ function SheetBand({
 
   if (changed > 0) {
     return (
-      <section className="rounded-[10px] bg-[var(--color-surface)] border border-[var(--color-accent-line)] overflow-hidden">
-        <header className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--color-accent-tint)]">
-          <span className="text-[0.78rem] font-[600] text-[var(--color-ink)]">{group}</span>
+      <section className="rounded-[8px] bg-[var(--color-surface)] border border-[var(--color-accent-line)] overflow-hidden">
+        <header className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--color-accent-tint)] border-b border-[var(--color-accent-line)]">
+          <span className="text-[0.78rem] font-[620] text-[var(--color-ink)] tracking-[-0.01em]">{group}</span>
           {count}
         </header>
         {body}
@@ -248,7 +289,7 @@ function SheetBand({
     );
   }
   return (
-    <details className="rounded-[10px] bg-[var(--color-surface)] border border-[var(--color-line)] overflow-hidden group">
+    <details className="rounded-[8px] bg-[var(--color-surface)] border border-[var(--color-line)] overflow-hidden group">
       <summary className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-[var(--color-surface-2)] transition-colors select-none">
         <span className="flex items-center gap-2 min-w-0">
           <span className="caret text-[0.62rem] text-[var(--color-faint)]">▸</span>
