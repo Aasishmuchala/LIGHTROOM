@@ -10,7 +10,14 @@ function messageFor(err: LastError): { title: string; detail: string; raw?: stri
     case "auth":
       return { title: "Key rejected", detail: "The gateway returned 401. Check your oc_ key and try again." };
     case "network":
-      return { title: "Gateway unreachable", detail: "The request timed out or the network dropped. It was retried 3 times." };
+      return {
+        title: "Gateway error",
+        // Surface the route's ACTUAL reason (e.g. "Gateway request failed: HTTP 529 — …"
+        // or a timeout) instead of a static line — a network kind covers a timeout, a
+        // dropped socket, AND a retried 5xx, and the specific message is the whole point.
+        detail: err.message || "The request failed to reach the gateway — a timeout or a dropped connection, retried 3 times.",
+        raw: err.raw,
+      };
     case "truncated":
       return { title: "Response cut short", detail: "The model hit its token cap mid-recipe. Try again, or narrow the scene context." };
     case "shape":

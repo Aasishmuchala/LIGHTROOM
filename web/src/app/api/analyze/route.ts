@@ -268,10 +268,13 @@ async function send(
   fetchImpl: typeof fetch
 ): Promise<SendResult> {
   let lastErr: Error | null = null;
-  for (let attempt = 0; attempt < BACKOFF_MS.length + 1; attempt++) {
+  const maxAttempts = BACKOFF_MS.length + 1;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), TIMEOUT_MS);
+    const startedAt = Date.now();
     let outcome: SendResult & { retry?: boolean } = {};
+    let note = "";
     try {
       const res = await fetchImpl(GATEWAY_URL, {
         method: "POST",
@@ -288,28 +291,51 @@ async function send(
         // stalled body aborts here and falls into the network-retry catch below.
         const json = await res.json();
         outcome = { json };
+        note = "ok 200";
       } else {
         const action = classify(res.status);
         if (action === "auth") {
           outcome = { authError: true };
+          note = "auth 401";
         } else if (action === "retry") {
+          // Capture a short body so the eventual exhausted-retry message names WHY the
+          // gateway 5xx'd (e.g. 529 overloaded) rather than a bare status. Guard res.text
+          // for the route test's mocked responses.
+          const bodyText = typeof res.text === "function" ? await res.text().catch(() => "") : "";
           outcome = { retry: true };
-          lastErr = new Error(`Gateway returned HTTP ${res.status}`);
+          lastErr = new Error(
+            `Gateway returned HTTP ${res.status}${bodyText ? " — " + bodyText.slice(0, 400) : ""}`
+          );
+          note = `retry ${res.status}`;
         } else {
-          const bodyText = await res.text().catch(() => "");
+          const bodyText = typeof res.text === "function" ? await res.text().catch(() => "") : "";
           outcome = {
             fatal: `Gateway request failed: HTTP ${res.status}${bodyText ? " — " + bodyText : ""}`,
           };
+          note = `fatal ${res.status}`;
         }
       }
     } catch (networkErr) {
       // fetch rejected (offline, DNS) OR our TIMEOUT_MS abort fired during the header
-      // wait or body read — all the "network" retry case, no status to classify.
+      // wait or body read — all the "network" retry case, no status to classify. Split
+      // the two so the message says "timed out" vs the raw reject code (ENOTFOUND, etc.).
       outcome = { retry: true };
-      lastErr = networkErr as Error;
+      const timedOut = ac.signal.aborted || (networkErr as Error)?.name === "AbortError";
+      lastErr = timedOut
+        ? new Error(
+            `Request timed out after ${TIMEOUT_MS}ms — the gateway accepted the socket but sent no response in time`
+          )
+        : (networkErr as Error);
+      note = timedOut
+        ? "timeout"
+        : `network-reject ${(networkErr as { cause?: { code?: string } })?.cause?.code || (networkErr as Error)?.name || "?"}`;
     } finally {
       clearTimeout(t);
     }
+
+    console.error(
+      `[analyze] attempt ${attempt + 1}/${maxAttempts}: ${note} in ${Date.now() - startedAt}ms`
+    );
 
     if (outcome.json !== undefined) return { json: outcome.json };
     if (outcome.authError) return { authError: true };
@@ -389,6 +415,14 @@ export async function POST(request: Request): Promise<Response> {
   });
 
   // -- first send ------------------------------------------------------------------
+  try {
+    const bytes = JSON.stringify(makeRequestBody(messages)).length;
+    console.error(
+      `[analyze] -> omega model=${model} mode=${mode} target=${target} bodyBytes=${bytes} maxTokens=8192`
+    );
+  } catch {
+    /* logging must never break the request */
+  }
   const first = await send(key, makeRequestBody(messages), fetch);
   if (first.authError) {
     return errorResponse("auth", "Gateway returned 401 — the API key is missing or invalid.");
