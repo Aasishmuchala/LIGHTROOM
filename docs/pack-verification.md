@@ -284,3 +284,84 @@ ui_path in promptFragment.
 - Every UNVERIFIED entry has a doc-checked ui_path; only factory values (and where noted a
   unit or practical range) are unprinted in current Chaos docs — assumed values use doc
   example values wherever one exists.
+
+---
+
+# 2026-07-03 — Vantage Wetting + Wind panels completed (doc-grounded)
+
+The two last-incomplete Vantage environment panels were finished from the docs (both
+rollouts were collapsed in the user's UI captures — `docs/ui-capture-inventory.md` lists them
+as GAPS — so the Chaos docs are the authoritative source). Same method as above (full page
+bodies via the public Confluence Cloud REST API at `docs-chaos.atlassian.net`, space `LAV`;
+`docs.chaos.com/display/…` remain the canonical URLs). The prior `wet.enabled`/`wet.amount`
+2-entry stub and the `wind.note` placeholder were replaced with the complete control lists.
+
+## Source pages (append to the table above)
+
+| Key | URL (canonical) | Page version / last modified |
+|---|---|---|
+| LAV Wetting | https://docs.chaos.com/display/LAV/Wetting | v2 · 2026-06-15 |
+| LAV Wind | https://docs.chaos.com/display/LAV/Wind | v4 · 2026-03-19 |
+
+## PACKS.vantage33 — Wetting (26 entries, replaces the 2-entry stub) — https://docs.chaos.com/display/LAV/Wetting
+
+Rollout = Environment tab ▸ Wetting rollout: a Settings toggle + three tabs (General, Drops
+and Ripples, Advanced). The page names and describes every control but prints **no spinner
+default/range/unit** except **Wet cover** (`0%` dry … `100%` uniformly wet → unit % + range
+doc-stated) and **Diffuse multiplier** ("A value of 1 produces no darkening" → 1.0 is the
+doc-stated neutral). All other spinners ship `verified:false` + a conservative default + an
+honest "factory value not printed (X assumed)" note, and practical ranges (Chaos docs don't
+print slider bounds). Two enable toggles that are on/off in the doc but model as the pack's
+Vantage-toggle convention (`kind:"dropdown"`, `Options: on | off`): `wet.enabled` (off; gates
+the rollout) and `wet.occlusion` (**on** — rain-realistic default per the doc's
+"restricts wetting to areas exposed from above"; the other three drop/ripple/wobble enables
+default off). Label-reuse disambiguation: the doc reuses **Size** and **Amount** across
+sub-groups — shipped as distinct ids with the sub-group in the ui_path
+(`wet.ripple_size`/`wet.wobble_size`, `wet.drops_amount`/`wet.ripple_amount`).
+
+- `wet.enabled` (dropdown, verified) · `wet.size` · `wet.amount` (Wet cover, %/[0,100]
+  doc-stated) · `wet.puddles` · `wet.occlusion` (dropdown, verified, default **on**) ·
+  `wet.occlusion_radius` — General tab
+- `wet.surface_drops` (dropdown, verified) · `wet.surface_drops_scale` · `wet.drops_tiling` ·
+  `wet.drops_amount` · `wet.drops_base_bump` · `wet.puddle_ripples` (dropdown, verified) ·
+  `wet.puddle_ripples_strength` · `wet.ripple_size` · `wet.ripple_amount` ·
+  `wet.puddle_wobble` (dropdown, verified) · `wet.puddle_wobble_strength` · `wet.wobble_size`
+  — Drops and Ripples tab
+- `wet.height_effect` · `wet.transition` · `wet.diffuse_mult` (**verified** — 1.0 =
+  no-darkening neutral, doc-stated) · `wet.max_puddle_slope` · `wet.noise_size` ·
+  `wet.ray_offset` · `wet.ripple_lifetime` (**lighting:false** — temporal) ·
+  `wet.wobble_speed` (**lighting:false** — temporal) — Advanced tab
+- lighting split: **24 lighting:true**, 2 lighting:false (`wet.ripple_lifetime`,
+  `wet.wobble_speed` — pure animation timing, no effect on a still). verified-dated: the 5
+  on/off toggles + `wet.diffuse_mult` (6). The other 20 are `verified:false` (factory value
+  not printed).
+
+## PACKS.vantage33 — Wind (5 entries, replaces `wind.note`) — https://docs.chaos.com/display/LAV/Wind
+
+Rollout = Environment tab ▸ Wind rollout. The two **cloud-wind** controls shift the
+physical-sky cloud shapes (visible in a still sky) and are AVAILABLE ONLY when Environment
+mode = Physical sky AND Enable clouds is on (doc-stated constraint, quoted in notes) →
+`lighting:true`. The three vegetation/water controls are **viewport animation only** — the
+doc states "Doesn't affect the final render" for each → `lighting:false` (a still lighting
+match ignores them). No defaults/ranges printed; angle examples 10°/100° fix the degree unit
+on `wind.cloud_direction`, intensity examples 0/100 and 100/300 give practical ranges.
+
+- `wind.cloud_direction` (spinner, °, [0,360], lighting:true, verified:false — 0.0 assumed)
+- `wind.cloud_intensity` (spinner, [0,100], lighting:true, verified:false — 0.0 assumed)
+- `wind.affect_vegetation` (dropdown on|off, lighting:false, **verified** — off)
+- `wind.vegetation_intensity` (spinner, [0,500], lighting:false, verified:false — 100 assumed)
+- `wind.affect_water` (dropdown on|off, lighting:false, **verified** — off)
+- lighting split: **2 lighting:true** (cloud wind), 3 lighting:false (vegetation/water —
+  render-neutral). verified-dated: the 2 on/off toggles. The 3 spinners are `verified:false`.
+
+## Wiring / totals
+
+- Data-only change: only the `PACKS.vantage33` Wetting/Wind entries were touched. No
+  SCHEMAS/METRICS/STORE/ADAPTER/ENGINE/UI/STYLE change; no selftest-suite edit needed
+  (`wind.note` was referenced by no assert; the `wet.*`-present assert and the sheet-coverage
+  contract auto-accept the new rows; Wetting's lighting:true controls now flow into
+  `promptFragment("vantage33")`).
+- vantage33: **47 → 75** entries (net +28: +24 Wetting over the 2-entry stub, +5 Wind over
+  the 1 placeholder). vray7max unchanged at 51.
+- SELFTEST: **PASS (7488 asserts)**, up from 6846 (+642 for the 28 net-new entries across the
+  packs + sheet suites).
