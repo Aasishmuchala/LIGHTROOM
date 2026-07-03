@@ -1,26 +1,295 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ============================================================================
+   LightMatch design system — Tailwind v4, CSS-first @theme.
+   Identity: a bright, optimistic lighting-match tool. The motif is LIGHT itself —
+   a warm→cool photometric spectrum. The vivid accent is MARIGOLD (the color of a
+   key light at golden hour), giving LightMatch its own confident identity while
+   holding the friendly, effortless register of the reference. Canvas is a soft
+   cool-tinted paper (NOT cream/greige). System font stack only — works offline.
+   OKLCH throughout.
+   ============================================================================ */
+
+@theme {
+  /* -- Type: system stack, no network fonts. Display uses the same stack heavier;
+        mono is the "jewel" face for photometric values. --------------------------- */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", "Segoe UI Mono", "Roboto Mono", Menlo, Consolas, monospace;
+
+  /* -- Canvas / surfaces. Cool-tinted near-whites (hue ~240, tiny chroma toward the
+        brand's cool counterpart), never warm cream. ------------------------------- */
+  --color-canvas: oklch(0.983 0.006 240);      /* app background */
+  --color-canvas-deep: oklch(0.965 0.008 240); /* recessed wells */
+  --color-surface: oklch(1 0 0);               /* cards */
+  --color-surface-2: oklch(0.987 0.004 240);   /* nested tint */
+
+  /* -- Ink ramp (cool near-black → muted). ------------------------------------- */
+  --color-ink: oklch(0.235 0.02 262);          /* headings */
+  --color-ink-2: oklch(0.375 0.018 262);       /* body */
+  --color-muted: oklch(0.535 0.017 262);       /* secondary — AA on surface */
+  --color-faint: oklch(0.56 0.017 262);        /* tertiary / held rows — AA on surface */
+
+  /* -- Lines. ------------------------------------------------------------------ */
+  --color-line: oklch(0.915 0.008 250);
+  --color-line-strong: oklch(0.86 0.01 250);
+
+  /* -- MARIGOLD accent (the key light). The identity color. --------------------- */
+  --color-accent: oklch(0.79 0.16 78);         /* marigold */
+  --color-accent-strong: oklch(0.7 0.17 66);   /* deeper, for text/press */
+  --color-accent-ink: oklch(0.34 0.11 62);     /* accent text on tint (AA) */
+  --color-accent-tint: oklch(0.965 0.035 82);  /* accent wash */
+  --color-accent-line: oklch(0.88 0.09 80);
+
+  /* -- Spectrum: the warm→cool light axis (sunrise → daylight → blue hour).
+        Used for the hero meter and the look-distance scale. ----------------------- */
+  --spectrum-warm: oklch(0.82 0.16 55);        /* dawn amber */
+  --spectrum-key: oklch(0.86 0.15 85);          /* marigold key */
+  --spectrum-day: oklch(0.93 0.05 200);         /* daylight */
+  --spectrum-cool: oklch(0.72 0.13 245);        /* blue hour */
+
+  /* -- Signal colors (cool-hued, calm — not alarm-loud). ----------------------- */
+  --color-good: oklch(0.72 0.14 158);          /* match / closer */
+  --color-good-tint: oklch(0.965 0.03 160);
+  --color-warn: oklch(0.75 0.15 62);
+  --color-danger: oklch(0.62 0.19 22);
+  --color-danger-tint: oklch(0.965 0.03 25);
+  --color-info: oklch(0.68 0.12 245);          /* handoff / grade */
+  --color-info-tint: oklch(0.965 0.03 245);
+
+  /* -- Confidence dots. -------------------------------------------------------- */
+  --color-conf-high: oklch(0.72 0.14 158);
+  --color-conf-medium: oklch(0.79 0.15 78);
+  --color-conf-low: oklch(0.66 0.16 30);
+
+  /* -- Radii: one soft system. Pills for interactive, 14px cards, 9px controls. - */
+  --radius-control: 9px;
+  --radius-card: 14px;
+  --radius-lg: 20px;
+
+  /* -- Shadows: tinted to the cool canvas hue, never pure black. ---------------- */
+  --shadow-sm: 0 1px 2px oklch(0.5 0.03 262 / 0.06), 0 1px 1px oklch(0.5 0.03 262 / 0.04);
+  --shadow-md: 0 2px 4px oklch(0.5 0.03 262 / 0.05), 0 8px 20px oklch(0.5 0.03 262 / 0.07);
+  --shadow-lg: 0 4px 8px oklch(0.5 0.03 262 / 0.06), 0 18px 44px oklch(0.5 0.03 262 / 0.1);
+  --shadow-accent: 0 6px 20px oklch(0.79 0.16 78 / 0.28);
+
+  /* -- Motion: exponential ease-out, 150–250ms. -------------------------------- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 150ms;
+  --dur: 200ms;
+  --dur-slow: 260ms;
+
+  /* -- Semantic z-scale. ------------------------------------------------------- */
+  --z-base: 0;
+  --z-sticky: 20;
+  --z-dropdown: 40;
+  --z-toast: 80;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* -- Base reset over the framework reset. ------------------------------------- */
+html {
+  background: var(--color-canvas);
+  color: var(--color-ink-2);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  color-scheme: light;
 }
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink-2);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+}
+::selection { background: var(--color-accent-tint); color: var(--color-accent-ink); }
+
+/* Focus: a visible marigold ring, consistent everywhere. */
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent-strong);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
+
+/* ============================================================================
+   Signature: the light spectrum bar. The recurring identity element.
+   ============================================================================ */
+.spectrum-bar {
+  background: linear-gradient(
+    90deg,
+    var(--spectrum-warm) 0%,
+    var(--spectrum-key) 30%,
+    var(--spectrum-day) 62%,
+    var(--spectrum-cool) 100%
+  );
+}
+
+/* ============================================================================
+   Buttons.
+   ============================================================================ */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  font-weight: 560; font-size: 0.9rem; line-height: 1;
+  border-radius: 999px; padding: 0.7rem 1.15rem; cursor: pointer;
+  border: 1px solid transparent; white-space: nowrap;
+  transition: transform var(--dur-fast) var(--ease-out),
+              background-color var(--dur) var(--ease-out),
+              box-shadow var(--dur) var(--ease-out),
+              border-color var(--dur) var(--ease-out);
+}
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--color-accent); color: oklch(0.28 0.09 62);
+  box-shadow: var(--shadow-accent);
+  font-weight: 620;
+}
+.btn-primary:not(:disabled):hover { background: oklch(0.81 0.16 80); transform: translateY(-1px); }
+.btn-primary:disabled { box-shadow: none; background: var(--color-line-strong); color: var(--color-faint); }
+
+.btn-secondary {
+  background: var(--color-surface); color: var(--color-ink-2);
+  border-color: var(--color-line-strong); box-shadow: var(--shadow-sm);
+}
+.btn-secondary:not(:disabled):hover { border-color: var(--color-accent-line); background: var(--color-accent-tint); color: var(--color-accent-ink); }
+
+.btn-ghost {
+  background: transparent; color: var(--color-muted);
+  padding: 0.45rem 0.7rem; font-size: 0.82rem;
+}
+.btn-ghost:hover { background: var(--color-canvas-deep); color: var(--color-ink-2); }
+
+.btn-chip {
+  padding: 0.34rem 0.7rem; font-size: 0.8rem; font-weight: 520;
+  border-radius: 999px; background: var(--color-surface);
+  border-color: var(--color-line); color: var(--color-muted);
+  box-shadow: var(--shadow-sm);
+}
+.btn-chip:hover { border-color: var(--color-accent-line); color: var(--color-ink-2); }
+.btn-chip[data-on="true"] {
+  background: var(--color-accent-tint); border-color: var(--color-accent-line);
+  color: var(--color-accent-ink); font-weight: 600;
+}
+
+/* Small inline copy button. */
+.btn-mini {
+  font-size: 0.72rem; font-weight: 560; letter-spacing: 0.01em;
+  padding: 0.28rem 0.6rem; border-radius: 7px;
+  background: var(--color-surface-2); border: 1px solid var(--color-line);
+  color: var(--color-muted); cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+.btn-mini:hover { border-color: var(--color-accent-line); color: var(--color-accent-ink); background: var(--color-accent-tint); }
+.btn-mini:active { transform: translateY(1px); }
+
+/* ============================================================================
+   Cards / surfaces.
+   ============================================================================ */
+.card {
+  background: var(--color-surface); border: 1px solid var(--color-line);
+  border-radius: var(--radius-card); box-shadow: var(--shadow-sm);
+}
+
+/* Segmented toggle (target renderer). */
+.segmented { display: inline-flex; padding: 3px; gap: 2px; background: var(--color-canvas-deep); border-radius: 999px; border: 1px solid var(--color-line); }
+.segmented-btn {
+  padding: 0.4rem 0.85rem; font-size: 0.82rem; font-weight: 540;
+  border-radius: 999px; color: var(--color-muted); cursor: pointer;
+  border: 1px solid transparent; background: transparent;
+  transition: all var(--dur) var(--ease-out);
+}
+.segmented-btn:hover { color: var(--color-ink-2); }
+.segmented-btn[data-on="true"] {
+  background: var(--color-surface); color: var(--color-ink);
+  box-shadow: var(--shadow-sm); font-weight: 600;
+}
+
+/* Inputs. */
+.field {
+  width: 100%; font-size: 0.85rem; font-family: var(--font-mono);
+  padding: 0.5rem 0.7rem; border-radius: var(--radius-control);
+  background: var(--color-surface); border: 1px solid var(--color-line-strong);
+  color: var(--color-ink); transition: border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+.field::placeholder { color: var(--color-faint); }
+.field:focus { outline: none; border-color: var(--color-accent-strong); box-shadow: 0 0 0 3px var(--color-accent-tint); }
+
+.select {
+  font-size: 0.82rem; font-weight: 520; padding: 0.45rem 2rem 0.45rem 0.75rem;
+  border-radius: var(--radius-control); background: var(--color-surface);
+  border: 1px solid var(--color-line-strong); color: var(--color-ink-2); cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%23808a99' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 0.6rem center;
+  transition: border-color var(--dur) var(--ease-out);
+}
+.select:hover { border-color: var(--color-line-strong); }
+.select:focus { outline: none; border-color: var(--color-accent-strong); box-shadow: 0 0 0 3px var(--color-accent-tint); }
+
+/* ============================================================================
+   The photometric value jewel — mono, tabular. from → to.
+   ============================================================================ */
+.jewel { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+.jewel-from { color: var(--color-faint); text-decoration: line-through; text-decoration-color: var(--color-line-strong); }
+.jewel-to { color: var(--color-accent-ink); font-weight: 600; }
+.jewel-arrow { color: var(--color-accent); }
+
+/* Breadcrumb path (ui_path). */
+.path-seg { color: var(--color-faint); }
+.path-sep { color: var(--color-line-strong); margin: 0 0.15em; }
+.path-leaf { color: var(--color-ink); font-weight: 560; }
+
+/* Confidence dot. */
+.conf-dot { display: inline-block; width: 7px; height: 7px; border-radius: 999px; flex: none; }
+.conf-high { background: var(--color-conf-high); }
+.conf-medium { background: var(--color-conf-medium); }
+.conf-low { background: var(--color-conf-low); }
+
+/* ============================================================================
+   Motion: reveal + shimmer. All gated by reduced-motion.
+   ============================================================================ */
+@keyframes lm-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes lm-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lm-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes lm-sweep { 0%, 100% { transform: translateX(-30%); } 50% { transform: translateX(130%); } }
+@keyframes lm-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+
+.animate-rise { animation: lm-rise var(--dur-slow) var(--ease-out) both; }
+.animate-fade { animation: lm-fade var(--dur) var(--ease-out) both; }
+
+/* Skeleton shimmer for the busy state. */
+.skeleton {
+  background: linear-gradient(90deg, var(--color-canvas-deep) 25%, var(--color-surface-2) 37%, var(--color-canvas-deep) 63%);
+  background-size: 200% 100%;
+  animation: lm-shimmer 1.4s linear infinite;
+  border-radius: var(--radius-control);
+}
+
+/* The analyzing sweep on the hero meter. */
+.analyzing-sweep { position: relative; overflow: hidden; }
+.analyzing-sweep::after {
+  content: ""; position: absolute; inset: 0; width: 40%;
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.55), transparent);
+  animation: lm-sweep 1.3s var(--ease-out) infinite;
+}
+
+/* Native details caret rotation. */
+details > summary { list-style: none; cursor: pointer; }
+details > summary::-webkit-details-marker { display: none; }
+.caret { transition: transform var(--dur) var(--ease-out); flex: none; }
+details[open] > summary .caret { transform: rotate(90deg); }
+
+/* Scrollbar (webkit) — quiet. */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--color-line-strong); border-radius: 999px; border: 3px solid var(--color-canvas); }
+*::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .animate-rise, .animate-fade { animation: lm-fade 0.001ms both; }
 }
