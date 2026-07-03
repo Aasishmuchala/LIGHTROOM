@@ -9,6 +9,7 @@ import { ReadyState, AnalyzingState } from "@/components/StatusStates";
 import { RecipeView } from "@/components/RecipeView";
 import { RefineLedger } from "@/components/RefineLedger";
 import { ErrorBanner } from "@/components/ErrorBanner";
+import { StorageBanner } from "@/components/StorageBanner";
 import { Toast } from "@/components/bits";
 import { routePaste, acceptsFile } from "@/components/lib";
 
@@ -119,6 +120,7 @@ export default function Home() {
 
           {/* RIGHT: the working surface */}
           <section className="min-w-0 flex flex-col gap-4">
+            <StorageBanner onToast={showToast} />
             <ErrorBanner error={lastError} />
 
             {/* main state switch */}

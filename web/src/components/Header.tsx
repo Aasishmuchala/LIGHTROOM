@@ -18,7 +18,7 @@ function Wordmark() {
       </span>
       <div className="leading-none">
         <div className="text-[1.05rem] font-[680] tracking-[-0.02em] text-[var(--color-ink)]">
-          Light<span className="text-[var(--color-accent-strong)]">Match</span>
+          Light<span className="text-[var(--color-accent-ink)]">Match</span>
         </div>
       </div>
     </div>
@@ -91,88 +91,108 @@ export function Header() {
       style={{ zIndex: "var(--z-sticky)" as unknown as number }}
     >
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6">
-        <div className="h-[62px] flex items-center gap-3 sm:gap-5">
-          <Wordmark />
+        {/* Wraps gracefully: on narrow widths the right cluster drops below the
+            wordmark+toggle. Never a fixed height (would clip the wrapped row). */}
+        <div className="min-h-[62px] py-2.5 sm:py-0 flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-5">
+          {/* LEFT: identity + target toggle. Stays together; toggle wraps under the
+              wordmark only at the very smallest widths. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0">
+            <Wordmark />
 
-          {/* Target renderer toggle */}
-          <div className="segmented ml-1" role="group" aria-label="Target renderer">
-            {TARGETS.map((t) => (
-              <button
-                key={t.value}
-                className="segmented-btn"
-                data-on={target === t.value}
-                onClick={() => onTarget(t.value)}
-              >
-                {t.label}
+            {/* Target renderer toggle */}
+            <div className="segmented" role="group" aria-label="Target renderer">
+              {TARGETS.map((t) => (
+                <button
+                  key={t.value}
+                  className="segmented-btn whitespace-nowrap"
+                  data-on={target === t.value}
+                  onClick={() => onTarget(t.value)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* pushes the right cluster to the far edge on one-line layouts */}
+          <div className="hidden sm:block flex-1" />
+
+          {/* RIGHT: model + key + session actions. Wraps to its own line under the
+              left group when the viewport can't hold both; on the smallest widths this
+              takes the full width and its own children wrap. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 w-full sm:w-auto min-w-0">
+            {/* Model picker */}
+            <select
+              className="select hidden sm:block"
+              aria-label="Model"
+              value={model}
+              onChange={(e) => onModel(e.target.value)}
+            >
+              {MODELS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+
+            {/* API key — wrapped in a form so the browser knows the password field has a
+                home; submit is prevented (there's nowhere to post). */}
+            <form
+              className="flex items-center gap-2 min-w-0 flex-1 sm:flex-none"
+              onSubmit={(e) => {
+                e.preventDefault();
+                onKeyCommit();
+              }}
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-none"
+                style={{ background: hasKey ? "var(--color-good)" : "var(--color-line-strong)" }}
+                title={hasKey ? "Key stored" : "No key set"}
+              />
+              <input
+                ref={keyRef}
+                type="password"
+                className="field w-full min-w-0 sm:!w-[10rem] !py-1.5 text-[0.78rem]"
+                placeholder="oc_…"
+                defaultValue={hasKey && !keyEditing ? "••••••••••" : ""}
+                onFocus={(e) => {
+                  setKeyEditing(true);
+                  if (e.target.value.startsWith("•")) e.target.value = "";
+                }}
+                onBlur={onKeyCommit}
+                aria-label="API key"
+              />
+            </form>
+
+            {/* Export / import — reachable at every width (labels stay whole; the row
+                wraps rather than clipping them). */}
+            <div className="flex items-center gap-1 flex-none">
+              <button className="btn-ghost whitespace-nowrap" onClick={onExport} title="Export session as JSON">
+                Export
               </button>
-            ))}
-          </div>
-
-          <div className="flex-1" />
-
-          {/* Model picker */}
-          <select
-            className="select hidden sm:block"
-            aria-label="Model"
-            value={model}
-            onChange={(e) => onModel(e.target.value)}
-          >
-            {MODELS.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-
-          {/* API key */}
-          <div className="flex items-center gap-2">
-            <span
-              className="w-1.5 h-1.5 rounded-full flex-none"
-              style={{ background: hasKey ? "var(--color-good)" : "var(--color-line-strong)" }}
-              title={hasKey ? "Key stored" : "No key set"}
-            />
-            <input
-              ref={keyRef}
-              type="password"
-              className="field !w-[8.5rem] sm:!w-[10rem] !py-1.5 text-[0.78rem]"
-              placeholder="oc_…"
-              defaultValue={hasKey && !keyEditing ? "••••••••••" : ""}
-              onFocus={(e) => {
-                setKeyEditing(true);
-                if (e.target.value.startsWith("•")) e.target.value = "";
-              }}
-              onBlur={onKeyCommit}
-              aria-label="API key"
-            />
-          </div>
-
-          {/* Export / import */}
-          <div className="hidden md:flex items-center gap-1">
-            <button className="btn-ghost" onClick={onExport} title="Export session as JSON">
-              Export
-            </button>
-            <button className="btn-ghost" onClick={onImportPick} title="Import a session JSON">
-              Import
-            </button>
-            <input
-              ref={importRef}
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onImportFile(f);
-                e.target.value = "";
-              }}
-            />
+              <button className="btn-ghost whitespace-nowrap" onClick={onImportPick} title="Import a session JSON">
+                Import
+              </button>
+              <input
+                ref={importRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onImportFile(f);
+                  e.target.value = "";
+                }}
+              />
+            </div>
           </div>
         </div>
       </div>
 
       {/* privacy line + flash */}
-      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 pb-1.5 -mt-0.5 flex items-center justify-end gap-3">
+      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 pb-1.5 -mt-0.5 flex items-center justify-end gap-3 flex-wrap">
         {flash && <span className="text-[0.72rem] text-[var(--color-accent-ink)] animate-fade">{flash}</span>}
-        <span className="text-[0.7rem] text-[var(--color-faint)]">
+        <span className="text-[0.7rem] text-[var(--color-faint)] text-right">
           Key & sessions: <span className="text-[var(--color-muted)]">Stored only in this browser.</span>
         </span>
       </div>

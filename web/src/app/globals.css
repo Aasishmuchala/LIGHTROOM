@@ -26,17 +26,17 @@
   /* -- Ink ramp (cool near-black → muted). ------------------------------------- */
   --color-ink: oklch(0.235 0.02 262);          /* headings */
   --color-ink-2: oklch(0.375 0.018 262);       /* body */
-  --color-muted: oklch(0.535 0.017 262);       /* secondary — AA on surface */
-  --color-faint: oklch(0.56 0.017 262);        /* tertiary / held rows — AA on surface */
+  --color-muted: oklch(0.50 0.017 262);        /* secondary — AA on surface & wells */
+  --color-faint: oklch(0.53 0.017 262);        /* tertiary / held rows — AA (>=4.5) on canvas-deep */
 
   /* -- Lines. ------------------------------------------------------------------ */
   --color-line: oklch(0.915 0.008 250);
   --color-line-strong: oklch(0.86 0.01 250);
 
   /* -- MARIGOLD accent (the key light). The identity color. --------------------- */
-  --color-accent: oklch(0.79 0.16 78);         /* marigold */
-  --color-accent-strong: oklch(0.7 0.17 66);   /* deeper, for text/press */
-  --color-accent-ink: oklch(0.34 0.11 62);     /* accent text on tint (AA) */
+  --color-accent: oklch(0.79 0.16 78);         /* marigold — fills, buttons, borders */
+  --color-accent-strong: oklch(0.7 0.17 66);   /* deeper marigold — fills/press/focus ring only (NOT text: 2.8:1 on white) */
+  --color-accent-ink: oklch(0.34 0.11 62);     /* deep marigold — the accent TEXT shade (12:1 on white, 10.9:1 on tint; AA/AAA) */
   --color-accent-tint: oklch(0.965 0.035 82);  /* accent wash */
   --color-accent-line: oklch(0.88 0.09 80);
 

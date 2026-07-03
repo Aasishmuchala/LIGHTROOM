@@ -221,9 +221,12 @@ function CorrectionCard({
             <div key={m.param} className="flex items-start gap-3 rounded-[10px] px-3 py-2.5 hover:bg-[var(--color-surface-2)] transition-colors">
               <ConfDot confidence={m.confidence} />
               <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <PathBreadcrumb uiPath={uiPath} />
-                  <div className="flex items-center gap-2">
+                {/* breadcrumb wraps in its own column; value jewel stays pinned right. */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <PathBreadcrumb uiPath={uiPath} />
+                  </div>
+                  <div className="flex items-start gap-2 flex-none max-w-[58%]">
                     <ValueJewel from={m.from} value={m.to} unit={unit} kind={kind} />
                     <ClampedFlag show={m.clamped} />
                   </div>

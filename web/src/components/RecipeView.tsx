@@ -86,7 +86,7 @@ export function RecipeView({ onToast }: { onToast: (m: string) => void }) {
         {/* CHANGES HERO — the answer, first. */}
         <div className="px-5 pt-4 pb-2">
           <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-[1.7rem] font-[720] tracking-[-0.02em] leading-none tabular-nums text-[var(--color-accent-strong)]">
+            <span className="text-[1.7rem] font-[720] tracking-[-0.02em] leading-none tabular-nums text-[var(--color-accent-ink)]">
               {totalChanged}
             </span>
             <span className="text-[1.05rem] font-[600] text-[var(--color-ink)]">
@@ -182,9 +182,13 @@ function ChangeRow({ row, index }: { row: SheetRow; index: number }) {
     >
       <ConfDot confidence={row.confidence} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <PathBreadcrumb uiPath={row.ui_path} />
-          <div className="flex items-center gap-2">
+        {/* breadcrumb wraps freely in its own column; the value jewel stays pinned to
+            the top-right and never drops to an orphaned line. */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <PathBreadcrumb uiPath={row.ui_path} />
+          </div>
+          <div className="flex items-start gap-2 flex-none max-w-[58%]">
             <ValueJewel from={row.from} value={row.value} unit={row.unit} kind={row.kind} />
             <ClampedFlag show={row.clamped} />
           </div>
@@ -297,9 +301,11 @@ function SheetRowItem({
     <div className="flex items-start gap-3 px-3 py-2.5 bg-[var(--color-accent-tint)]/40">
       <ConfDot confidence={row.confidence} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <PathBreadcrumb uiPath={row.ui_path} />
-          <div className="flex items-center gap-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <PathBreadcrumb uiPath={row.ui_path} />
+          </div>
+          <div className="flex items-start gap-2 flex-none max-w-[58%]">
             <ValueJewel from={row.from} value={row.value} unit={row.unit} kind={row.kind} />
             <ClampedFlag show={row.clamped} />
           </div>

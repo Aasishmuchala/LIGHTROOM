@@ -16,7 +16,7 @@ export function EmptyState() {
 
           <h1 className="mt-7 text-[1.75rem] sm:text-[2.1rem] font-[720] tracking-[-0.025em] leading-[1.08] text-[var(--color-ink)] max-w-[18ch]">
             Match your render’s light to{" "}
-            <span className="text-[var(--color-accent-strong)]">any reference.</span>
+            <span className="text-[var(--color-accent-ink)]">any reference.</span>
           </h1>
           <p className="mt-3 text-[0.98rem] text-[var(--color-ink-2)] leading-relaxed max-w-[54ch]">
             Drop the look you want and your current render. LightMatch reads both frames and returns an

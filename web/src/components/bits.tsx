@@ -7,7 +7,7 @@ import { splitPath } from "./lib";
 export function PathBreadcrumb({ uiPath }: { uiPath: string }) {
   const { segs, leaf } = splitPath(uiPath);
   return (
-    <span className="text-[0.82rem] leading-snug">
+    <span className="text-[0.82rem] leading-snug break-words">
       {segs.map((s, i) => (
         <span key={i}>
           <span className="path-seg">{s}</span>
@@ -40,8 +40,10 @@ export function ValueJewel({
   const isPlacement = kind === "placement";
   const u = unit && typeof value === "number" ? unit : "";
   if (isPlacement) {
+    // placement values are prose; let them wrap (right-aligned) rather than force the
+    // row wider than its column.
     return (
-      <span className="jewel jewel-to text-[0.82rem]">{String(value)}</span>
+      <span className="jewel jewel-to text-[0.82rem] text-right break-words">{String(value)}</span>
     );
   }
   return (
@@ -61,7 +63,7 @@ export function ClampedFlag({ show }: { show?: boolean }) {
   if (!show) return null;
   return (
     <span
-      className="text-[0.62rem] font-semibold uppercase tracking-wide text-[var(--color-warn)] bg-[var(--color-accent-tint)] rounded px-1 py-px"
+      className="text-[0.62rem] font-semibold uppercase tracking-wide text-[var(--color-accent-ink)] bg-[var(--color-accent-tint)] rounded px-1 py-px"
       title="Clamped to the parameter's legal range"
     >
       clamped

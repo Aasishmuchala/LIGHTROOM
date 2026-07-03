@@ -150,6 +150,11 @@ export const SESSION_RETENTION_CAP = 5;
 export interface EngineStore {
   session: Session;
   lastError: LastError | null;
+  // Reactive mirror of STORE.persistent (which flips to false when IndexedDB is
+  // unavailable — private browsing, disabled storage, an open that rejects). STORE
+  // only knows this AFTER its first DB touch, so we sync it in boot()/persist() where
+  // _openDB() has already run. The UI reads this to surface the "won't persist" banner.
+  storagePersistent: boolean;
   // internal, non-React concurrency gate (kept in state so it survives across actions
   // but never rendered): the in-flight promise or null.
   _inFlight: Promise<unknown> | null;
@@ -243,9 +248,12 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     return e;
   };
 
-  // -- persist(): save the current session after every mutation. --------------------
+  // -- persist(): save the current session after every mutation. Also refreshes the
+  // reactive storagePersistent mirror (saveSession() runs _openDB(), so STORE.persistent
+  // is authoritative right after). --------------------------------------------------
   const persist = async (): Promise<Session> => {
     await STORE.saveSession(get().session as unknown as StoredSession);
+    if (get().storagePersistent !== STORE.persistent) set({ storagePersistent: STORE.persistent });
     return get().session;
   };
 
@@ -520,6 +528,7 @@ export const engineStore = createStore<EngineStore>((set, get) => {
   return {
     session: blankSession(null),
     lastError: null,
+    storagePersistent: true,
     _inFlight: null,
     _analyze: analyzeViaApi,
     _testSessionId: null,
@@ -676,6 +685,9 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       } catch {
         /* retention hygiene is best-effort; never block boot on it */
       }
+      // STORE.loadLatest() above already opened (or failed to open) the DB, so
+      // STORE.persistent is now authoritative — mirror it for the UI banner.
+      set({ storagePersistent: STORE.persistent });
       return get().session;
     },
 
