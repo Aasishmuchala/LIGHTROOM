@@ -3,9 +3,10 @@
 import { useRef, useState } from "react";
 import { safeSrc } from "./lib";
 
-// One image port. Supports drag-drop, click-to-focus (so a subsequent paste routes
-// here), and a file picker. Shows a thumbnail when filled. The paste itself is wired
-// globally in the page (document-level), which reads `focusedSlot`. ----------------
+// One image port. Clicking anywhere on it opens the native file picker (the standard
+// drop-zone affordance); it also accepts drag-drop and Ctrl+V paste. The click also
+// sets focus so a subsequent paste routes here (paste is wired globally in the page,
+// which reads `focusedSlot`). Shows a thumbnail when filled. -----------------------
 export function DropSlot({
   slotKey,
   label,
@@ -42,8 +43,11 @@ export function DropSlot({
     <div
       role="button"
       tabIndex={0}
-      aria-label={`${label}: drop, click to focus and paste, or choose a file`}
-      onClick={onFocus}
+      aria-label={`${label}: click to choose a file, or drop / paste an image`}
+      onClick={() => {
+        onFocus();
+        inputRef.current?.click();
+      }}
       onFocus={onFocus}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
