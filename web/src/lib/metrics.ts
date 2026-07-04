@@ -34,6 +34,12 @@ export const SCORE_WEIGHTS: Record<string, number> = {
   "lum.p5": 3,
   "lum.p50": 3,
   "lum.p95": 3,
+  // p25/p75/mean are in diffVectors + shown to the model but historically scored 0; weighting
+  // them makes the look-distance reflect the FULL tonal match (shadow/highlight bulk + overall level),
+  // not just the p5/p50/p95 anchors.
+  "lum.p25": 2,
+  "lum.p75": 2,
+  "lum.mean": 2,
   "contrast.spread": 2,
   "contrast.midSlope": 2,
   "wb.warmthShadow": 2,
@@ -59,6 +65,17 @@ export const SCORE_WEIGHTS: Record<string, number> = {
   "grid.14": 0.5,
   "grid.15": 0.5,
 };
+
+// -- match gate + "% match" mapping ------------------------------------------------
+// The look-distance score is "how far the attempt is from the reference" on a 0..100
+// scale. MATCH_THRESHOLD is the point at or below which the LIGHTING counts as matched
+// (~97%+ — the remaining residual is a color grade, not a lighting problem). matchPercent
+// turns the raw look-distance into the "% match" the product promises: it treats the
+// score as "% away", so score 0 -> 100%, 3 -> 97%, 12 -> 88%, 35 -> 65%.
+export const MATCH_THRESHOLD = 3; // look-distance <= this ⇒ "lighting matched"
+export function matchPercent(score: number): number {
+  return Math.max(0, Math.min(100, Math.round(100 - score)));
+}
 
 // ===========================================================================
 // Pure numeric core (no DOM) — the node-testable surface.
@@ -135,56 +152,131 @@ export function measureFromPixels(
 ): MetricVector {
   const n = w * h;
 
+  // -- ALPHA handling: fully/mostly-transparent pixels (alpha < ALPHA_MIN) are phantom
+  //    data — an archviz beauty PNG's transparent regions read as pure black and would
+  //    poison every statistic (drag luminance down, invent clip.lo, fake the grid's dark
+  //    corners). Skip them from ALL stats and divide means/counts by the OPAQUE pixel
+  //    count. `opaque` is a per-pixel mask reused by the grid + white-balance passes so
+  //    every statistic sees the same set. If NOTHING is opaque, fall back to counting all
+  //    pixels (never divide by zero) — this preserves the original behavior for the fully
+  //    opaque images the tests use. ------------------------------------------------------
+  const ALPHA_MIN = 16; // sRGB 0..255 alpha; below this a pixel is treated as transparent
   const lumArr = new Float64Array(n);
   const satArr = new Float64Array(n);
+  const opaque = new Uint8Array(n);
+  let opaqueCount = 0;
+  // Opaque-only accumulators (the normal path) AND all-pixel accumulators (used only for
+  // the fully-transparent fallback so it reproduces the original divide-by-n behavior
+  // exactly rather than reading as an all-zero degenerate). lumArr/satArr are ALWAYS
+  // filled (every pixel) so the grid / wb / percentile passes have real values in the
+  // fallback; the mask decides which pixels each statistic actually counts.
   let clipHiCount = 0,
-    clipLoCount = 0;
-  let satSum = 0;
-  let meanLinR = 0,
+    clipLoCount = 0,
+    satSum = 0,
+    meanLinR = 0,
     meanLinG = 0,
     meanLinB = 0;
+  let allClipHi = 0,
+    allClipLo = 0,
+    allSatSum = 0,
+    allMeanLinR = 0,
+    allMeanLinG = 0,
+    allMeanLinB = 0;
 
   for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const isOpaque = data[p + 3] >= ALPHA_MIN;
+    opaque[i] = isOpaque ? 1 : 0;
+    if (isOpaque) opaqueCount++;
+
     const r255 = data[p],
       g255 = data[p + 1],
       b255 = data[p + 2];
     const r = r255 / 255,
       g = g255 / 255,
       b = b255 / 255;
-    const lum = luminance(r, g, b);
-    lumArr[i] = lum;
+    lumArr[i] = luminance(r, g, b);
 
     const maxc = Math.max(r255, g255, b255);
-    if (maxc >= CLIP_HI_THRESH) clipHiCount++;
-    if (maxc <= CLIP_LO_THRESH) clipLoCount++;
+    const isHi = maxc >= CLIP_HI_THRESH ? 1 : 0;
+    const isLo = maxc <= CLIP_LO_THRESH ? 1 : 0;
 
     const mx = Math.max(r, g, b),
       mn = Math.min(r, g, b);
     const s = mx === 0 ? 0 : (mx - mn) / mx;
     satArr[i] = s;
-    satSum += s;
 
-    meanLinR += linearize(r);
-    meanLinG += linearize(g);
-    meanLinB += linearize(b);
+    const linR = linearize(r),
+      linG = linearize(g),
+      linB = linearize(b);
+
+    // all-pixel accumulators (fallback only)
+    allClipHi += isHi;
+    allClipLo += isLo;
+    allSatSum += s;
+    allMeanLinR += linR;
+    allMeanLinG += linG;
+    allMeanLinB += linB;
+
+    // opaque-only accumulators (normal path)
+    if (isOpaque) {
+      clipHiCount += isHi;
+      clipLoCount += isLo;
+      satSum += s;
+      meanLinR += linR;
+      meanLinG += linG;
+      meanLinB += linB;
+    }
   }
-  meanLinR /= n;
-  meanLinG /= n;
-  meanLinB /= n;
+
+  // Fully-transparent fallback: reproduce the original all-pixel math (never divide by
+  // zero). Otherwise every mean/fraction/percentile counts OPAQUE pixels only.
+  const allTransparent = opaqueCount === 0;
+  const statN = allTransparent ? n : opaqueCount;
+  if (allTransparent) {
+    clipHiCount = allClipHi;
+    clipLoCount = allClipLo;
+    satSum = allSatSum;
+    meanLinR = allMeanLinR;
+    meanLinG = allMeanLinG;
+    meanLinB = allMeanLinB;
+  }
+
+  meanLinR /= statN;
+  meanLinG /= statN;
+  meanLinB /= statN;
+
+  // Compacted OPAQUE-only luminance/saturation arrays for the percentile histograms — so
+  // transparent pixels don't pull the percentiles toward black. When everything is
+  // transparent, fall back to the full arrays (matches the pre-alpha behavior).
+  let lumForPct: ArrayLike<number> = lumArr;
+  let satForPct: ArrayLike<number> = satArr;
+  if (!allTransparent && opaqueCount < n) {
+    const lo = new Float64Array(opaqueCount);
+    const so = new Float64Array(opaqueCount);
+    for (let i = 0, k = 0; i < n; i++) {
+      if (opaque[i]) {
+        lo[k] = lumArr[i];
+        so[k] = satArr[i];
+        k++;
+      }
+    }
+    lumForPct = lo;
+    satForPct = so;
+  }
 
   // -- luminance percentiles (bin-center values, for the returned lum object) -------
   const [p1, p5, p25, p50, p75, p95, p99] = percentilesFromHistogram(
-    lumArr,
+    lumForPct,
     [1, 5, 25, 50, 75, 95, 99]
   );
   // -- same cutoffs as BIN INDICES, for robust shadow/highlight membership below.
-  const [p25Bin, p75Bin] = percentileBinsFromHistogram(lumArr, [25, 75]);
+  const [p25Bin, p75Bin] = percentileBinsFromHistogram(lumForPct, [25, 75]);
   let lumSum = 0;
-  for (let i = 0; i < n; i++) lumSum += lumArr[i];
-  const lumMean = lumSum / n;
+  for (let i = 0; i < n; i++) if (allTransparent || opaque[i]) lumSum += lumArr[i];
+  const lumMean = lumSum / statN;
 
-  // -- clip fractions ---------------------------------------------------------------
-  const clip = { hi: clipHiCount / n, lo: clipLoCount / n };
+  // -- clip fractions (over opaque pixels only) -------------------------------------
+  const clip = { hi: clipHiCount / statN, lo: clipLoCount / statN };
 
   // -- contrast -----------------------------------------------------------------------
   const contrast = { spread: p95 - p5, midSlope: (p75 - p25) / 0.5 };
@@ -200,6 +292,7 @@ export function measureFromPixels(
     hiB = 0,
     hiN = 0;
   for (let i = 0, p = 0; i < n; i++, p += 4) {
+    if (!allTransparent && !opaque[i]) continue; // transparent pixels don't vote on wb
     let binIdx = Math.floor(lumArr[i] * HIST_BINS);
     if (binIdx < 0) binIdx = 0;
     else if (binIdx >= HIST_BINS) binIdx = HIST_BINS - 1;
@@ -229,22 +322,26 @@ export function measureFromPixels(
   const tint = meanLinG - (meanLinR + meanLinB) / 2;
   const wb = { shadow, highlight, warmthShadow, warmthHighlight, tint };
 
-  // -- saturation ---------------------------------------------------------------------
-  const satMean = satSum / n;
-  const [satP95] = percentilesFromHistogram(satArr, [95]);
+  // -- saturation (mean over opaque pixels only) --------------------------------------
+  const satMean = satSum / statN;
+  const [satP95] = percentilesFromHistogram(satForPct, [95]);
   const sat = { mean: satMean, p95: satP95 };
 
-  // -- 4x4 grid: mean linear luminance per cell, row-major -----------------------------
+  // -- 4x4 grid: mean linear luminance per cell, row-major. Transparent pixels are
+  //    excluded so a cell that is partly (or fully) transparent reports the mean of only
+  //    its opaque pixels, not a black-diluted value. A fully-transparent cell stays 0. ---
   const grid = new Array<number>(16).fill(0);
   const gridCount = new Array<number>(16).fill(0);
   for (let y = 0; y < h; y++) {
     let gy = Math.floor((y / h) * 4);
     if (gy > 3) gy = 3;
     for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (!allTransparent && !opaque[idx]) continue;
       let gx = Math.floor((x / w) * 4);
       if (gx > 3) gx = 3;
       const cell = gy * 4 + gx;
-      grid[cell] += lumArr[y * w + x];
+      grid[cell] += lumArr[idx];
       gridCount[cell]++;
     }
   }
@@ -403,6 +500,8 @@ export const METRICS = {
   CLIP_HI_THRESH,
   CLIP_LO_THRESH,
   SCORE_WEIGHTS,
+  MATCH_THRESHOLD,
+  matchPercent,
   linearize,
   luminance,
   percentileBinsFromHistogram,

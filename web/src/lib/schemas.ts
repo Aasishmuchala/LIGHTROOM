@@ -114,10 +114,12 @@ export function systemPrompt(target: TargetId | string, mode: ModeName | string)
   lines.push(
     "CRITICAL OUTPUT CONSTRAINT — READ FIRST: You have a STRICT, limited output budget and MUST emit " +
       "the COMPLETE JSON object described below. Reason VERY briefly — at most a few short sentences. Do NOT " +
-      "analyze each grid cell or each metric one-by-one; identify the 3-6 biggest gaps and move on. Emitting " +
-      "the full, valid JSON is far more important than thorough reasoning — if you deliberate too long you " +
-      "WILL run out of space and the whole response will be discarded as a failure. Keep all reasoning brief, " +
-      "then output the JSON object."
+      "narrate each metric one-by-one; identify the biggest gaps and move on — however you MUST check the " +
+      "SPATIAL ASYMMETRY scalars / grid for a left-right or top-bottom imbalance and act on it (sun " +
+      "azimuth/elevation or HDRI rotation) if present; spatial light placement is the most important match cue " +
+      "and the easiest to miss. Emitting the full, valid JSON is far more important than thorough reasoning — if " +
+      "you deliberate too long you WILL run out of space and the whole response will be discarded as a failure. " +
+      "Keep all reasoning brief, then output the JSON object."
   );
   lines.push("");
 
@@ -140,6 +142,11 @@ export function systemPrompt(target: TargetId | string, mode: ModeName | string)
       "a setting, never rename one, never describe a control the pack does not list. Every numeric value you set " +
       "must stay inside that parameter's stated range; the app will clamp and flag anything outside it, so get it " +
       "right the first time."
+  );
+  lines.push(
+    "For V-Ray placement-kind controls (sun azimuth/elevation/kelvin — kind:\"placement\" because V-Ray has " +
+      "no spinner for them), STATE AN EXPLICIT NUMERIC TARGET inside the instruction (e.g. 'azimuth ~110°, " +
+      "elevation ~15°', '~5200 K') so each refine round has a number to nudge rather than vague prose."
   );
   lines.push("");
   lines.push(
@@ -166,6 +173,17 @@ export function systemPrompt(target: TargetId | string, mode: ModeName | string)
       'loop oscillates between "brighten the sun" and "open the camera" forever.'
   );
   lines.push(
+    "If the target is Chaos Vantage 3.3, your step-1 exposure lock MUST include cam.auto_exposure = off — " +
+      "with auto-exposure ON, Vantage ignores the camera Exposure Value and every EV move is silently discarded."
+  );
+  lines.push(
+    "Warmth split — wb.warmthShadow and wb.warmthHighlight are INDEPENDENT: shadow warmth is driven by the " +
+      "FILL / sky / dome / ambient color, highlight warmth by the KEY / sun color. When the reference has warm " +
+      "highlights + cool shadows (or vice-versa) — common at golden hour — SPLIT the fix: set the sun/key color in " +
+      "step 2 and the dome/ambient color in step 3/4. Do NOT try to satisfy both with a single global " +
+      "white-balance move."
+  );
+  lines.push(
     "Atmosphere (step 6) is set only after the base is dialed — and because heavy fog or haze lifts " +
       "shadows and lowers contrast, re-confirm the exposure lock (step 1) after a large atmospheric change rather " +
       "than re-chasing the light."
@@ -185,6 +203,13 @@ export function systemPrompt(target: TargetId | string, mode: ModeName | string)
       "complete. The app renders the full panel for the user and shows every control you did not move at its held " +
       "default — so your job is the surgical delta, and a short, decisive recipe is the correct one."
   );
+  lines.push(
+    "Recipe completeness vs. surgical trims: the INITIAL recipe (from factory defaults) should be " +
+      "COMPLETE — cover every dimension that shows a measured gap (typically 8-14 moves: exposure/WB, sun " +
+      "direction+intensity+color, dome/HDRI+rotation, fills, highlight-burn/contrast/saturation, atmosphere). " +
+      "Only CORRECTIONS in the refine loop are surgical 3-5-move trims. Reason briefly either way — 'reason " +
+      "briefly' caps your NARRATION, not the number of moves the initial recipe needs to close every gap."
+  );
 
   if (isCorrection) {
     lines.push("");
@@ -203,11 +228,13 @@ export function systemPrompt(target: TargetId | string, mode: ModeName | string)
         "`status_reason` instead, so they understand why the number is not settling."
     );
     lines.push(
-      'Know when to stop: declare status:"handoff_to_grade" the moment the residual measured diff is ' +
-        "dominated by chromatic/tonal terms (tint, saturation, contrast curve) rather than light-transport terms " +
-        "(luminance structure, where light enters the frame, shadow/highlight placement). At that point further " +
-        "re-rendering will not help — the remaining 1% is a color grade, not a lighting problem, and belongs to a " +
-        "grading tool, not this loop."
+      'Know when to stop — NARROW handoff: declare status:"handoff_to_grade" ONLY when the residual is a ' +
+        "PURELY GLOBAL chromatic offset (a uniform tint / saturation shift) AND the spatial grid + luminance " +
+        "structure ALREADY match. Contrast (contrast.spread / contrast.midSlope) and a warm-highlight/cool-shadow " +
+        "SPLIT are NOT grade problems — they have physical lighting levers (contrast = key:fill ratio + sun " +
+        "size/softness; warmth split = key color vs fill/dome color), so fix them here, do not hand them off. " +
+        "Only when what remains is a single global color cast over an already-matched light layout does further " +
+        "re-rendering stop helping — that last bit is a color grade and belongs to a grading tool, not this loop."
     );
   }
 

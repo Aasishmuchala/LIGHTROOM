@@ -4,6 +4,7 @@ import { engineStore, useEngine } from "@/store/useEngine";
 import type { AttemptEntry } from "@/store/useEngine";
 import type { TargetId } from "@/lib/types";
 import { PACKS } from "@/lib/packs";
+import { matchPercent, MATCH_THRESHOLD } from "@/lib/metrics";
 import { PathBreadcrumb, ConfDot, ValueJewel, ClampedFlag } from "./bits";
 import { safeSrc, copyText } from "./lib";
 
@@ -18,31 +19,45 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
   const attempts = chain?.attempts || [];
   if (!session.ref || attempts.length === 0) return null;
 
-  // handoff: latest correction wins; else the initial recipe's status.
+  // The number the product promises: the % match of the CLOSEST (lowest look-distance)
+  // attempt so far. This is the measured truth the whole panel is gated on.
+  const closest = attempts.reduce((best, a) => (a.score < best.score ? a : best), attempts[0]);
+  const bestScore = closest.score;
+  const bestPercent = matchPercent(bestScore);
+  // MEASURED gate: lighting is "matched" only when the closest attempt is within
+  // MATCH_THRESHOLD look-distance — never on the model's word alone.
+  const measuredMatched = bestScore <= MATCH_THRESHOLD;
+
+  // Did the model SAY the rest is a grade? (latest correction wins; else the recipe.)
   const latestAtt = attempts.length ? attempts[attempts.length - 1] : null;
   const attHandoff =
     latestAtt && latestAtt.correction && latestAtt.correction.status === "handoff_to_grade";
   const recipeHandoff =
     !attHandoff && chain?.recipe && chain.recipe.status === "handoff_to_grade";
+  const modelSaysHandoff = !!(attHandoff || recipeHandoff);
   const handoffReason = attHandoff
     ? latestAtt!.correction.status_reason || ""
     : recipeHandoff
       ? chain!.recipe!.status_reason || ""
-      : null;
+      : "";
+  // Show the "keep refining" caution only when the model jumped the gun: it declared a
+  // handoff, but the measured look-distance says we're not there yet.
+  const prematureHandoff = modelSaysHandoff && !measuredMatched;
 
+  const heroTone = scoreTone(bestScore);
   const refSrc = safeSrc(session.ref.dataUrl);
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Handoff milestone banner — a positive signal, not an error. */}
-      {handoffReason !== null && (
+      {/* MATCHED milestone — gated on the MEASURED score, not the model's word. */}
+      {measuredMatched && (
         <div
           className="rounded-[var(--radius-card)] border p-4 flex gap-3 animate-rise"
-          style={{ borderColor: "var(--color-info)", background: "var(--color-info-tint)" }}
+          style={{ borderColor: "var(--color-good)", background: "var(--color-good-tint)" }}
         >
           <span
             className="flex-none grid place-items-center w-7 h-7 rounded-full text-white text-[0.82rem] font-bold"
-            style={{ background: "var(--color-info)" }}
+            style={{ background: "var(--color-good)" }}
             aria-hidden
           >
             ✓
@@ -52,8 +67,35 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
               Lighting matched. The rest is a grade.
             </div>
             <p className="text-[0.82rem] text-[var(--color-ink-2)] mt-1 leading-snug max-w-[70ch]">
-              {handoffReason ? handoffReason + " — " : ""}lighting is within noise of the reference — the rest
-              is a grade; take it to REFGRADE.
+              {handoffReason ? handoffReason + " — " : ""}the closest attempt measures {bestPercent}% match
+              (look distance {Math.round(bestScore)}, within {MATCH_THRESHOLD}) — the lighting is within noise of
+              the reference; take the rest to REFGRADE.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Premature-handoff caution — model gave up early but the measurement disagrees. */}
+      {prematureHandoff && (
+        <div
+          className="rounded-[var(--radius-card)] border p-4 flex gap-3 animate-rise"
+          style={{ borderColor: "var(--color-warn)", background: "var(--color-warn-tint)" }}
+        >
+          <span
+            className="flex-none grid place-items-center w-7 h-7 rounded-full text-white text-[0.82rem] font-bold"
+            style={{ background: "var(--color-warn)" }}
+            aria-hidden
+          >
+            !
+          </span>
+          <div>
+            <div className="text-[0.95rem] font-[660] text-[var(--color-ink)] tracking-[-0.01em]">
+              Model suggests the rest is a grade — but the measured look-distance is still {Math.round(bestScore)}
+              &nbsp;({bestPercent}% match).
+            </div>
+            <p className="text-[0.82rem] text-[var(--color-ink-2)] mt-1 leading-snug max-w-[70ch]">
+              {handoffReason ? handoffReason + " — " : ""}that&rsquo;s past the {MATCH_THRESHOLD}-point match
+              threshold. Keep refining, or accept it as close enough and take it to REFGRADE.
             </p>
           </div>
         </div>
@@ -61,11 +103,26 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
 
       {/* Filmstrip: reference + each attempt, closest at the lowest score. */}
       <section className="work-card p-4">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2.5">
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div className="flex items-baseline gap-2.5">
             <span className="eyebrow">Refine ledger</span>
+            <span className="text-[0.72rem] text-[var(--color-faint)]">closest at the lowest score</span>
           </div>
-          <span className="text-[0.72rem] text-[var(--color-faint)]">closest at the lowest score</span>
+          {/* HERO stat: the promised "% match" of the closest attempt. */}
+          <div className="flex items-baseline gap-2">
+            <span
+              className="tabular-nums font-bold tracking-[-0.02em] text-[1.85rem] leading-none"
+              style={{ color: heroTone.color }}
+            >
+              {bestPercent}%
+            </span>
+            <span className="text-[0.74rem] font-medium text-[var(--color-muted)] leading-tight">
+              match
+              <span className="block text-[0.66rem] text-[var(--color-faint)] font-normal">
+                closest · look dist {Math.round(bestScore)}
+              </span>
+            </span>
+          </div>
         </div>
 
         <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
@@ -115,10 +172,17 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
 
 function scoreTone(score: number): { color: string; bg: string } {
   // low score = close = good (cool→green), high = far (warm). The `color` is used as
-  // TEXT on the tint `bg`, so it uses the AA-safe -ink shades.
-  if (score <= 12) return { color: "var(--color-good-ink)", bg: "var(--color-good-tint)" };
-  if (score <= 30) return { color: "var(--color-info-ink)", bg: "var(--color-info-tint)" };
-  if (score <= 55) return { color: "var(--color-warn-ink)", bg: "var(--color-surface-2)" };
+  // TEXT on the tint `bg`, so it uses the AA-safe -ink shades. Buckets are DERIVED from
+  // MATCH_THRESHOLD so "green/good" means genuinely matched and can't drift from the gate:
+  //   good  <= MATCH_THRESHOLD (3)      — matched
+  //   info  <= 3x threshold    (9)      — close
+  //   warn  <= ~7x threshold   (~20)    — work to do
+  //   danger otherwise                  — far
+  const INFO_MAX = MATCH_THRESHOLD * 3; // 9
+  const WARN_MAX = MATCH_THRESHOLD * 7 - 1; // 20
+  if (score <= MATCH_THRESHOLD) return { color: "var(--color-good-ink)", bg: "var(--color-good-tint)" };
+  if (score <= INFO_MAX) return { color: "var(--color-info-ink)", bg: "var(--color-info-tint)" };
+  if (score <= WARN_MAX) return { color: "var(--color-warn-ink)", bg: "var(--color-surface-2)" };
   return { color: "var(--color-danger-ink)", bg: "var(--color-danger-tint)" };
 }
 

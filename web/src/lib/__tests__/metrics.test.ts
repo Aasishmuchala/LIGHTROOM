@@ -10,6 +10,8 @@ import {
   downscaleDimensions,
   SCORE_WEIGHTS,
   HIST_BINS,
+  MATCH_THRESHOLD,
+  matchPercent,
 } from "../metrics";
 import type { MetricVector } from "../types";
 
@@ -151,10 +153,69 @@ describe("diffVectors / scoreVectors identities", () => {
     expect(SCORE_WEIGHTS["lum.p5"]).toBe(3);
     expect(SCORE_WEIGHTS["lum.p50"]).toBe(3);
     expect(SCORE_WEIGHTS["lum.p95"]).toBe(3);
+    // p25/p75/mean are now scored (weight 2 each) so the look-distance covers the full tonal match
+    expect(SCORE_WEIGHTS["lum.p25"]).toBe(2);
+    expect(SCORE_WEIGHTS["lum.p75"]).toBe(2);
+    expect(SCORE_WEIGHTS["lum.mean"]).toBe(2);
     expect(SCORE_WEIGHTS["clip.hi"]).toBe(1.5);
     expect(SCORE_WEIGHTS["sat.mean"]).toBe(1);
-    // 3 lum + 2 contrast + 3 wb + 2 clip + 1 sat + 16 grid = 27 keys
-    expect(Object.keys(SCORE_WEIGHTS)).toHaveLength(27);
+    // 6 lum + 2 contrast + 3 wb + 2 clip + 1 sat + 16 grid = 30 keys
+    expect(Object.keys(SCORE_WEIGHTS)).toHaveLength(30);
+  });
+});
+
+describe("matchPercent / MATCH_THRESHOLD", () => {
+  it("MATCH_THRESHOLD is 3 (≈97% match gate)", () => {
+    expect(MATCH_THRESHOLD).toBe(3);
+  });
+  it("maps look-distance to % match: 0→100, 3→97, 12→88, 35→65", () => {
+    expect(matchPercent(0)).toBe(100);
+    expect(matchPercent(3)).toBe(97);
+    expect(matchPercent(12)).toBe(88);
+    expect(matchPercent(35)).toBe(65);
+  });
+  it("clamps to 0..100 and rounds", () => {
+    expect(matchPercent(120)).toBe(0); // >100 look-distance → 0% (never negative)
+    expect(matchPercent(-5)).toBe(100); // guards a negative score → 100%
+    expect(matchPercent(2.4)).toBe(98); // rounds (100 - 2.4 = 97.6 → 98)
+  });
+});
+
+describe("measureFromPixels — alpha handling", () => {
+  /** Left half opaque gray-200, right half fully transparent (alpha 0, black RGB). */
+  function halfTransparent(w: number, h: number): Uint8ClampedArray {
+    const d = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const p = (y * w + x) * 4;
+        const opaque = x < w / 2;
+        d[p] = opaque ? 200 : 0;
+        d[p + 1] = opaque ? 200 : 0;
+        d[p + 2] = opaque ? 200 : 0;
+        d[p + 3] = opaque ? 255 : 0;
+      }
+    }
+    return d;
+  }
+
+  it("transparent pixels do not read as phantom black", () => {
+    const half = measureFromPixels(halfTransparent(32, 32), 32, 32);
+    const solidGray = measureFromPixels(solid(32, 32, 200, 200, 200), 32, 32);
+    // The opaque half is solid gray-200; skipping the transparent half must yield the
+    // SAME luminance as a fully-opaque gray-200 image (no black dragging it down).
+    expect(half.lum.p50).toBeCloseTo(solidGray.lum.p50, 4);
+    expect(half.lum.mean).toBeCloseTo(solidGray.lum.mean, 4);
+    // and no phantom low clip from the transparent black region
+    expect(half.clip.lo).toBe(0);
+  });
+
+  it("a fully transparent image falls back (no divide-by-zero, finite stats)", () => {
+    const clear = new Uint8ClampedArray(16 * 16 * 4); // all zero incl. alpha
+    const m = measureFromPixels(clear, 16, 16);
+    expect(Number.isFinite(m.lum.mean)).toBe(true);
+    expect(Number.isFinite(m.sat.mean)).toBe(true);
+    // fully transparent falls back to counting all pixels (black) → clip.lo === 1
+    expect(m.clip.lo).toBe(1);
   });
 });
 

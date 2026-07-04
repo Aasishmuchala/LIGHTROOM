@@ -115,18 +115,74 @@ export function buildUserContent({
   }
 
   // Units legend prefixes the raw JSON so the model doesn't have to guess what a bare
-  // "0.211" or "-0.03" means. diff direction line included.
+  // "0.211" or "-0.03" means. diff direction line included, plus the GRID GEOMETRY legend
+  // so the model can read the 4x4 map as a SPATIAL light-placement cue (the single most
+  // important, easiest-to-miss match dimension).
   const legend =
     "COMPUTED EVIDENCE — deterministic, trust for magnitude. Units: luminance values are " +
     "linearized 0-1 (not sRGB 0-255); warmth* is (R-B)/(R+B) computed on linear channel means, positive = " +
     "warmer, negative = cooler, roughly +-0.05 ~= a few hundred kelvin; tint is positive = green, negative = " +
     "magenta. " +
-    "diff is reference minus current (positive = reference is higher; move that way).";
+    "diff is reference minus current (positive = reference is higher; move that way). " +
+    "grid.0..15 is a 4x4 ROW-MAJOR mean-luminance map of the frame (grid.0 = top-left, grid.3 = top-right, " +
+    "grid.12 = bottom-left, grid.15 = bottom-right). A left-vs-right imbalance means the key light is on the " +
+    "wrong side (fix with sun azimuth / HDRI rotation); a top-vs-bottom imbalance means the sun elevation is wrong.";
   const round4 = (k: string, v: unknown) =>
     typeof v === "number" && Number.isFinite(v) ? Math.round(v * 1e4) / 1e4 : v;
+
+  // SPATIAL-ASYMMETRY scalars derived from the diff grid (base − reference). Row-major
+  // index = row*4 + col. These pre-chew the 4x4 map into two directional numbers so the
+  // model doesn't have to eyeball 16 cells: a positive leftMinusRight means the BASE has
+  // too much light on the LEFT vs the reference (move the key right / rotate HDRI); a
+  // positive topMinusBottom means too much light up top (lower the sun elevation). Guarded
+  // — skipped entirely when the diff carries no grid.* keys.
+  const diff = (metricsBundle as { diff?: Record<string, unknown> })?.diff;
+  const gridVal = (r: number, c: number): number | null => {
+    const v = diff ? diff[`grid.${r * 4 + c}`] : undefined;
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  };
+  let asymmetryLine = "";
+  if (diff) {
+    const cells: number[] = [];
+    let complete = true;
+    for (let r = 0; r < 4 && complete; r++) {
+      for (let c = 0; c < 4; c++) {
+        const v = gridVal(r, c);
+        if (v === null) {
+          complete = false;
+          break;
+        }
+        cells.push(v);
+      }
+    }
+    if (complete && cells.length === 16) {
+      const at = (r: number, c: number) => cells[r * 4 + c];
+      let left = 0,
+        right = 0,
+        top = 0,
+        bottom = 0;
+      for (let r = 0; r < 4; r++) {
+        left += at(r, 0) + at(r, 1);
+        right += at(r, 2) + at(r, 3);
+      }
+      for (let c = 0; c < 4; c++) {
+        top += at(0, c) + at(1, c);
+        bottom += at(2, c) + at(3, c);
+      }
+      const leftMinusRight = left / 8 - right / 8;
+      const topMinusBottom = top / 8 - bottom / 8;
+      const r4 = (v: number) => Math.round(v * 1e4) / 1e4;
+      asymmetryLine =
+        `\nSPATIAL ASYMMETRY (base − reference): leftMinusRight=${r4(leftMinusRight)}, ` +
+        `topMinusBottom=${r4(topMinusBottom)} — a positive leftMinusRight means the base render has too much ` +
+        `light on the LEFT vs the reference; move the key toward the right (raise sun azimuth) or rotate the ` +
+        `HDRI. Positive topMinusBottom means too much light up top; lower the sun elevation.`;
+    }
+  }
+
   content.push({
     type: "text",
-    text: `${legend}\n${JSON.stringify(metricsBundle, round4)}`,
+    text: `${legend}\n${JSON.stringify(metricsBundle, round4)}${asymmetryLine}`,
   });
 
   if (context && Object.keys(context).length) {

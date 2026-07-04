@@ -192,6 +192,18 @@ describe("systemPrompt", () => {
     expect(p).toContain('"values"');
     expect(p).toMatch(/single raw JSON object/);
     expect(p).toMatch(/NO markdown/);
+    // the brevity guard now carves out the spatial check instead of steering AWAY from the grid
+    expect(p).toContain("SPATIAL ASYMMETRY");
+    expect(p).toContain("spatial light placement is the most important match cue");
+    // warmth split is treated as a lighting fix (key vs fill/dome color), not one global WB move
+    expect(p).toContain("warmthShadow and wb.warmthHighlight are INDEPENDENT");
+    // the initial recipe must be COMPLETE (not capped at a low surgical move count)
+    expect(p).toContain("INITIAL recipe");
+    expect(p).toMatch(/8-14 moves/);
+    // V-Ray placement-kind controls must carry an explicit numeric target
+    expect(p).toContain("STATE AN EXPLICIT NUMERIC TARGET");
+    // Vantage auto-exposure hard gate is in the exposure lock
+    expect(p).toContain("cam.auto_exposure = off");
     // ends with the pack fragment
     expect(p.endsWith(PACKS.promptFragment("vray7max"))).toBe(true);
   });
@@ -201,6 +213,11 @@ describe("systemPrompt", () => {
     expect(p).toContain("CORRECTION ROUND");
     expect(p).toContain("Oscillation guard");
     expect(p).toContain("handoff_to_grade");
+    // handoff is now NARROW: contrast + warmth split are NOT grade problems, and handoff
+    // requires an already-matched spatial + luminance layout under a purely global cast
+    expect(p).toContain("NARROW handoff");
+    expect(p).toContain("PURELY GLOBAL chromatic offset");
+    expect(p).toMatch(/are NOT grade problems/);
     // JSON-only directive present with the correction schema EMBEDDED (no tool named)
     expect(p).toContain("OUTPUT FORMAT");
     expect(p).toContain('"moves"');

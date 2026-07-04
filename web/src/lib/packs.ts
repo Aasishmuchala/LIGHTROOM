@@ -1075,6 +1075,8 @@ export const PACKS: Packs = {
   },
 
   // Numeric values are clamped into the entry's range; strings and non-range kinds pass through.
+  // ⚠ slider-scale (±100 vs ±1) unverified — confirm the real UI range before trusting these
+  // dimensions (post.saturation/hue/lightness, post.balance_*, post.wb_tint, cm.saturation).
   clamp(target: TargetId | string, id: string, value: unknown): ClampResult {
     const e = this.lookup(target, id);
     if (
