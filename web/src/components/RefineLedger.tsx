@@ -71,7 +71,7 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
         <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
           {/* reference anchor */}
           <figure className="flex-none w-[132px]">
-            <div className="rounded-[10px] overflow-hidden border-2 border-[var(--color-accent-line)] bg-[var(--color-canvas-deep)] aspect-[4/3]">
+            <div className="rounded-[10px] overflow-hidden border-2 border-[var(--color-accent-line)] bg-[var(--color-surface-2)] aspect-[4/3]">
               {refSrc ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={refSrc} alt="Reference" className="w-full h-full object-cover" />
@@ -118,7 +118,7 @@ function scoreTone(score: number): { color: string; bg: string } {
   // TEXT on the tint `bg`, so it uses the AA-safe -ink shades.
   if (score <= 12) return { color: "var(--color-good-ink)", bg: "var(--color-good-tint)" };
   if (score <= 30) return { color: "var(--color-info-ink)", bg: "var(--color-info-tint)" };
-  if (score <= 55) return { color: "var(--color-warn-ink)", bg: "var(--color-accent-tint)" };
+  if (score <= 55) return { color: "var(--color-warn-ink)", bg: "var(--color-surface-2)" };
   return { color: "var(--color-danger-ink)", bg: "var(--color-danger-tint)" };
 }
 
@@ -147,7 +147,7 @@ function FilmstripAttempt({
   }
   return (
     <figure className="flex-none w-[132px]">
-      <div className="rounded-[10px] overflow-hidden border border-[var(--color-line)] bg-[var(--color-canvas-deep)] aspect-[4/3]">
+      <div className="rounded-[10px] overflow-hidden border border-[var(--color-line)] bg-[var(--color-surface-2)] aspect-[4/3]">
         {src ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={src} alt={`Attempt ${n}`} className="w-full h-full object-cover" />

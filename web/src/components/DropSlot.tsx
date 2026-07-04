@@ -85,7 +85,7 @@ export function DropSlot({
               {label}
             </span>
             {hint && (
-              <span className="text-[0.72rem] font-normal text-[var(--color-faint)] leading-none">
+              <span className="text-[0.72rem] font-normal text-[var(--color-ink-2)] leading-none">
                 {hint}
               </span>
             )}
@@ -94,12 +94,12 @@ export function DropSlot({
           <span className="text-[0.78rem] font-[620] text-[var(--color-ink)] tracking-[-0.01em]">
             {label}
             {hint && (
-              <span className="ml-1.5 font-normal text-[0.7rem] text-[var(--color-faint)]">({hint})</span>
+              <span className="ml-1.5 font-normal text-[0.7rem] text-[var(--color-ink-2)]">({hint})</span>
             )}
           </span>
         )}
         {src && (
-          <span className="text-[0.6rem] font-semibold uppercase tracking-[0.05em] text-[var(--color-good-ink)] flex items-center gap-1 flex-none">
+          <span className="text-[0.6rem] font-semibold uppercase tracking-[0.05em] text-[oklch(0.40_0.12_162)] flex items-center gap-1 flex-none">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-good)]" /> loaded
           </span>
         )}
@@ -165,7 +165,7 @@ export function DropSlot({
             <div className="flex items-center justify-between mb-1">
               <label
                 htmlFor={`exr-ev-${slotKey}`}
-                className="text-[0.62rem] font-semibold uppercase tracking-[0.06em] text-[var(--color-faint)]"
+                className="text-[0.62rem] font-semibold uppercase tracking-[0.06em] text-[var(--color-muted)]"
               >
                 Exposure
               </label>

@@ -127,7 +127,7 @@ export function RecipeView({ onToast }: { onToast: (m: string) => void }) {
               {totalChanged} changed · {rows.length} controls
             </span>
           </summary>
-          <div className="px-4 pb-4 pt-1 bg-[var(--color-canvas-deep)]">
+          <div className="px-4 pb-4 pt-1 bg-[var(--color-surface-2)]">
             <p className="text-[0.76rem] text-[var(--color-muted)] px-1 pt-2 pb-3 max-w-[64ch]">
               Every control in {targetLabel}, in panel order. Changed controls are highlighted; bands with
               no change stay collapsed.
@@ -163,7 +163,7 @@ export function RecipeView({ onToast }: { onToast: (m: string) => void }) {
             )}
             {recipe.gi_notes && (
               <div className="flex-1 rounded-[var(--radius-control)] bg-[var(--color-surface-2)] border border-[var(--color-line)] px-3.5 py-2.5">
-                <div className="text-[0.66rem] font-semibold uppercase tracking-[0.06em] text-[var(--color-faint)]">
+                <div className="text-[0.66rem] font-semibold uppercase tracking-[0.06em] text-[var(--color-muted)]">
                   GI notes
                 </div>
                 <div className="text-[0.82rem] text-[var(--color-ink-2)] mt-1 leading-snug">{recipe.gi_notes}</div>
@@ -279,7 +279,7 @@ function SheetBand({
 
   if (changed > 0) {
     return (
-      <section className="rounded-[8px] bg-[var(--color-surface)] border border-[var(--color-accent-line)] overflow-hidden">
+      <section className="rounded-[8px] bg-[var(--color-surface)] border border-[var(--color-accent-line)] shadow-[inset_0_0_0_1px_var(--color-line-strong)] overflow-hidden">
         <header className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--color-accent-tint)] border-b border-[var(--color-accent-line)]">
           <span className="text-[0.78rem] font-[620] text-[var(--color-ink)] tracking-[-0.01em]">{group}</span>
           {count}
@@ -289,7 +289,7 @@ function SheetBand({
     );
   }
   return (
-    <details className="rounded-[8px] bg-[var(--color-surface)] border border-[var(--color-line)] overflow-hidden group">
+    <details className="rounded-[8px] bg-[var(--color-surface)] border border-[var(--color-line-strong)] overflow-hidden group">
       <summary className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-[var(--color-surface-2)] transition-colors select-none">
         <span className="flex items-center gap-2 min-w-0">
           <span className="caret text-[0.62rem] text-[var(--color-faint)]">▸</span>

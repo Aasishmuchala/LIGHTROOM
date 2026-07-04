@@ -42,11 +42,11 @@ export function StorageBanner({ onToast }: { onToast?: (m: string) => void }) {
       role="status"
       data-storage-warning
       className="rounded-[var(--radius-card)] border p-3.5 flex gap-3 animate-fade"
-      style={{ borderColor: "var(--color-accent-line)", background: "var(--color-accent-tint)" }}
+      style={{ borderColor: "var(--color-line-strong)", background: "var(--color-warn-tint)" }}
     >
       <span
         className="flex-none mt-px grid place-items-center w-5 h-5 rounded-full text-[0.72rem] font-bold"
-        style={{ background: "var(--color-accent)", color: "oklch(0.28 0.09 62)" }}
+        style={{ background: "var(--color-warn)", color: "oklch(0.28 0.07 62)" }}
         aria-hidden
       >
         !

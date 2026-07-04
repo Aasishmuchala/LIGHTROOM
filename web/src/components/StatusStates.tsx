@@ -54,7 +54,7 @@ export function ReadyState({ target }: { target: string }) {
     <div className="work-card work-card--hero overflow-hidden animate-rise">
       <div className="px-6 sm:px-9 py-10 sm:py-12 text-center flex flex-col items-center">
         <div className="w-40 max-w-full">
-          <div className="relative h-2 rounded-full spectrum-bar shadow-[inset_0_0_0_1px_oklch(0.5_0.03_264_/_0.08)]">
+          <div className="relative h-2 rounded-full spectrum-bar shadow-[inset_0_0_0_1px_var(--color-line-strong)]">
             <span
               className="absolute top-1/2 left-1/2 w-3 h-3 rounded-full -translate-x-1/2 -translate-y-1/2 bg-[var(--color-surface)]"
               style={{ boxShadow: "0 0 0 3px var(--color-accent-strong), var(--shadow-sm)" }}

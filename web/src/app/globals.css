@@ -75,6 +75,7 @@
   --color-good-tint: oklch(0.90 0.05 160);
   --color-warn: oklch(0.75 0.15 62);
   --color-warn-ink: oklch(0.47 0.11 62);
+  --color-warn-tint: oklch(0.90 0.05 62);
   --color-danger: oklch(0.585 0.19 25);
   --color-danger-ink: oklch(0.505 0.19 27);
   --color-danger-tint: oklch(0.90 0.05 30);
@@ -340,7 +341,7 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
 .chip-group-label {
   display: flex; align-items: center; gap: 0.4rem;
   font-size: 0.62rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
-  color: var(--color-faint); text-shadow: var(--engrave);
+  color: oklch(0.86 0.012 80); text-shadow: var(--engrave);
 }
 .chip-group-dot {
   width: 6px; height: 6px; border-radius: 999px; flex: none;

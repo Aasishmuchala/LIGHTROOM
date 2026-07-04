@@ -20,7 +20,7 @@ function Wordmark() {
         >
           Light<span className="text-[var(--color-accent-hi)]">Match</span>
         </div>
-        <div className="mt-[3px] text-[0.55rem] font-semibold uppercase tracking-[0.26em] text-[oklch(0.80_0.012_80)]">
+        <div className="mt-[3px] text-[0.55rem] font-semibold uppercase tracking-[0.26em] text-[oklch(0.90_0.012_80)]">
           exposure · reference matcher
         </div>
       </div>
@@ -192,8 +192,8 @@ export function Header() {
       {/* privacy line + flash */}
       <div className="px-2 sm:px-3 pb-2 -mt-0.5 flex items-center justify-end gap-3 flex-wrap">
         {flash && <span className="text-[0.72rem] font-medium text-[var(--color-accent-hi)] animate-fade">{flash}</span>}
-        <span className="text-[0.7rem] text-[oklch(0.72_0.012_78)] text-right">
-          Key & sessions: <span className="text-[oklch(0.82_0.01_80)]">Stored only in this browser.</span>
+        <span className="text-[0.7rem] text-[oklch(0.90_0.012_80)] text-right">
+          Key & sessions: <span className="text-[oklch(0.96_0.008_82)]">Stored only in this browser.</span>
         </span>
       </div>
     </header>

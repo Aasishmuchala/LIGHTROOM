@@ -64,7 +64,7 @@ export function EmptyState() {
       </div>
 
       {/* a quiet reassurance strip, not a pricing/version tell */}
-      <div className="flex items-center justify-center gap-2 text-[0.74rem] text-[var(--color-faint)]">
+      <div className="flex items-center justify-center gap-2 text-[0.74rem] text-[oklch(0.80_0.012_78)]">
         <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-good)]" />
         Runs entirely in your browser. Your images and key never leave this machine except to run the match.
       </div>
@@ -84,13 +84,13 @@ function LightBench() {
         <span className="text-[0.62rem] font-semibold uppercase tracking-[0.09em] text-[var(--color-accent-ink)]">
           the match
         </span>
-        <span className="text-[0.66rem] font-semibold uppercase tracking-[0.07em] text-[var(--color-conf-medium)]" style={{ color: "var(--spectrum-cool)" }}>
+        <span className="text-[0.66rem] font-semibold uppercase tracking-[0.07em]" style={{ color: "var(--spectrum-cool)" }}>
           cool · shade
         </span>
       </div>
 
       {/* the axis */}
-      <div className="relative h-2.5 rounded-full spectrum-bar shadow-[inset_0_0_0_1px_oklch(0.5_0.03_264_/_0.08)]">
+      <div className="relative h-2.5 rounded-full spectrum-bar shadow-[inset_0_0_0_1px_var(--color-line-strong)]">
         {/* reference marker — warm end */}
         <Marker pct={14} label="reference" tone="var(--spectrum-warm)" />
         {/* base render marker — cool end */}

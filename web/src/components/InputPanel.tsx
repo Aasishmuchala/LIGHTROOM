@@ -105,8 +105,8 @@ export function InputPanel({
     <div className="rail p-3 sm:p-3.5 flex flex-col">
       {/* rail faceplate — one structural label for the whole control panel */}
       <div className="flex items-center justify-between gap-2 px-1 pt-0.5 pb-3">
-        <span className="eyebrow">Inputs</span>
-        <span className="eyebrow !tracking-[0.04em] text-[var(--color-muted)]">
+        <span className="eyebrow text-[oklch(0.85_0.012_80)]">Inputs</span>
+        <span className="eyebrow !tracking-[0.04em] text-[oklch(0.85_0.012_80)]">
           {stepBadge}
         </span>
       </div>
@@ -134,7 +134,7 @@ export function InputPanel({
               );
             })}
           </div>
-          <p className="text-[0.72rem] text-[var(--color-faint)] mt-3 pl-0.5">
+          <p className="text-[0.72rem] text-[oklch(0.83_0.012_80)] mt-3 pl-0.5">
             Same VFB display settings every attempt.
           </p>
         </Step>
@@ -190,11 +190,11 @@ export function InputPanel({
             </button>
 
             {!analyzeReady ? (
-              <p className="text-[0.72rem] text-[var(--color-faint)] mt-2.5 text-center leading-snug">
+              <p className="text-[0.72rem] text-[oklch(0.83_0.012_80)] mt-2.5 text-center leading-snug">
                 Add a reference and a base render to begin.
               </p>
             ) : !inFlight ? (
-              <p className="text-[0.72rem] text-[var(--color-muted)] mt-2.5 text-center leading-snug">
+              <p className="text-[0.72rem] text-[oklch(0.83_0.012_80)] mt-2.5 text-center leading-snug">
                 Returns an exact {session.activeTarget === "vray7max" ? "V-Ray 7" : "Chaos Vantage 3.3"} recipe.
               </p>
             ) : null}
@@ -226,7 +226,7 @@ export function InputPanel({
               onFile={(f) => ingest("attempt", f)}
               captionOverride={`Drop the re-render, becomes attempt ${info.n + 1}`}
             />
-            <p className="text-[0.72rem] text-[var(--color-faint)] mt-2.5 pl-0.5">
+            <p className="text-[0.72rem] text-[oklch(0.83_0.012_80)] mt-2.5 pl-0.5">
               Same VFB display settings every attempt.
             </p>
           </Step>
@@ -275,8 +275,8 @@ function Step({
 
       <div className={`min-w-0 ${last ? "pb-0.5" : "pb-4"}`}>
         <div className="mb-2.5 pt-0.5">
-          <h3 className="text-[0.92rem] font-[640] text-[var(--color-ink)] leading-tight tracking-[-0.01em]">{title}</h3>
-          {sub && <p className="text-[0.72rem] text-[var(--color-faint)] leading-snug mt-0.5">{sub}</p>}
+          <h3 className="text-[0.92rem] font-[640] text-[oklch(0.95_0.01_82)] leading-tight tracking-[-0.01em]">{title}</h3>
+          {sub && <p className="text-[0.72rem] text-[oklch(0.84_0.012_80)] leading-snug mt-0.5">{sub}</p>}
         </div>
         <div className="rail-cell p-2.5 sm:p-3">{children}</div>
       </div>
