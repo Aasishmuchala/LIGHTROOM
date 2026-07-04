@@ -6,6 +6,7 @@ import { PACKS } from "@/lib/packs";
 import type { Recipe, TargetId } from "@/lib/types";
 import { PathBreadcrumb, ConfDot, ValueJewel, ClampedFlag } from "./bits";
 import { buildSheet, buildSheetText, copyText, sheetForTarget, type SheetRow } from "./lib";
+import { MoveHelp } from "./MoveHelp";
 
 // The recipe view LEADS WITH THE CHANGES. Opens with "N changes to match this
 // reference" + the changed moves as clean rows (breadcrumb + name, from → to jewel,
@@ -112,7 +113,7 @@ export function RecipeView({ onToast }: { onToast: (m: string) => void }) {
             <span className="h-px flex-1 bg-[var(--color-line)]" aria-hidden />
           </div>
           {changedRows.map((row, i) => (
-            <ChangeRow key={row.param} row={row} index={i} />
+            <ChangeRow key={row.param} row={row} index={i} target={target} />
           ))}
         </div>
 
@@ -208,7 +209,7 @@ function CalibrationReadout({ changed, total }: { changed: number; total: number
 
 // -- one changed move in the hero ledger — breadcrumb + jewel + applied toggle. Rows
 // are separated by hairlines so the list reads as a printed spec sheet. ------------
-function ChangeRow({ row, index }: { row: SheetRow; index: number }) {
+function ChangeRow({ row, index, target }: { row: SheetRow; index: number; target: TargetId }) {
   const onToggle = async (applied: boolean) => {
     try {
       await engineStore.getState().setRecipeApplied(row.param, applied);
@@ -237,6 +238,8 @@ function ChangeRow({ row, index }: { row: SheetRow; index: number }) {
         {row.why && (
           <p className="text-[0.76rem] text-[var(--color-muted)] mt-1 leading-snug max-w-[70ch]">{row.why}</p>
         )}
+        {/* per-move walkthrough: exact UI steps for THIS control, on demand. */}
+        <MoveHelp row={row} target={target} />
       </div>
       <label className="flex items-center gap-1.5 text-[0.7rem] text-[var(--color-muted)] cursor-pointer flex-none pt-0.5 select-none">
         <input
