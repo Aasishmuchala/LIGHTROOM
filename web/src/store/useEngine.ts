@@ -797,13 +797,20 @@ export const engineStore = createStore<EngineStore>((set, get) => {
         );
       }
       set({ lastError: null });
-      const chain = get().activeChain();
+      // IMMUTABLE update: build new recipeApplied/chain/chains/session objects rather than
+      // mutating in place. RecipeView memoizes its rows on the recipeApplied REFERENCE
+      // (useMemo dep); mutating in place left the ref unchanged, so the checkbox never
+      // re-rendered ("applied" appeared frozen). New refs make the toggle actually apply.
+      const s = get().session;
+      const target = s.activeTarget;
+      const chain = s.chains[target];
       if (!chain) return null;
-      if (!chain.recipeApplied || typeof chain.recipeApplied !== "object") chain.recipeApplied = {};
-      chain.recipeApplied[param] = !!applied;
-      set({ session: { ...get().session } });
+      const nextApplied = { ...(chain.recipeApplied || {}), [param]: !!applied };
+      set({
+        session: { ...s, chains: { ...s.chains, [target]: { ...chain, recipeApplied: nextApplied } } },
+      });
       await persist();
-      return chain.recipeApplied;
+      return nextApplied;
     },
 
     async toggleAttemptApplied(attemptIndex, param) {
@@ -815,14 +822,24 @@ export const engineStore = createStore<EngineStore>((set, get) => {
         );
       }
       set({ lastError: null });
-      const chain = get().activeChain();
+      // IMMUTABLE update (same reasoning as setRecipeApplied): new appliedParams/attempt/
+      // attempts/chain/session refs so the refine-panel checkbox re-renders instead of
+      // snapping back.
+      const s = get().session;
+      const target = s.activeTarget;
+      const chain = s.chains[target];
       if (!chain || !chain.attempts[attemptIndex]) return null;
       const att = chain.attempts[attemptIndex];
-      att.appliedParams = att.appliedParams || {};
-      att.appliedParams[param] = att.appliedParams[param] === false ? true : false;
-      set({ session: { ...get().session } });
+      const nextApplied = { ...(att.appliedParams || {}) };
+      nextApplied[param] = nextApplied[param] === false ? true : false;
+      const nextAttempts = chain.attempts.map((a, i) =>
+        i === attemptIndex ? { ...a, appliedParams: nextApplied } : a
+      );
+      set({
+        session: { ...s, chains: { ...s.chains, [target]: { ...chain, attempts: nextAttempts } } },
+      });
       await persist();
-      return att.appliedParams;
+      return nextApplied;
     },
 
     async boot() {

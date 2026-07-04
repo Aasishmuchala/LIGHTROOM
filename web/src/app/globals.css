@@ -369,27 +369,28 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
 .segmented-btn {
   position: relative; padding: 0.5rem 0.9rem 0.5rem 1.55rem; font-size: 0.8rem; font-weight: 700;
   letter-spacing: 0.04em; text-transform: uppercase; border-radius: 8px; cursor: pointer; border: none;
-  color: oklch(0.90 0.01 84);
-  background: linear-gradient(180deg, oklch(0.72 0.01 76), oklch(0.60 0.01 72));
-  box-shadow: 0 2px 0 oklch(0.44 0.01 68), 0 3px 4px oklch(0.2 0.01 60 / 0.35), 0 1px 0 oklch(1 0 0 / 0.22) inset;
-  text-shadow: 0 -1px 1px oklch(0.2 0.01 60 / 0.4);
-  transition: color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+  color: oklch(0.72 0.012 76);                                  /* UNSELECTED: dim grey, recedes */
+  background: linear-gradient(180deg, oklch(0.555 0.01 72), oklch(0.495 0.01 70));
+  box-shadow: 0 1px 0 oklch(1 0 0 / 0.06) inset, 0 1px 2px oklch(0.15 0.01 60 / 0.3);
+  text-shadow: 0 -1px 1px oklch(0.15 0.01 60 / 0.4);
+  transition: color var(--dur) var(--ease-out), background var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
 }
-.segmented-btn::before {
+.segmented-btn::before {                                          /* OFF lamp — dark */
   content: ""; position: absolute; left: 0.62rem; top: 50%; transform: translateY(-50%);
   width: 7px; height: 7px; border-radius: 50%;
-  background: radial-gradient(circle, oklch(0.40 0.008 66), oklch(0.30 0.008 62));
+  background: radial-gradient(circle, oklch(0.40 0.008 66), oklch(0.28 0.008 62));
   box-shadow: 0 1px 1px oklch(0.15 0.01 60 / 0.6) inset;
 }
-.segmented-btn:hover { color: oklch(0.97 0.008 84); }
-.segmented-btn[data-on="true"] {
-  color: var(--color-accent-hi);
-  background: linear-gradient(180deg, oklch(0.47 0.01 70), oklch(0.54 0.01 72));
-  box-shadow: 0 2px 5px oklch(0.15 0.01 60 / 0.6) inset, 0 0 0 1px oklch(0.2 0.01 60 / 0.35);
+.segmented-btn:hover { color: oklch(0.90 0.012 80); }
+.segmented-btn[data-on="true"] {                                  /* SELECTED: bright LIT amber panel */
+  color: oklch(0.30 0.09 48);
+  background: linear-gradient(180deg, var(--color-accent-hi), var(--color-accent) 56%, oklch(0.72 0.15 64));
+  box-shadow: 0 0 0 1px var(--color-accent-strong), 0 2px 9px var(--amber-glow), 0 1px 0 oklch(1 0 0 / 0.5) inset;
+  text-shadow: 0 1px 0 oklch(1 0 0 / 0.4);
 }
-.segmented-btn[data-on="true"]::before {
-  background: radial-gradient(circle at 40% 35%, var(--color-accent-hi), var(--color-accent) 60%, var(--color-accent-strong));
-  box-shadow: 0 0 7px 2px var(--amber-glow);
+.segmented-btn[data-on="true"]::before {                          /* ON lamp — bright white core */
+  background: radial-gradient(circle at 40% 35%, oklch(0.99 0.015 90), oklch(0.9 0.05 84));
+  box-shadow: 0 0 5px oklch(1 0 0 / 0.75), 0 1px 1px oklch(0.3 0.06 55 / 0.4) inset;
 }
 
 /* ============================================================================
