@@ -105,6 +105,22 @@ export function systemPrompt(target: TargetId | string, mode: ModeName | string)
   const isCorrection = mode === "correction";
   const lines: string[] = [];
 
+  // BREVITY GUARD — the FIRST thing the model reads. Verified live 2026-07-04: on the real
+  // rich metrics bundle (three 16-cell grids + percentiles) Opus over-reasons (25k-32k chars
+  // of thinking) and blows BOTH the token budget (the JSON truncates) AND omega's ~100s
+  // wall-clock ceiling (HTTP 500). A strong "reason briefly, the complete JSON matters more
+  // than thorough analysis" directive halves the thinking (~6-15k chars / 26-62s) and turned
+  // an intermittent failure into 5/5 complete recipes in testing.
+  lines.push(
+    "CRITICAL OUTPUT CONSTRAINT — READ FIRST: You have a STRICT, limited output budget and MUST emit " +
+      "the COMPLETE JSON object described below. Reason VERY briefly — at most a few short sentences. Do NOT " +
+      "analyze each grid cell or each metric one-by-one; identify the 3-6 biggest gaps and move on. Emitting " +
+      "the full, valid JSON is far more important than thorough reasoning — if you deliberate too long you " +
+      "WILL run out of space and the whole response will be discarded as a failure. Keep all reasoning brief, " +
+      "then output the JSON object."
+  );
+  lines.push("");
+
   lines.push(
     "You are a lighting technical director (TD) — the same disciplined, surgical role you would play " +
       "grading a shot against a reference plate, now applied to matching a 3D render's LIGHTING to a reference " +

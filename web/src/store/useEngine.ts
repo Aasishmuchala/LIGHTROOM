@@ -479,9 +479,14 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       );
     }
     const target = s.activeTarget;
+    // Lean evidence: send ONLY the diff (base - reference), not the full reference+base
+    // metric objects. Verified live 2026-07-04: the full bundle (THREE 16-cell grids + all
+    // percentiles) makes Opus over-reason past both omega's token budget (JSON truncates)
+    // and its ~100s wall-clock ceiling (HTTP 500). The diff alone carries the entire match
+    // signal (direction + magnitude of every gap); with the system prompt's brevity guard
+    // it yields a complete recipe reliably and fast. Absolute levels are conveyed by the
+    // reference/base IMAGES the model already sees.
     const metricsBundle = {
-      reference: s.ref!.metrics,
-      base: s.base!.metrics,
       diff: diffVectors(s.base!.metrics, s.ref!.metrics),
     };
     const images: AdapterImage[] = [
@@ -546,9 +551,9 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     }
     const score = scoreVectors(s.ref!.metrics, captured.metrics);
 
+    // Lean evidence (see analyze()): the diff (attempt - reference) alone, not the full
+    // metric objects — keeps Opus's reasoning inside omega's token + ~100s time budget.
     const metricsBundle = {
-      reference: s.ref!.metrics,
-      attempt: captured.metrics,
       diff: diffVectors(captured.metrics, s.ref!.metrics),
     };
     if (typeof chain._attemptCount !== "number") chain._attemptCount = chain.attempts.length;

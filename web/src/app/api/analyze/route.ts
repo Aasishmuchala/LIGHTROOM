@@ -208,11 +208,14 @@ export function extractToolInput(json: {
   stop_reason?: string;
   content?: ContentBlock[];
 }): ExtractResult {
-  if (json && json.stop_reason === "max_tokens") {
+  // Truncation guard. Anthropic signals the token-cap hit with stop_reason "max_tokens";
+  // the omega gateway relays it as OpenAI-style "length". Treat BOTH as truncated so a
+  // cut-off half-written recipe never reaches validation (and so the route re-tries it).
+  if (json && (json.stop_reason === "max_tokens" || json.stop_reason === "length")) {
     return {
       ok: false,
       kind: "truncated",
-      message: "response truncated at max_tokens",
+      message: `response truncated at the token cap (stop_reason=${json.stop_reason})`,
       raw: JSON.stringify(json),
     };
   }
@@ -370,6 +373,17 @@ function errorResponse(
   return NextResponse.json({ ok: false, error: { kind, message, raw } }, { status });
 }
 
+// -- summarizeResp(json): a compact, log-safe view of a gateway response — stop_reason,
+// per-block type+size, and a preview of the concatenated TEXT blocks. Used to diagnose a
+// shape/truncated miss (why did the model emit no parseable JSON?) without dumping the
+// entire 25k-char thinking block into the log. --------------------------------------
+function summarizeResp(json: { stop_reason?: string; content?: ContentBlock[]; usage?: { output_tokens?: number } } | undefined): string {
+  const c = (json && Array.isArray(json.content) ? json.content : []) as Array<Record<string, unknown>>;
+  const blocks = c.map((b) => `${b.type}:${String((b.thinking as string) ?? (b.text as string) ?? "").length}`).join(",");
+  const text = c.filter((b) => b.type === "text").map((b) => (b.text as string) ?? "").join("\n");
+  return `stop=${json?.stop_reason} out=${json?.usage?.output_tokens ?? "?"} blocks=[${blocks}] text=${JSON.stringify(String(text).slice(0, 1500))}`;
+}
+
 export async function POST(request: Request): Promise<Response> {
   // Key from the request header (preferred) OR the server-only env var. Never logged,
   // never returned in any response.
@@ -450,6 +464,7 @@ export async function POST(request: Request): Promise<Response> {
   let reaskMessages: GatewayMessage[];
   if (!firstExtract.ok) {
     console.error(`[analyze] first response ${firstExtract.kind} — retrying once (fresh re-send)`);
+    console.error(`[analyze] first no-JSON detail: ${summarizeResp(first.json)}`);
     reaskMessages = messages;
   } else {
     const firstResult = validateRecipe(firstExtract.input, target, validateMode);
@@ -475,6 +490,7 @@ export async function POST(request: Request): Promise<Response> {
   const secondExtract = extractToolInput(second.json);
   if (!secondExtract.ok) {
     console.error(`[analyze] verdict: ${secondExtract.kind} (after retry)`);
+    console.error(`[analyze] retry no-JSON detail: ${summarizeResp(second.json)}`);
     return errorResponse(secondExtract.kind, secondExtract.message, secondExtract.raw);
   }
   const secondResult = validateRecipe(secondExtract.input, target, validateMode);
