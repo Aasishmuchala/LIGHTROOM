@@ -219,37 +219,43 @@ function ChangeRow({ row, index, target }: { row: SheetRow; index: number; targe
   };
   return (
     <div
-      className="group flex items-start gap-3 rounded-[8px] px-3 py-2.5 hover:bg-[var(--color-surface-2)] transition-colors animate-rise border-b border-[var(--color-line)] last:border-b-0"
+      className="flex flex-col rounded-[8px] px-3 py-2.5 hover:bg-[var(--color-surface-2)] transition-colors animate-rise border-b border-[var(--color-line)] last:border-b-0"
       style={{ animationDelay: `${Math.min(index * 40, 320)}ms` }}
     >
-      <ConfDot confidence={row.confidence} />
-      <div className="min-w-0 flex-1">
-        {/* breadcrumb wraps freely in its own column; the value jewel stays pinned to
-            the top-right and never drops to an orphaned line. */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <PathBreadcrumb uiPath={row.ui_path} />
+      <div className="group flex items-start gap-3">
+        <ConfDot confidence={row.confidence} />
+        <div className="min-w-0 flex-1">
+          {/* breadcrumb wraps freely in its own column; the value jewel stays pinned to
+              the top-right and never drops to an orphaned line. */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <PathBreadcrumb uiPath={row.ui_path} />
+            </div>
+            <div className="flex items-start gap-2 flex-none max-w-[58%]">
+              <ValueJewel from={row.from} value={row.value} unit={row.unit} kind={row.kind} />
+              <ClampedFlag show={row.clamped} />
+            </div>
           </div>
-          <div className="flex items-start gap-2 flex-none max-w-[58%]">
-            <ValueJewel from={row.from} value={row.value} unit={row.unit} kind={row.kind} />
-            <ClampedFlag show={row.clamped} />
-          </div>
+          {row.why && (
+            <p className="text-[0.76rem] text-[var(--color-muted)] mt-1 leading-snug max-w-[70ch]">{row.why}</p>
+          )}
         </div>
-        {row.why && (
-          <p className="text-[0.76rem] text-[var(--color-muted)] mt-1 leading-snug max-w-[70ch]">{row.why}</p>
-        )}
-        {/* per-move walkthrough: exact UI steps for THIS control, on demand. */}
-        <MoveHelp row={row} target={target} />
+        <label className="flex items-center gap-1.5 text-[0.7rem] text-[var(--color-muted)] cursor-pointer flex-none pt-0.5 select-none">
+          <input
+            type="checkbox"
+            checked={row.applied !== false}
+            onChange={(e) => onToggle(e.target.checked)}
+            className="accent-[var(--color-accent-strong)] w-3.5 h-3.5"
+          />
+          applied
+        </label>
       </div>
-      <label className="flex items-center gap-1.5 text-[0.7rem] text-[var(--color-muted)] cursor-pointer flex-none pt-0.5 select-none">
-        <input
-          type="checkbox"
-          checked={row.applied !== false}
-          onChange={(e) => onToggle(e.target.checked)}
-          className="accent-[var(--color-accent-strong)] w-3.5 h-3.5"
-        />
-        applied
-      </label>
+      {/* per-move walkthrough — spans the FULL row width (not the inset content column)
+          so the chat + follow-up field stay usable on narrow/mobile viewports. Keyed by
+          target+param+value so a re-analyze that changes this control's target value (or a
+          renderer flip) starts a FRESH conversation instead of resurfacing the previous
+          recipe's stale chat for a control whose param happens to recur. */}
+      <MoveHelp key={`${target}:${row.param}:${row.value}`} row={row} target={target} />
     </div>
   );
 }

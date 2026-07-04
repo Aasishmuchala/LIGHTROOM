@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { askHow, type HowMsg } from "@/lib/how-client";
+import { formatHelpAnswer } from "@/lib/how-format";
 import { splitPath, type SheetRow } from "./lib";
 
 export function MoveHelp({ row, target }: { row: SheetRow; target: string }) {
@@ -142,40 +143,28 @@ export function MoveHelp({ row, target }: { row: SheetRow; target: string }) {
   );
 }
 
-// StepText — the model returns plain text; when it's a clean numbered list, render each
-// line IN ORDER (a leading intro line stays on top; trailing notes stay at the bottom)
-// with the model's OWN step number in an engraved amber disc. Otherwise preserve
-// whitespace. Keeping source order matters: the steps are literal UI instructions.
+// StepText — render an answer via the pure formatHelpAnswer classifier: a numbered list
+// becomes ordered amber-disc steps (model's own numbers, source order preserved); free
+// prose renders verbatim. See lib/how-format.ts for the classification + its tests.
 function StepText({ text }: { text: string }) {
-  const lines = text
-    .split(/\n+/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const numberedCount = lines.filter((l) => /^\d+[.)]/.test(l)).length;
-  const isStepList = numberedCount >= 2 && numberedCount >= Math.ceil(lines.length * 0.5);
-  if (isStepList) {
-    return (
-      <div className="how-instr">
-        {lines.map((l, i) => {
-          const m = l.match(/^(\d+)[.)]\s*(.*)$/);
-          if (m) {
-            return (
-              <div key={i} className="how-step">
-                <span className="how-step-n">{m[1]}</span>
-                <span>{m[2]}</span>
-              </div>
-            );
-          }
-          return (
-            <p key={i} className="how-note">
-              {l}
-            </p>
-          );
-        })}
-      </div>
-    );
-  }
-  return <div className="how-plain">{text}</div>;
+  const fmt = formatHelpAnswer(text);
+  if (fmt.mode === "plain") return <div className="how-plain">{fmt.raw}</div>;
+  return (
+    <div className="how-instr">
+      {fmt.lines.map((l, i) =>
+        l.type === "step" ? (
+          <div key={i} className="how-step">
+            <span className="how-step-n">{l.num}</span>
+            <span>{l.text}</span>
+          </div>
+        ) : (
+          <p key={i} className="how-note">
+            {l.text}
+          </p>
+        )
+      )}
+    </div>
+  );
 }
 
 export default MoveHelp;
