@@ -1,573 +1,550 @@
 @import "tailwindcss";
 
 /* ============================================================================
-   LightMatch — "the optical bench".
-   A photometric instrument for matching a render's light to a reference, designed
-   the way a densitometer or a pro grading panel is designed: a cool control RAIL
-   (chrome) against a bright WORK surface (the focal plane), with the warm→cool
-   light spectrum as a structural spine rather than decoration. Light theme,
-   marigold key-light accent. System fonts only (offline / file://). OKLCH.
+   LightMatch — "the meter".
+   A photometric instrument for matching a render's light to a reference, dressed
+   as a vintage handheld exposure meter (Sekonic L-398 / Weston Master / Gossen):
+   a warm grey BAKELITE body, aged IVORY dial faces under glass, brushed NICKEL
+   bezels, engraved labels, and a MARIGOLD indicator lamp (the key light). Tactile-
+   modern: every control is real hardware, so its affordance is unmistakable.
+   Light instrument on a dark studio desk. System fonts only. OKLCH throughout.
    ============================================================================ */
 
 @theme {
-  /* -- Type: system stack, no network fonts. Mono is the "jewel" face for the
-        photometric values — every recipe value and score is tabular. ------------- */
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", "SF Mono", "Segoe UI Mono", "Roboto Mono", Menlo, Consolas, monospace;
 
-  /* -- Two neutral planes. The RAIL/chrome plane is cooler + deeper; the WORK
-        plane is the bright focal surface where the recipe reads. ------------------ */
-  --color-canvas: oklch(0.984 0.005 244);      /* app background (work plane base) */
-  --color-canvas-deep: oklch(0.958 0.008 246); /* recessed wells */
-  --color-surface: oklch(1 0 0);               /* the work surface (recipe) */
-  --color-surface-2: oklch(0.986 0.004 244);   /* nested tint on the work plane */
+  /* -- The desk the instrument sits on (page ground) + recessed glass wells. ---- */
+  --color-canvas: oklch(0.30 0.012 66);        /* dark studio-desk ground (body bg) */
+  --color-canvas-deep: oklch(0.20 0.012 60);   /* deep recess behind glass */
 
-  /* The chrome plane — the control rail + topbar. Distinctly cooler & a touch
-     deeper than the work plane so the rail reads as instrument chrome, not a card. */
-  --color-chrome: oklch(0.945 0.009 250);      /* rail field */
-  --color-chrome-2: oklch(0.925 0.011 250);    /* rail wells / recessed */
-  --color-chrome-line: oklch(0.885 0.012 252); /* hairlines on the chrome plane */
+  /* -- Aged IVORY — the dial faces. Every content surface. Warm off-white with a
+        grey cast (NOT a flat cream near-white): it sits under glass with an inner
+        shadow, ringed in nickel. ------------------------------------------------- */
+  --color-surface: oklch(0.928 0.016 86);      /* dial face (cards / readout) */
+  --color-surface-2: oklch(0.902 0.018 85);    /* nested ivory */
 
-  /* -- Ink ramp (cool near-black → muted). All body/secondary verified >=4.5:1
-        on both the work plane and the chrome plane (see contrast notes). ---------- */
-  --color-ink: oklch(0.225 0.021 264);         /* headings / leaf values */
-  --color-ink-2: oklch(0.365 0.019 264);       /* body */
-  --color-muted: oklch(0.475 0.018 264);       /* secondary — AA on surface, wells, chrome */
-  --color-faint: oklch(0.508 0.017 264);       /* tertiary / held rows — AA (>=4.5) on canvas-deep & chrome */
+  /* -- BAKELITE — the instrument body & control rail. Warm desaturated grey with
+        real depth (gradients on the classes below). ----------------------------- */
+  --color-chrome: oklch(0.635 0.010 74);       /* bakelite field (rail / top plate) */
+  --color-chrome-2: oklch(0.560 0.010 72);     /* bakelite recess */
+  --color-chrome-line: oklch(0.430 0.010 68);  /* bakelite edge / seam */
 
-  /* -- Lines (work plane). ----------------------------------------------------- */
-  --color-line: oklch(0.912 0.008 252);
-  --color-line-strong: oklch(0.855 0.011 252);
+  /* -- Engraved ink ramp (near-black warm). Verified on ivory: ink >=12:1, muted
+        >=4.5:1. On bakelite the body carries only light-etched labels (own colors). */
+  --color-ink: oklch(0.255 0.016 72);          /* engraved headings / leaf values */
+  --color-ink-2: oklch(0.360 0.015 70);        /* body on ivory */
+  --color-muted: oklch(0.468 0.013 68);        /* secondary on ivory (AA) */
+  --color-faint: oklch(0.532 0.012 66);        /* tertiary on ivory (AA) */
 
-  /* -- MARIGOLD accent — the key light. The one saturated color. --------------- */
-  --color-accent: oklch(0.79 0.16 78);         /* marigold — fills, buttons, the live tick */
-  --color-accent-strong: oklch(0.70 0.17 66);  /* deeper marigold — press/focus ring/thumb (NOT text) */
-  --color-accent-ink: oklch(0.34 0.11 62);     /* the accent TEXT shade (12:1 on white, AAA) */
-  --color-accent-tint: oklch(0.965 0.035 82);  /* accent wash */
-  --color-accent-tint-2: oklch(0.945 0.05 82); /* deeper wash — selected bands */
-  --color-accent-line: oklch(0.865 0.09 80);
+  /* -- Hairlines on ivory. ----------------------------------------------------- */
+  --color-line: oklch(0.828 0.017 84);
+  --color-line-strong: oklch(0.760 0.019 82);
 
-  /* -- Spectrum: the warm→cool light axis (dawn → key → daylight → blue hour).
-        The signature. Drives the spine, the calibration read-out, the EV track,
-        and the look-distance scale. ---------------------------------------------- */
-  --spectrum-warm: oklch(0.82 0.16 55);        /* dawn amber */
-  --spectrum-key: oklch(0.86 0.15 85);         /* marigold key */
-  --spectrum-day: oklch(0.93 0.05 200);        /* daylight */
-  --spectrum-cool: oklch(0.72 0.13 245);       /* blue hour */
-  --spectrum-grad: linear-gradient(
-    90deg,
-    var(--spectrum-warm) 0%,
-    var(--spectrum-key) 30%,
-    var(--spectrum-day) 62%,
-    var(--spectrum-cool) 100%
-  );
+  /* -- Brushed nickel (bezels, switch bodies, screws). ------------------------- */
+  --nickel-hi: oklch(0.94 0.004 250);
+  --nickel: oklch(0.80 0.006 250);
+  --nickel-lo: oklch(0.66 0.008 250);
+  --nickel-edge: oklch(0.52 0.008 250);
 
-  /* -- Signal colors (cool-hued, calm — not alarm-loud). Each has a darker "-ink"
-        shade for when the color is used as TEXT (AA >=4.5 on light surfaces); the
-        base shade is for dots, fills, borders, and icon backgrounds. -------------- */
-  --color-good: oklch(0.70 0.14 158);          /* match / closer — dot/fill */
-  --color-good-ink: oklch(0.48 0.12 162);      /* the good TEXT shade (6:1 on white, AA on chrome) */
-  --color-good-tint: oklch(0.965 0.03 160);
+  /* -- MARIGOLD — the indicator lamp / needle / trigger. The one saturated hue. -- */
+  --color-accent: oklch(0.795 0.155 78);       /* the amber lamp */
+  --color-accent-hi: oklch(0.855 0.135 84);    /* lit highlight */
+  --color-accent-strong: oklch(0.665 0.150 60);/* press / deep amber */
+  --color-accent-ink: oklch(0.470 0.115 58);   /* amber TEXT on ivory (AA >=4.5) */
+  --color-accent-tint: oklch(0.905 0.055 84);  /* amber wash on ivory (lit pushbutton) */
+  --color-accent-tint-2: oklch(0.875 0.075 82);
+  --color-accent-line: oklch(0.790 0.100 76);
+  --amber-glow: oklch(0.795 0.155 78 / 0.5);
+
+  /* -- Oxblood leather — one deliberate trim accent. --------------------------- */
+  --leather: oklch(0.36 0.055 40);
+  --leather-hi: oklch(0.44 0.06 42);
+  --stitch: oklch(0.72 0.09 72);
+
+  /* -- Spectrum retained (needle sweep / gauge tint), quieter than before. ------ */
+  --spectrum-warm: oklch(0.80 0.15 55);
+  --spectrum-key: oklch(0.84 0.14 84);
+  --spectrum-day: oklch(0.88 0.05 200);
+  --spectrum-cool: oklch(0.70 0.12 245);
+  --spectrum-grad: linear-gradient(90deg, var(--spectrum-warm) 0%, var(--spectrum-key) 32%, var(--spectrum-day) 64%, var(--spectrum-cool) 100%);
+
+  /* -- Indicator lamps (status). Each reads as a lit jewel on the class defs. --- */
+  --color-good: oklch(0.66 0.14 158);
+  --color-good-ink: oklch(0.46 0.12 162);
+  --color-good-tint: oklch(0.90 0.05 160);
   --color-warn: oklch(0.75 0.15 62);
-  --color-warn-ink: oklch(0.47 0.11 62);       /* warn TEXT shade */
-  --color-danger: oklch(0.605 0.19 22);        /* icon-bg / border */
-  --color-danger-ink: oklch(0.505 0.19 24);    /* danger TEXT shade (AA on white & tint) */
-  --color-danger-tint: oklch(0.965 0.03 25);
-  --color-info: oklch(0.66 0.12 245);          /* handoff / grade — icon-bg / border */
-  --color-info-ink: oklch(0.48 0.13 250);      /* info TEXT shade */
-  --color-info-tint: oklch(0.965 0.03 245);
+  --color-warn-ink: oklch(0.47 0.11 62);
+  --color-danger: oklch(0.585 0.19 25);
+  --color-danger-ink: oklch(0.505 0.19 27);
+  --color-danger-tint: oklch(0.90 0.05 30);
+  --color-info: oklch(0.62 0.12 245);
+  --color-info-ink: oklch(0.47 0.13 250);
+  --color-info-tint: oklch(0.90 0.045 245);
 
-  /* -- Confidence dots. -------------------------------------------------------- */
-  --color-conf-high: oklch(0.70 0.14 158);
-  --color-conf-medium: oklch(0.79 0.15 78);
-  --color-conf-low: oklch(0.66 0.16 30);
+  --color-conf-high: oklch(0.66 0.14 158);
+  --color-conf-medium: oklch(0.795 0.155 78);
+  --color-conf-low: oklch(0.64 0.02 70);
 
-  /* -- Radii: crisper than the SaaS-default. Controls 8px, cards 12px. --------- */
-  --radius-control: 8px;
-  --radius-card: 12px;
-  --radius-lg: 16px;
+  --radius-control: 9px;
+  --radius-card: 13px;
+  --radius-lg: 18px;
 
-  /* -- Shadows: tinted to the cool plane, never pure black. Elevation is carried
-        by hairlines; shadows only on true floats. -------------------------------- */
-  --shadow-sm: 0 1px 2px oklch(0.5 0.03 264 / 0.05), 0 1px 1px oklch(0.5 0.03 264 / 0.03);
-  --shadow-md: 0 2px 4px oklch(0.5 0.03 264 / 0.05), 0 8px 20px oklch(0.5 0.03 264 / 0.06);
-  --shadow-lg: 0 4px 8px oklch(0.5 0.03 264 / 0.06), 0 18px 44px oklch(0.5 0.03 264 / 0.10);
-  --shadow-accent: 0 4px 14px oklch(0.79 0.16 78 / 0.30);
+  --shadow-sm: 0 1px 2px oklch(0.2 0.01 60 / 0.35), 0 1px 1px oklch(0.2 0.01 60 / 0.25);
+  --shadow-md: 0 2px 5px oklch(0.2 0.01 60 / 0.35), 0 10px 26px oklch(0.15 0.01 60 / 0.35);
+  --shadow-lg: 0 4px 8px oklch(0.15 0.01 60 / 0.4), 0 24px 56px oklch(0.12 0.01 60 / 0.5);
+  --shadow-accent: 0 2px 0 var(--color-accent-strong), 0 6px 14px oklch(0.665 0.15 60 / 0.4);
 
-  /* -- Motion: exponential ease-out, 150–250ms. State, not choreography. -------- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur-fast: 150ms;
-  --dur: 200ms;
+  --dur-fast: 130ms;
+  --dur: 190ms;
   --dur-slow: 260ms;
 
-  /* -- Semantic z-scale. ------------------------------------------------------- */
   --z-base: 0;
   --z-sticky: 20;
   --z-dropdown: 40;
   --z-toast: 80;
+
+  /* engraved (debossed) text: light below, dark above — labels etched into ivory */
+  --engrave: 0 1px 0 oklch(1 0 0 / 0.5), 0 -1px 1px oklch(0.2 0.01 60 / 0.25);
 }
 
-/* -- Base reset over the framework reset. ------------------------------------- */
+/* -- Base: the dark studio desk. --------------------------------------------- */
 html {
   background: var(--color-canvas);
   color: var(--color-ink-2);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  color-scheme: light;
+  color-scheme: dark;
 }
 body {
-  background: var(--color-canvas);
+  background:
+    radial-gradient(130% 90% at 50% -6%, oklch(0.36 0.015 66) 0%, var(--color-canvas) 44%, oklch(0.22 0.012 60) 100%);
   color: var(--color-ink-2);
   font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.55;
-  /* faint instrument grid on the work plane — reads as engineering paper, not a
-     flat void. Extremely subtle; carries the "bench" texture without noise. */
-  background-image:
-    linear-gradient(oklch(0.5 0.03 264 / 0.018) 1px, transparent 1px),
-    linear-gradient(90deg, oklch(0.5 0.03 264 / 0.018) 1px, transparent 1px);
-  background-size: 27px 27px, 27px 27px;
-  background-position: -1px -1px;
 }
 ::selection { background: var(--color-accent-tint); color: var(--color-accent-ink); }
 
-/* Focus: a visible marigold ring, consistent everywhere. */
 :where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: 2px solid var(--color-accent-strong);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 5px;
 }
 
 h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
 
-/* Micro-label: the structural voice of the instrument (small, uppercase, tracked,
-   tabular where it counts). Used once per structural region, never as a per-section
-   eyebrow. */
+/* Engraved micro-label — the instrument's structural voice. */
 .eyebrow {
-  font-size: 0.66rem; font-weight: 600; letter-spacing: 0.09em;
+  font-size: 0.64rem; font-weight: 700; letter-spacing: 0.18em;
   text-transform: uppercase; color: var(--color-faint);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums; text-shadow: var(--engrave);
 }
 
 /* ============================================================================
-   Signature: the light spectrum. Structural, not decorative.
-   - .spectrum-bar : the warm→cool axis fill (used in the calibration read-out,
-     the look-distance legend, the EV track).
-   - .spectrum-spine : the vertical seam between rail (chrome) and work surface.
+   THE DEVICE — the bakelite instrument body with a chrome edge & corner screws.
+   page.tsx wraps the whole app in .device.
    ============================================================================ */
-.spectrum-bar { background: var(--spectrum-grad); }
-
-.spectrum-spine {
-  background: var(--spectrum-grad);
-  /* runs top→bottom as a vertical axis */
-  background: linear-gradient(
-    180deg,
-    var(--spectrum-warm) 0%,
-    var(--spectrum-key) 26%,
-    var(--spectrum-day) 62%,
-    var(--spectrum-cool) 100%
-  );
+.device {
+  position: relative; border-radius: 26px; padding: 20px;
+  background: linear-gradient(180deg, oklch(0.70 0.01 74), var(--color-chrome) 32%, oklch(0.55 0.01 72));
+  border: 1px solid var(--color-chrome-line);
+  box-shadow:
+    0 1px 0 oklch(1 0 0 / 0.18) inset,
+    0 -2px 3px oklch(0.2 0.01 60 / 0.3) inset,
+    0 30px 70px -20px oklch(0.1 0.01 60 / 0.75),
+    0 2px 0 oklch(0.35 0.01 66);
+}
+.device::before {
+  content: ""; position: absolute; inset: 9px; border-radius: 18px; pointer-events: none;
+  border: 1px solid oklch(0.2 0.01 60 / 0.3); box-shadow: 0 1px 0 oklch(1 0 0 / 0.12) inset;
+}
+.screw {
+  position: absolute; width: 15px; height: 15px; border-radius: 50%; z-index: 1;
+  background: radial-gradient(circle at 35% 30%, var(--nickel-hi), var(--nickel) 55%, var(--nickel-lo));
+  box-shadow: 0 1px 1px oklch(0.15 0.01 60 / 0.55), 0 1px 0 oklch(1 0 0 / 0.25) inset;
+}
+.screw::after {
+  content: ""; position: absolute; inset: 0; margin: auto; width: 9px; height: 2px; border-radius: 1px;
+  background: linear-gradient(90deg, var(--nickel-edge), var(--nickel)); transform: rotate(35deg);
 }
 
-/* The calibration read-out: a spectrum scale with a live tick at the matched
-   temperature. The tick is the marigold key-light marker. */
-.calib-scale {
-  position: relative; height: 6px; border-radius: 999px;
-  background: var(--spectrum-grad);
-  box-shadow: inset 0 0 0 1px oklch(0.5 0.03 264 / 0.08);
+/* The wordmark needle-dial — an ivory gauge face with a nickel ring and a marigold
+   needle at rest. The mark IS a little meter. */
+.lm-needle {
+  width: 34px; height: 34px; border-radius: 50%; flex: none; position: relative;
+  background: radial-gradient(circle at 40% 35%, oklch(0.96 0.012 88), var(--color-surface) 60%, oklch(0.86 0.016 84));
+  box-shadow: 0 0 0 3px var(--nickel-lo), 0 0 0 4px var(--nickel-edge),
+              0 2px 4px oklch(0.15 0.01 60 / 0.5), 0 1px 2px oklch(0.2 0.01 60 / 0.5) inset;
 }
-.calib-tick {
-  position: absolute; top: 50%; width: 3px; height: 16px;
-  border-radius: 999px; background: var(--color-surface);
-  box-shadow: 0 0 0 2px var(--color-accent-strong), var(--shadow-sm);
-  transform: translate(-50%, -50%);
+.lm-needle::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 13px; border-radius: 2px;
+  background: linear-gradient(var(--color-accent), var(--color-accent-strong));
+  transform-origin: bottom center; transform: translate(-50%, -100%) rotate(34deg);
+  box-shadow: 0 0 5px var(--amber-glow);
 }
 
 /* ============================================================================
-   The two planes.
-   - .rail : the control chrome plane (cooler/deeper). Not a card — a panel.
-   - .work-card : the bright focal surface on the work plane.
-   - .rail-cell : a recessed grouping inside the rail (steps).
+   The two planes, re-cast: .rail = a bakelite panel, .work-card = an ivory dial.
    ============================================================================ */
 .rail {
-  background: var(--color-chrome);
+  background: linear-gradient(180deg, oklch(0.665 0.01 74), var(--color-chrome) 50%, oklch(0.60 0.01 72));
   border: 1px solid var(--color-chrome-line);
   border-radius: var(--radius-lg);
+  box-shadow: 0 1px 0 oklch(1 0 0 / 0.14) inset, 0 -1px 2px oklch(0.2 0.01 60 / 0.25) inset;
 }
 .rail-cell {
-  background: var(--color-chrome-2);
+  background: linear-gradient(180deg, oklch(0.575 0.01 72), var(--color-chrome-2));
   border: 1px solid var(--color-chrome-line);
   border-radius: var(--radius-card);
+  box-shadow: 0 2px 4px oklch(0.2 0.01 60 / 0.35) inset;
 }
 
+/* Ivory dial faces — recessed under a faint glass sheen, nickel-ringed. */
 .card, .work-card {
-  background: var(--color-surface); border: 1px solid var(--color-line);
-  border-radius: var(--radius-card); box-shadow: var(--shadow-sm);
+  position: relative;
+  background: linear-gradient(180deg, oklch(0.945 0.014 88), var(--color-surface));
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  box-shadow: 0 1px 0 oklch(1 0 0 / 0.7) inset, 0 0 0 1px oklch(0.76 0.02 82 / 0.6), 0 3px 6px oklch(0.15 0.01 60 / 0.3);
 }
-/* the recipe (the hero) sits on the strongest hairline + a hair more lift */
-.work-card--hero { box-shadow: var(--shadow-md); }
+.work-card--hero { box-shadow: 0 1px 0 oklch(1 0 0 / 0.7) inset, 0 0 0 1px oklch(0.76 0.02 82 / 0.6), 0 6px 16px oklch(0.12 0.01 60 / 0.4); }
 
 /* ============================================================================
-   Buttons — one shape system, full states.
+   Buttons.
    ============================================================================ */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
-  font-weight: 560; font-size: 0.9rem; line-height: 1;
+  font-weight: 600; font-size: 0.9rem; line-height: 1;
   border-radius: var(--radius-control); padding: 0.7rem 1.15rem; cursor: pointer;
-  border: 1px solid transparent; white-space: nowrap;
-  transition: transform var(--dur-fast) var(--ease-out),
-              background-color var(--dur) var(--ease-out),
-              box-shadow var(--dur) var(--ease-out),
-              border-color var(--dur) var(--ease-out),
-              color var(--dur) var(--ease-out);
+  border: none; white-space: nowrap;
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur) var(--ease-out),
+              background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
 }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { cursor: not-allowed; }
 
 .btn-primary {
-  background: var(--color-accent); color: oklch(0.27 0.09 62);
-  box-shadow: var(--shadow-accent);
-  font-weight: 640; letter-spacing: 0.005em;
+  color: oklch(0.28 0.09 55);
+  background: linear-gradient(180deg, var(--color-accent-hi), var(--color-accent) 55%, oklch(0.72 0.15 66));
+  box-shadow: 0 2px 0 var(--color-accent-strong), 0 4px 8px oklch(0.665 0.15 60 / 0.35), 0 1px 0 oklch(1 0 0 / 0.4) inset;
+  text-shadow: 0 1px 0 oklch(1 0 0 / 0.3);
 }
-.btn-primary:not(:disabled):hover { background: oklch(0.81 0.16 80); transform: translateY(-1px); box-shadow: 0 6px 18px oklch(0.79 0.16 78 / 0.36); }
-.btn-primary:not(:disabled):active { background: var(--color-accent-strong); }
-.btn-primary:disabled { box-shadow: none; background: var(--color-chrome-2); color: var(--color-faint); border-color: var(--color-chrome-line); }
+.btn-primary:not(:disabled):hover { transform: translateY(-1px); }
+.btn-primary:not(:disabled):active { transform: translateY(1px); box-shadow: 0 2px 5px oklch(0.4 0.08 55 / 0.4) inset; }
+.btn-primary:disabled { background: var(--color-chrome-2); color: var(--color-faint); box-shadow: 0 2px 3px oklch(0.2 0.01 60 / 0.3) inset; text-shadow: none; }
 
-/* ============================================================================
-   Analyze — the commit action of the flow. A confident marigold key with a warm
-   top-light sheen (the spectrum's warm end), a taller hit area, and its own
-   busy state. Not decoration: the sheen is the light the tool is about.
-   ============================================================================ */
+/* THE TRIGGER — the shutter-release / meter button. One primary action. */
 .btn-analyze {
   position: relative; overflow: hidden;
-  padding-top: 0.82rem; padding-bottom: 0.82rem;
-  font-size: 0.92rem;
-  background-image: linear-gradient(
-    180deg,
-    oklch(0.83 0.155 82) 0%,
-    var(--color-accent) 46%,
-    oklch(0.775 0.165 74) 100%
-  );
-  box-shadow: var(--shadow-accent), inset 0 1px 0 oklch(1 0 0 / 0.35);
+  padding: 1rem 1.15rem; font-size: 0.95rem; font-weight: 800;
+  letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.30 0.09 45);
+  background: linear-gradient(180deg, var(--color-accent-hi), var(--color-accent) 52%, oklch(0.70 0.15 62));
+  box-shadow: 0 3px 0 var(--color-accent-strong), 0 7px 14px oklch(0.55 0.13 55 / 0.45), 0 1px 0 oklch(1 0 0 / 0.5) inset;
+  text-shadow: 0 1px 0 oklch(1 0 0 / 0.35);
 }
-/* a soft key-light glint that sweeps once on hover — reads as light catching a
-   physical control, gated by reduced-motion below. */
 .btn-analyze::after {
   content: ""; position: absolute; inset: 0;
-  background: linear-gradient(105deg, transparent 30%, oklch(1 0 0 / 0.4) 50%, transparent 70%);
-  transform: translateX(-120%);
-  transition: transform var(--dur-slow) var(--ease-out);
-  pointer-events: none;
+  background: linear-gradient(105deg, transparent 34%, oklch(1 0 0 / 0.45) 50%, transparent 66%);
+  transform: translateX(-120%); transition: transform var(--dur-slow) var(--ease-out); pointer-events: none;
 }
 .btn-analyze:not(:disabled):hover::after { transform: translateX(120%); }
-.btn-analyze:not(:disabled):hover {
-  background-image: linear-gradient(
-    180deg,
-    oklch(0.845 0.155 84) 0%,
-    oklch(0.81 0.16 80) 48%,
-    oklch(0.79 0.165 76) 100%
-  );
-  transform: translateY(-1px);
-  box-shadow: 0 8px 22px oklch(0.79 0.16 78 / 0.4), inset 0 1px 0 oklch(1 0 0 / 0.4);
-}
+.btn-analyze:not(:disabled):hover { transform: translateY(-1px); }
 .btn-analyze:not(:disabled):active {
-  transform: translateY(1px);
-  background-image: none; background-color: var(--color-accent-strong);
-  box-shadow: var(--shadow-sm), inset 0 1px 3px oklch(0.4 0.08 60 / 0.25);
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--color-accent-strong), 0 2px 6px oklch(0.4 0.08 50 / 0.4) inset;
 }
 .btn-analyze:disabled {
-  background-image: none; background-color: var(--color-chrome-2);
-  color: var(--color-faint); border-color: var(--color-chrome-line);
-  box-shadow: none;
+  background: linear-gradient(180deg, oklch(0.60 0.01 72), var(--color-chrome-2));
+  color: oklch(0.42 0.01 66); box-shadow: 0 2px 4px oklch(0.2 0.01 60 / 0.35) inset; text-shadow: none;
 }
-/* Busy: hold the marigold but calm it, and let the sweep loop gently while the
-   model reads the light. */
-.btn-analyze[data-busy="true"] {
-  background-image: none; background-color: var(--color-accent);
-  color: oklch(0.27 0.09 62); cursor: progress;
-  box-shadow: var(--shadow-accent);
-}
+.btn-analyze[data-busy="true"] { cursor: progress; color: oklch(0.30 0.09 45); }
 .btn-analyze[data-busy="true"]::after { animation: lm-sweep 1.5s var(--ease-out) infinite; transform: none; }
 
-/* The "also match the other target" affordance — a quiet, tidy secondary row
-   that sits under a hairline. Reads as a related option, never competes with
-   the primary. */
+/* Secondary "also match the other target" row — an engraved metal tab. */
 .btn-alt-target {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
-  padding: 0.5rem 0.85rem; font-size: 0.8rem; font-weight: 540;
-  border-radius: var(--radius-control); cursor: pointer;
-  background: transparent; color: var(--color-muted);
-  border: 1px dashed var(--color-line-strong);
-  transition: color var(--dur) var(--ease-out), background-color var(--dur) var(--ease-out),
-              border-color var(--dur) var(--ease-out);
+  padding: 0.55rem 0.85rem; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.02em;
+  border-radius: var(--radius-control); cursor: pointer; color: oklch(0.90 0.01 84);
+  background: linear-gradient(180deg, oklch(0.66 0.01 74), oklch(0.58 0.01 72));
+  border: none; text-shadow: 0 -1px 1px oklch(0.2 0.01 60 / 0.4);
+  box-shadow: 0 2px 0 var(--color-chrome-line), 0 2px 4px oklch(0.2 0.01 60 / 0.3), 0 1px 0 oklch(1 0 0 / 0.18) inset;
+  transition: transform var(--dur-fast) var(--ease-out), color var(--dur) var(--ease-out);
 }
-.btn-alt-target__lead {
-  font-weight: 600; font-size: 0.95rem; line-height: 1;
-  color: var(--color-accent-ink); opacity: 0.75;
-  transition: opacity var(--dur) var(--ease-out);
-}
-.btn-alt-target:not(:disabled):hover {
-  color: var(--color-accent-ink); background: var(--color-accent-tint);
-  border-color: var(--color-accent-line); border-style: solid;
-}
-.btn-alt-target:not(:disabled):hover .btn-alt-target__lead { opacity: 1; }
-.btn-alt-target:not(:disabled):active { background: var(--color-accent-tint-2); }
-.btn-alt-target:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-alt-target__lead { font-weight: 700; font-size: 0.95rem; line-height: 1; color: var(--color-accent-hi); }
+.btn-alt-target:not(:disabled):hover { color: var(--color-accent-hi); transform: translateY(-1px); }
+.btn-alt-target:not(:disabled):active { transform: translateY(1px); }
+.btn-alt-target:disabled { opacity: 0.55; cursor: not-allowed; }
 
+/* Engraved ivory secondary + nickel ghost/mini for copy actions. */
 .btn-secondary {
-  background: var(--color-surface); color: var(--color-ink-2);
-  border-color: var(--color-line-strong); box-shadow: var(--shadow-sm);
+  color: var(--color-ink-2);
+  background: linear-gradient(180deg, oklch(0.945 0.014 88), var(--color-surface-2));
+  box-shadow: 0 2px 0 var(--color-line-strong), 0 2px 3px oklch(0.2 0.01 60 / 0.2), 0 1px 0 oklch(1 0 0 / 0.7) inset;
 }
-.btn-secondary:not(:disabled):hover { border-color: var(--color-accent-line); background: var(--color-accent-tint); color: var(--color-accent-ink); }
-.btn-secondary:not(:disabled):active { background: var(--color-accent-tint-2); }
-.btn-secondary:disabled { opacity: 0.5; }
+.btn-secondary:not(:disabled):hover { color: var(--color-accent-ink); transform: translateY(-1px); }
+.btn-secondary:not(:disabled):active { transform: translateY(1px); box-shadow: 0 1px 2px oklch(0.2 0.01 60 / 0.25) inset; }
+.btn-secondary:disabled { opacity: 0.55; }
 
 .btn-ghost {
-  background: transparent; color: var(--color-muted);
-  padding: 0.45rem 0.7rem; font-size: 0.82rem; border-radius: var(--radius-control);
+  background: linear-gradient(180deg, oklch(0.64 0.01 74), oklch(0.57 0.01 72));
+  color: oklch(0.94 0.008 84); padding: 0.5rem 0.75rem; font-size: 0.78rem; font-weight: 600;
+  letter-spacing: 0.04em; border: none; border-radius: var(--radius-control); cursor: pointer;
+  text-shadow: 0 -1px 1px oklch(0.2 0.01 60 / 0.35);
+  box-shadow: 0 2px 0 var(--color-chrome-line), 0 1px 3px oklch(0.2 0.01 60 / 0.3), 0 1px 0 oklch(1 0 0 / 0.16) inset;
+  transition: transform var(--dur-fast) var(--ease-out), color var(--dur) var(--ease-out);
 }
-.btn-ghost:hover { background: oklch(0.5 0.03 264 / 0.06); color: var(--color-ink-2); }
-.btn-ghost:active { background: oklch(0.5 0.03 264 / 0.10); }
-.btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-ghost:hover { color: var(--color-accent-hi); }
+.btn-ghost:active { transform: translateY(1px); box-shadow: 0 1px 3px oklch(0.2 0.01 60 / 0.35) inset; }
+.btn-ghost:disabled { opacity: 0.55; cursor: not-allowed; }
 
-/* Context chip — quiet default, marigold when selected. */
-.btn-chip {
-  padding: 0.34rem 0.7rem; font-size: 0.79rem; font-weight: 500;
-  border-radius: 999px; background: var(--color-surface);
-  border: 1px solid var(--color-chrome-line); color: var(--color-muted);
-  cursor: pointer; white-space: nowrap; text-align: center;
-  transition: color var(--dur-fast) var(--ease-out),
-              background-color var(--dur-fast) var(--ease-out),
-              border-color var(--dur-fast) var(--ease-out),
-              box-shadow var(--dur-fast) var(--ease-out),
-              transform var(--dur-fast) var(--ease-out);
+.btn-mini {
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em;
+  padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer; color: var(--color-ink-2);
+  background: linear-gradient(180deg, oklch(0.94 0.014 88), var(--color-surface-2));
+  border: none; box-shadow: 0 1px 0 var(--color-line-strong), 0 1px 2px oklch(0.2 0.01 60 / 0.2), 0 1px 0 oklch(1 0 0 / 0.7) inset;
+  transition: transform var(--dur-fast) var(--ease-out), color var(--dur) var(--ease-out);
 }
-.btn-chip:hover { border-color: var(--color-accent-line); color: var(--color-ink-2); background: var(--color-surface); }
-.btn-chip:active { transform: translateY(0.5px); }
-.btn-chip[data-on="true"] {
-  background: var(--color-accent-tint); border-color: var(--color-accent-line);
-  color: var(--color-accent-ink); font-weight: 600;
-  box-shadow: inset 0 0 0 1px oklch(0.865 0.09 80 / 0.5);
-}
+.btn-mini:hover { color: var(--color-accent-ink); }
+.btn-mini:active { transform: translateY(1px); }
+.btn-mini:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* ============================================================================
-   Set-the-scene — a calm, crafted context picker. Each group is a labelled
-   band; the label carries a state dot (marigold once a choice is made). Chips
-   flow into a tidy auto-fit grid so the 10 time options wrap into even rows
-   instead of a ragged pile.
+   Illuminated PUSHBUTTONS — the scene / time / rig picker. Active = depressed +
+   amber lamp lit. (.btn-chip keeps its name; the components are untouched.)
    ============================================================================ */
+.btn-chip {
+  position: relative; padding: 0.42rem 0.8rem 0.42rem 0.8rem; font-size: 0.79rem; font-weight: 600;
+  border-radius: 8px; cursor: pointer; white-space: nowrap; text-align: center; color: var(--color-ink-2);
+  background: linear-gradient(180deg, oklch(0.955 0.012 88), oklch(0.90 0.016 86));
+  border: none; box-shadow: 0 2px 0 var(--color-line-strong), 0 2px 3px oklch(0.2 0.01 60 / 0.22), 0 1px 0 oklch(1 0 0 / 0.8) inset;
+  transition: transform var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.btn-chip:hover { color: var(--color-ink); }
+.btn-chip:active { transform: translateY(1px); box-shadow: 0 1px 2px oklch(0.2 0.01 60 / 0.25) inset; }
+.btn-chip[data-on="true"] {
+  color: var(--color-accent-ink); font-weight: 700; padding-left: 1.5rem;
+  background: linear-gradient(180deg, oklch(0.90 0.055 84), oklch(0.865 0.075 82));
+  box-shadow: 0 1px 2px oklch(0.4 0.06 55 / 0.28) inset, 0 0 0 1px var(--color-accent-line);
+}
+.btn-chip[data-on="true"]::before {
+  content: ""; position: absolute; left: 0.62rem; top: 50%; transform: translateY(-50%);
+  width: 7px; height: 7px; border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, var(--color-accent-hi), var(--color-accent) 60%, var(--color-accent-strong));
+  box-shadow: 0 0 6px 1px var(--amber-glow), 0 1px 1px oklch(0.2 0.01 60 / 0.3) inset;
+}
+
+/* Scene groups: engraved band label with a lamp dot, chips flow into even rows. */
 .chip-group { display: flex; flex-direction: column; gap: 0.5rem; }
 .chip-group-label {
   display: flex; align-items: center; gap: 0.4rem;
-  font-size: 0.64rem; font-weight: 600; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--color-faint);
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--color-faint); text-shadow: var(--engrave);
 }
 .chip-group-dot {
-  width: 5px; height: 5px; border-radius: 999px; flex: none;
-  background: var(--color-line-strong);
-  transition: background-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+  width: 6px; height: 6px; border-radius: 999px; flex: none;
+  background: radial-gradient(circle, oklch(0.55 0.008 70), oklch(0.42 0.008 66));
+  box-shadow: 0 1px 1px oklch(0.2 0.01 60 / 0.5) inset;
+  transition: background var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
 }
 .chip-group-dot.is-set {
-  background: var(--color-accent);
-  box-shadow: 0 0 0 2px var(--color-accent-tint);
+  background: radial-gradient(circle at 40% 35%, var(--color-accent-hi), var(--color-accent) 60%, var(--color-accent-strong));
+  box-shadow: 0 0 7px 1px var(--amber-glow);
 }
-/* Even, self-balancing rows: chips size to a comfortable min and share the
-   remaining space so no orphan sits alone on a line. */
-.chip-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(4.75rem, 1fr));
-  gap: 0.4rem;
-}
-/* Scene (3) and Rig (3) read best as a snug inline row, not a stretched grid. */
-.chip-grid:has(> :nth-child(3):last-child) {
-  display: flex; flex-wrap: wrap;
-}
+.chip-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(4.75rem, 1fr)); gap: 0.42rem; }
+.chip-grid:has(> :nth-child(3):last-child) { display: flex; flex-wrap: wrap; }
 .chip-grid:has(> :nth-child(3):last-child) .btn-chip { flex: 0 1 auto; }
 
-/* Small inline copy button. */
-.btn-mini {
-  font-size: 0.72rem; font-weight: 560; letter-spacing: 0.01em;
-  padding: 0.28rem 0.6rem; border-radius: 6px;
-  background: var(--color-surface-2); border: 1px solid var(--color-line);
-  color: var(--color-muted); cursor: pointer;
-  transition: all var(--dur-fast) var(--ease-out);
-}
-.btn-mini:hover { border-color: var(--color-accent-line); color: var(--color-accent-ink); background: var(--color-accent-tint); }
-.btn-mini:active { transform: translateY(1px); }
-.btn-mini:disabled { opacity: 0.5; cursor: not-allowed; }
-
 /* ============================================================================
-   Segmented toggle (target renderer) — lives on the chrome plane.
+   The ROCKER — target renderer mode selector. Selected side sits DEPRESSED + lit.
+   (.segmented / .segmented-btn keep their names; Header is untouched.)
    ============================================================================ */
-.segmented { display: inline-flex; padding: 3px; gap: 2px; background: var(--color-chrome-2); border-radius: var(--radius-control); border: 1px solid var(--color-chrome-line); }
-.segmented-btn {
-  padding: 0.4rem 0.85rem; font-size: 0.82rem; font-weight: 540;
-  border-radius: 6px; color: var(--color-muted); cursor: pointer;
-  border: 1px solid transparent; background: transparent;
-  transition: all var(--dur) var(--ease-out);
+.segmented {
+  display: inline-flex; padding: 4px; gap: 3px; border-radius: 11px;
+  background: linear-gradient(180deg, oklch(0.50 0.01 70), oklch(0.58 0.01 72));
+  box-shadow: 0 2px 4px oklch(0.15 0.01 60 / 0.45) inset, 0 1px 0 oklch(1 0 0 / 0.1);
 }
-.segmented-btn:hover { color: var(--color-ink-2); }
+.segmented-btn {
+  position: relative; padding: 0.5rem 0.9rem 0.5rem 1.55rem; font-size: 0.8rem; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase; border-radius: 8px; cursor: pointer; border: none;
+  color: oklch(0.90 0.01 84);
+  background: linear-gradient(180deg, oklch(0.72 0.01 76), oklch(0.60 0.01 72));
+  box-shadow: 0 2px 0 oklch(0.44 0.01 68), 0 3px 4px oklch(0.2 0.01 60 / 0.35), 0 1px 0 oklch(1 0 0 / 0.22) inset;
+  text-shadow: 0 -1px 1px oklch(0.2 0.01 60 / 0.4);
+  transition: color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+.segmented-btn::before {
+  content: ""; position: absolute; left: 0.62rem; top: 50%; transform: translateY(-50%);
+  width: 7px; height: 7px; border-radius: 50%;
+  background: radial-gradient(circle, oklch(0.40 0.008 66), oklch(0.30 0.008 62));
+  box-shadow: 0 1px 1px oklch(0.15 0.01 60 / 0.6) inset;
+}
+.segmented-btn:hover { color: oklch(0.97 0.008 84); }
 .segmented-btn[data-on="true"] {
-  background: var(--color-surface); color: var(--color-ink);
-  box-shadow: var(--shadow-sm); font-weight: 600;
+  color: var(--color-accent-hi);
+  background: linear-gradient(180deg, oklch(0.47 0.01 70), oklch(0.54 0.01 72));
+  box-shadow: 0 2px 5px oklch(0.15 0.01 60 / 0.6) inset, 0 0 0 1px oklch(0.2 0.01 60 / 0.35);
+}
+.segmented-btn[data-on="true"]::before {
+  background: radial-gradient(circle at 40% 35%, var(--color-accent-hi), var(--color-accent) 60%, var(--color-accent-strong));
+  box-shadow: 0 0 7px 2px var(--amber-glow);
 }
 
 /* ============================================================================
-   Inputs.
+   Recessed controls — text field & select read as sunk into the ivory / bakelite.
    ============================================================================ */
 .field {
   width: 100%; font-size: 0.85rem; font-family: var(--font-mono);
-  padding: 0.5rem 0.7rem; border-radius: var(--radius-control);
-  background: var(--color-surface); border: 1px solid var(--color-line-strong);
-  color: var(--color-ink); transition: border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+  padding: 0.55rem 0.7rem; border-radius: var(--radius-control); color: var(--color-ink);
+  background: linear-gradient(180deg, oklch(0.90 0.014 86), oklch(0.94 0.012 88));
+  border: none; box-shadow: 0 2px 4px oklch(0.2 0.01 60 / 0.22) inset, 0 1px 0 oklch(1 0 0 / 0.6);
+  transition: box-shadow var(--dur) var(--ease-out);
 }
 .field::placeholder { color: var(--color-faint); }
-.field:hover { border-color: var(--color-muted); }
-.field:focus { outline: none; border-color: var(--color-accent-strong); box-shadow: 0 0 0 3px var(--color-accent-tint); }
+.field:focus { outline: none; box-shadow: 0 2px 4px oklch(0.2 0.01 60 / 0.22) inset, 0 0 0 2px var(--color-accent); }
 
 .select {
-  font-size: 0.82rem; font-weight: 520; padding: 0.45rem 2rem 0.45rem 0.75rem;
-  border-radius: var(--radius-control); background: var(--color-surface);
-  border: 1px solid var(--color-line-strong); color: var(--color-ink-2); cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%23808a99' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  font-size: 0.8rem; font-weight: 600; letter-spacing: 0.02em; padding: 0.5rem 2rem 0.5rem 0.75rem;
+  border-radius: var(--radius-control); color: oklch(0.95 0.008 84); cursor: pointer; appearance: none;
+  background-color: oklch(0.60 0.01 72);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%23e8a13a' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 0.6rem center;
-  transition: border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+  border: none; text-shadow: 0 -1px 1px oklch(0.2 0.01 60 / 0.4);
+  box-shadow: 0 2px 4px oklch(0.15 0.01 60 / 0.4) inset, 0 1px 0 oklch(1 0 0 / 0.14);
 }
-.select:hover { border-color: var(--color-muted); }
-.select:focus { outline: none; border-color: var(--color-accent-strong); box-shadow: 0 0 0 3px var(--color-accent-tint); }
+.select:focus { outline: none; box-shadow: 0 2px 4px oklch(0.15 0.01 60 / 0.4) inset, 0 0 0 2px var(--color-accent); }
 
 /* ============================================================================
-   EXR exposure slider — the develop control on an EXR-backed drop slot. The track
-   is the warm→cool light spectrum (the identity motif); the thumb is the key.
+   GAUGE WINDOW — the image drop as a glass instrument window in a nickel bezel.
+   Helper classes used by DropSlot.
    ============================================================================ */
-.exr-ev-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  height: 18px;
-  background: transparent;
-  cursor: pointer;
+.gauge-win {
+  border-radius: 14px; padding: 8px;
+  background: linear-gradient(180deg, var(--nickel-hi), var(--nickel) 46%, var(--nickel-lo));
+  box-shadow: 0 2px 5px oklch(0.15 0.01 60 / 0.45), 0 1px 0 oklch(1 0 0 / 0.6) inset, 0 -1px 2px oklch(0.2 0.01 60 / 0.3) inset;
 }
-.exr-ev-slider::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    var(--spectrum-cool) 0%,
-    var(--spectrum-day) 45%,
-    var(--spectrum-key) 72%,
-    var(--spectrum-warm) 100%
-  );
-  border: 1px solid var(--color-line);
+.gauge-win.is-drop { box-shadow: 0 0 0 2px var(--color-accent), 0 2px 5px oklch(0.15 0.01 60 / 0.45), 0 1px 0 oklch(1 0 0 / 0.6) inset; }
+.gauge-glass {
+  position: relative; border-radius: 8px; overflow: hidden;
+  box-shadow: 0 2px 6px oklch(0.12 0.01 60 / 0.6) inset, 0 0 0 1px oklch(0.2 0.01 60 / 0.4);
 }
-.exr-ev-slider::-moz-range-track {
-  height: 6px;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    var(--spectrum-cool) 0%,
-    var(--spectrum-day) 45%,
-    var(--spectrum-key) 72%,
-    var(--spectrum-warm) 100%
-  );
-  border: 1px solid var(--color-line);
-}
-.exr-ev-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 15px;
-  height: 15px;
-  margin-top: -5.5px;
-  border-radius: 999px;
-  background: var(--color-surface);
-  border: 2px solid var(--color-accent-strong);
-  box-shadow: var(--shadow-sm);
-  transition: transform var(--dur-fast) var(--ease-out), border-color var(--dur) var(--ease-out);
-}
-.exr-ev-slider::-moz-range-thumb {
-  width: 15px;
-  height: 15px;
-  border-radius: 999px;
-  background: var(--color-surface);
-  border: 2px solid var(--color-accent-strong);
-  box-shadow: var(--shadow-sm);
-}
-.exr-ev-slider:hover::-webkit-slider-thumb { transform: scale(1.12); border-color: var(--color-accent); }
-.exr-ev-slider:focus-visible { outline: none; }
-.exr-ev-slider:focus-visible::-webkit-slider-thumb {
-  outline: 2px solid var(--color-accent-strong);
-  outline-offset: 2px;
-}
-.exr-ev-slider:focus-visible::-moz-range-thumb {
-  outline: 2px solid var(--color-accent-strong);
-  outline-offset: 2px;
+.gauge-glass::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(120deg, oklch(1 0 0 / 0.24) 0%, transparent 34%, transparent 66%, oklch(1 0 0 / 0.1) 100%);
 }
 
+/* Lamp: a lit indicator jewel (loaded / active). */
+.lamp {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 40% 35%, var(--color-accent-hi), var(--color-accent) 60%, var(--color-accent-strong));
+  box-shadow: 0 0 6px 1px var(--amber-glow);
+}
+.lamp-green { background: radial-gradient(circle at 40% 35%, oklch(0.82 0.14 158), var(--color-good) 60%, oklch(0.5 0.13 160)); box-shadow: 0 0 6px 1px oklch(0.66 0.14 158 / 0.5); }
+
 /* ============================================================================
-   The photometric value jewel — mono, tabular. from → to. Set like a light-meter
-   printout: the OLD value struck through and receding, the NEW value the jewel.
+   Value window + jewel — the from → to readout, framed like a little meter window.
    ============================================================================ */
 .jewel { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
 .jewel-from { color: var(--color-faint); text-decoration: line-through; text-decoration-color: var(--color-line-strong); }
-.jewel-to { color: var(--color-accent-ink); font-weight: 600; }
-.jewel-arrow { color: var(--color-accent); }
+.jewel-to { color: var(--color-accent-ink); font-weight: 700; }
+.jewel-arrow { color: var(--color-accent-strong); }
 
-/* Breadcrumb path (ui_path). The renderer UI location recedes; the control leaf leads. */
 .path-seg { color: var(--color-faint); }
 .path-sep { color: var(--color-line-strong); margin: 0 0.15em; }
-.path-leaf { color: var(--color-ink); font-weight: 560; }
+.path-leaf { color: var(--color-ink); font-weight: 600; }
 
-/* Confidence dot. */
-.conf-dot { display: inline-block; width: 7px; height: 7px; border-radius: 999px; flex: none; }
-.conf-high { background: var(--color-conf-high); }
-.conf-medium { background: var(--color-conf-medium); }
-.conf-low { background: var(--color-conf-low); }
+/* Confidence LAMP (green / amber / grey). */
+.conf-dot {
+  display: inline-block; width: 11px; height: 11px; border-radius: 999px; flex: none;
+  box-shadow: 0 1px 1px oklch(0.2 0.01 60 / 0.35) inset;
+}
+.conf-high { background: radial-gradient(circle at 40% 35%, oklch(0.82 0.14 158), var(--color-conf-high) 60%, oklch(0.48 0.12 160)); box-shadow: 0 0 7px oklch(0.66 0.14 158 / 0.5), 0 1px 1px oklch(0.2 0.01 60 / 0.35) inset; }
+.conf-medium { background: radial-gradient(circle at 40% 35%, var(--color-accent-hi), var(--color-conf-medium) 60%, var(--color-accent-strong)); box-shadow: 0 0 7px var(--amber-glow), 0 1px 1px oklch(0.2 0.01 60 / 0.35) inset; }
+.conf-low { background: radial-gradient(circle, oklch(0.74 0.01 70), oklch(0.58 0.01 68)); box-shadow: 0 1px 1px oklch(0.2 0.01 60 / 0.35) inset; }
 
 /* ============================================================================
-   Motion: reveal + shimmer. All gated by reduced-motion.
+   The CALIBRATION GAUGE — the recipe's progress scale. An amber needle-fill on a
+   recessed ivory track. (.calib-scale / .calib-tick keep their names.)
+   ============================================================================ */
+.calib-scale {
+  position: relative; height: 12px; border-radius: 7px;
+  background: linear-gradient(180deg, oklch(0.83 0.016 84), oklch(0.90 0.014 86));
+  box-shadow: 0 1px 2px oklch(0.2 0.01 60 / 0.3) inset, 0 1px 0 oklch(1 0 0 / 0.6);
+}
+.calib-tick {
+  position: absolute; top: 50%; width: 4px; height: 20px; border-radius: 999px;
+  background: linear-gradient(180deg, var(--color-accent-hi), var(--color-accent-strong));
+  box-shadow: 0 0 8px 1px var(--amber-glow), 0 1px 2px oklch(0.2 0.01 60 / 0.4);
+  transform: translate(-50%, -50%);
+}
+.spectrum-bar { background: var(--spectrum-grad); }
+.spectrum-spine { background: linear-gradient(180deg, var(--spectrum-warm), var(--spectrum-key) 30%, var(--spectrum-day) 64%, var(--spectrum-cool)); }
+
+/* ============================================================================
+   EXR exposure slider — recessed ivory track, marigold thumb.
+   ============================================================================ */
+.exr-ev-slider { -webkit-appearance: none; appearance: none; height: 18px; background: transparent; cursor: pointer; }
+.exr-ev-slider::-webkit-slider-runnable-track {
+  height: 8px; border-radius: 999px;
+  background: linear-gradient(180deg, oklch(0.82 0.016 84), oklch(0.90 0.014 86));
+  box-shadow: 0 1px 2px oklch(0.2 0.01 60 / 0.35) inset;
+}
+.exr-ev-slider::-moz-range-track {
+  height: 8px; border-radius: 999px;
+  background: linear-gradient(180deg, oklch(0.82 0.016 84), oklch(0.90 0.014 86));
+  box-shadow: 0 1px 2px oklch(0.2 0.01 60 / 0.35) inset;
+}
+.exr-ev-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 17px; height: 17px; margin-top: -5px; border-radius: 999px;
+  background: radial-gradient(circle at 40% 35%, var(--color-accent-hi), var(--color-accent) 60%, var(--color-accent-strong));
+  border: 2px solid oklch(0.98 0.01 84); box-shadow: 0 0 6px 1px var(--amber-glow), 0 1px 2px oklch(0.2 0.01 60 / 0.4);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.exr-ev-slider::-moz-range-thumb {
+  width: 17px; height: 17px; border-radius: 999px;
+  background: radial-gradient(circle at 40% 35%, var(--color-accent-hi), var(--color-accent) 60%, var(--color-accent-strong));
+  border: 2px solid oklch(0.98 0.01 84); box-shadow: 0 0 6px 1px var(--amber-glow);
+}
+.exr-ev-slider:hover::-webkit-slider-thumb { transform: scale(1.12); }
+.exr-ev-slider:focus-visible { outline: none; }
+.exr-ev-slider:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.exr-ev-slider:focus-visible::-moz-range-thumb { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* ============================================================================
+   Motion.
    ============================================================================ */
 @keyframes lm-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes lm-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes lm-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
 @keyframes lm-sweep { 0%, 100% { transform: translateX(-30%); } 50% { transform: translateX(130%); } }
 @keyframes lm-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
-
 .animate-rise { animation: lm-rise var(--dur-slow) var(--ease-out) both; }
 .animate-fade { animation: lm-fade var(--dur) var(--ease-out) both; }
 
-/* Skeleton shimmer for the busy state. */
 .skeleton {
-  background: linear-gradient(90deg, var(--color-canvas-deep) 25%, var(--color-surface-2) 37%, var(--color-canvas-deep) 63%);
-  background-size: 200% 100%;
-  animation: lm-shimmer 1.4s linear infinite;
-  border-radius: var(--radius-control);
+  background: linear-gradient(90deg, oklch(0.86 0.014 86) 25%, oklch(0.92 0.012 88) 37%, oklch(0.86 0.014 86) 63%);
+  background-size: 200% 100%; animation: lm-shimmer 1.4s linear infinite; border-radius: var(--radius-control);
 }
-
-/* The analyzing sweep on the hero read-out. */
 .analyzing-sweep { position: relative; overflow: hidden; }
 .analyzing-sweep::after {
   content: ""; position: absolute; inset: 0; width: 40%;
-  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.55), transparent);
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.5), transparent);
   animation: lm-sweep 1.3s var(--ease-out) infinite;
 }
 
-/* Native details caret rotation. */
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
 .caret { transition: transform var(--dur) var(--ease-out); flex: none; }
 details[open] > summary .caret { transform: rotate(90deg); }
 
-/* Scrollbar (webkit) — quiet. */
 *::-webkit-scrollbar { width: 10px; height: 10px; }
-*::-webkit-scrollbar-thumb { background: var(--color-line-strong); border-radius: 999px; border: 3px solid var(--color-canvas); }
+*::-webkit-scrollbar-thumb { background: oklch(0.45 0.01 68); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
 *::-webkit-scrollbar-track { background: transparent; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important;
   }
   .animate-rise, .animate-fade { animation: lm-fade 0.001ms both; }
-  body { background-image: none; }
 }

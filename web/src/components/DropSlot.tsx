@@ -73,18 +73,12 @@ export function DropSlot({
         if (file) onFile(file);
       }}
       className={[
-        "group relative rounded-[var(--radius-control)] cursor-pointer transition-all",
-        "border overflow-hidden text-left",
-        src ? "border-[var(--color-line)] bg-[var(--color-surface)]" : "border-dashed bg-[var(--color-surface)]",
-        dragOver
-          ? "border-[var(--color-accent)] bg-[var(--color-accent-tint)] scale-[1.01]"
-          : focused && !src
-            ? "border-[var(--color-accent-line)] ring-2 ring-[var(--color-accent-tint)]"
-            : "border-[var(--color-line-strong)] hover:border-[var(--color-accent-line)]",
+        "group relative cursor-pointer transition-all text-left gauge-win",
+        dragOver ? "is-drop scale-[1.01]" : focused && !src ? "is-drop" : "",
       ].join(" ")}
       style={{ transitionDuration: "var(--dur)", transitionTimingFunction: "var(--ease-out)" }}
     >
-      <div className={`flex justify-between gap-2 px-3 ${large ? "items-start pt-3" : "items-center pt-2.5"}`}>
+      <div className={`flex justify-between gap-2 px-1.5 ${large ? "items-start pt-1" : "items-center pt-0.5"}`}>
         {large ? (
           <span className="min-w-0 flex flex-col gap-0.5">
             <span className="text-[0.9rem] font-[640] text-[var(--color-ink)] tracking-[-0.01em] leading-none">
@@ -111,9 +105,9 @@ export function DropSlot({
         )}
       </div>
 
-      <div className={`px-3 pb-3 ${large ? "pt-2.5" : "pt-2"}`}>
+      <div className={`px-1.5 pb-1.5 ${large ? "pt-2" : "pt-1.5"}`}>
         {src ? (
-          <div className="relative rounded-[10px] overflow-hidden bg-[var(--color-canvas-deep)] border border-[var(--color-line)]">
+          <div className="gauge-glass relative overflow-hidden bg-[var(--color-canvas-deep)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={src}
@@ -137,12 +131,12 @@ export function DropSlot({
           </div>
         ) : (
           <div
-            className={`rounded-[8px] grid place-items-center text-center ${previewH} bg-[var(--color-canvas-deep)]`}
+            className={`gauge-glass grid place-items-center text-center ${previewH} bg-[var(--color-canvas-deep)]`}
           >
             <div className="px-2 flex flex-col items-center">
               {large && (
                 <span
-                  className="mb-2 grid place-items-center w-8 h-8 rounded-full bg-[var(--color-surface)] border border-[var(--color-line)] text-[var(--color-faint)] group-hover:text-[var(--color-accent-ink)] group-hover:border-[var(--color-accent-line)] transition-colors"
+                  className="mb-2 grid place-items-center w-8 h-8 rounded-full bg-[oklch(0.46_0.01_70)] text-[oklch(0.86_0.01_82)] shadow-[0_1px_2px_oklch(0.15_0.01_60_/_0.5),inset_0_1px_0_oklch(1_0_0_/_0.14)] group-hover:text-[var(--color-accent-hi)] transition-colors"
                   aria-hidden
                   style={{ transitionDuration: "var(--dur)" }}
                 >
@@ -151,10 +145,10 @@ export function DropSlot({
                   </svg>
                 </span>
               )}
-              <div className={`text-[var(--color-muted)] leading-snug ${large ? "text-[0.76rem] font-medium" : "text-[0.72rem]"}`}>
-                {captionOverride || "Drop, paste, or choose a file"}
+              <div className={`text-[oklch(0.74_0.012_78)] leading-snug ${large ? "text-[0.76rem] font-medium" : "text-[0.72rem]"}`}>
+                {captionOverride || "Insert a frame"}
               </div>
-              <div className="mt-1.5 text-[0.58rem] font-medium uppercase tracking-[0.07em] text-[var(--color-faint)]">PNG · JPG · WebP · EXR</div>
+              <div className="mt-1.5 text-[0.58rem] font-medium uppercase tracking-[0.1em] text-[oklch(0.6_0.012_74)]">PNG · JPG · WebP · EXR</div>
             </div>
           </div>
         )}

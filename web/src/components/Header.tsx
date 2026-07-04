@@ -10,18 +10,18 @@ import { MODELS, TARGETS } from "./lib";
 // as a light-meter faceplate, not a SaaS logotype. --------------------------------
 function Wordmark() {
   return (
-    <div className="flex items-center gap-2.5 select-none">
-      <span aria-hidden className="relative flex items-end gap-[3px] h-8 pb-0.5">
-        {/* five graduated ticks = the spectrum axis; the key (marigold) tallest */}
-        <span className="w-[3px] h-3 rounded-full" style={{ background: "var(--spectrum-warm)" }} />
-        <span className="w-[3px] h-5 rounded-full" style={{ background: "var(--spectrum-key)", boxShadow: "0 0 8px var(--color-accent)" }} />
-        <span className="w-[3px] h-4 rounded-full" style={{ background: "var(--spectrum-day)" }} />
-        <span className="w-[3px] h-6 rounded-full" style={{ background: "var(--color-accent)" }} />
-        <span className="w-[3px] h-3.5 rounded-full" style={{ background: "var(--spectrum-cool)" }} />
-      </span>
+    <div className="flex items-center gap-3 select-none">
+      {/* the meter's needle dial — ivory face, nickel ring, marigold needle */}
+      <span aria-hidden className="lm-needle" />
       <div className="leading-none">
-        <div className="text-[1.06rem] font-[680] tracking-[-0.025em] text-[var(--color-ink)]">
-          Light<span className="text-[var(--color-accent-ink)]">Match</span>
+        <div
+          className="text-[1.14rem] font-[750] tracking-[-0.01em] text-[oklch(0.955_0.008_84)]"
+          style={{ textShadow: "0 1px 0 oklch(0.2 0.01 60 / 0.55), 0 -1px 0 oklch(1 0 0 / 0.12)" }}
+        >
+          Light<span className="text-[var(--color-accent-hi)]">Match</span>
+        </div>
+        <div className="mt-[3px] text-[0.55rem] font-semibold uppercase tracking-[0.26em] text-[oklch(0.80_0.012_80)]">
+          exposure · reference matcher
         </div>
       </div>
     </div>
@@ -89,11 +89,8 @@ export function Header() {
   };
 
   return (
-    <header
-      className="sticky top-0 backdrop-blur-md bg-[oklch(0.945_0.009_250_/_0.86)] border-b border-[var(--color-chrome-line)]"
-      style={{ zIndex: "var(--z-sticky)" as unknown as number }}
-    >
-      <div className="mx-auto max-w-[1320px] px-4 sm:px-6">
+    <header className="relative mb-4 pt-1 border-b border-[var(--color-chrome-line)] shadow-[0_1px_0_oklch(1_0_0_/_0.12)]">
+      <div className="px-2 sm:px-3">
         {/* Wraps gracefully: on narrow widths the right cluster drops below the
             wordmark+toggle. Never a fixed height (would clip the wrapped row). */}
         <div className="min-h-[62px] py-2.5 sm:py-0 flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-5">
@@ -193,10 +190,10 @@ export function Header() {
       </div>
 
       {/* privacy line + flash */}
-      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 pb-1.5 -mt-0.5 flex items-center justify-end gap-3 flex-wrap">
-        {flash && <span className="text-[0.72rem] text-[var(--color-accent-ink)] animate-fade">{flash}</span>}
-        <span className="text-[0.7rem] text-[var(--color-faint)] text-right">
-          Key & sessions: <span className="text-[var(--color-muted)]">Stored only in this browser.</span>
+      <div className="px-2 sm:px-3 pb-2 -mt-0.5 flex items-center justify-end gap-3 flex-wrap">
+        {flash && <span className="text-[0.72rem] font-medium text-[var(--color-accent-hi)] animate-fade">{flash}</span>}
+        <span className="text-[0.7rem] text-[oklch(0.72_0.012_78)] text-right">
+          Key & sessions: <span className="text-[oklch(0.82_0.01_80)]">Stored only in this browser.</span>
         </span>
       </div>
     </header>

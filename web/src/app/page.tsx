@@ -107,57 +107,57 @@ export default function Home() {
   const hasAttempts = !!(chain && chain.attempts.length > 0);
 
   return (
-    <div className="min-h-full flex flex-col">
-      <Header />
+    <div className="min-h-full">
+      {/* The instrument: one bakelite faceplate with a chrome edge and corner screws.
+          The header is its top plate; the two columns are the input bay + the readout. */}
+      <main className="mx-auto w-full max-w-[1180px] px-3 sm:px-6 py-6 sm:py-10">
+        <div className="device">
+          <span aria-hidden className="screw" style={{ top: 15, left: 15 }} />
+          <span aria-hidden className="screw" style={{ top: 15, right: 15 }} />
+          <span aria-hidden className="screw" style={{ bottom: 15, left: 15 }} />
+          <span aria-hidden className="screw" style={{ bottom: 15, right: 15 }} />
 
-      <main className="flex-1 mx-auto w-full max-w-[1320px] px-4 sm:px-6 py-5 sm:py-8">
-        {/* The optical bench: a control RAIL (chrome plane) and the WORK surface,
-            joined by the light-spectrum spine. The spine is the tool's axis made
-            structural — not a decorative stripe. */}
-        <div className="grid gap-5 lg:gap-0 lg:grid-cols-[336px_3px_minmax(0,1fr)] items-stretch">
-          {/* LEFT: the control rail (sticky on desktop) */}
-          <aside className="lg:sticky lg:top-[84px] lg:self-start lg:pr-8">
-            <InputPanel
-              focusedSlot={focusedSlot}
-              setFocusedSlot={setFocusedSlot}
-              onToast={showToast}
-            />
-          </aside>
+          <Header />
 
-          {/* the spectrum spine — the seam between chrome and work planes, and the
-              tool's axis made structural. Runs the full height of the bench with a
-              soft bloom; reads as an intentional light-guide, not a hairline. */}
-          <div aria-hidden className="hidden lg:block relative w-[3px]">
-            <span className="absolute inset-y-0 left-0 w-full rounded-full spectrum-spine shadow-[0_0_12px_0_oklch(0.86_0.15_85_/_0.5)]" />
+          {/* the bench: input bay (left) + readout (right) */}
+          <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)] items-start px-1 sm:px-2 pb-1">
+            {/* LEFT: the input bay */}
+            <aside>
+              <InputPanel
+                focusedSlot={focusedSlot}
+                setFocusedSlot={setFocusedSlot}
+                onToast={showToast}
+              />
+            </aside>
+
+            {/* RIGHT: the readout */}
+            <section className="min-w-0 flex flex-col gap-4">
+              <StorageBanner onToast={showToast} />
+              <ErrorBanner error={lastError} />
+
+              {/* main state switch */}
+              {inFlight && !hasRecipe ? (
+                <AnalyzingState />
+              ) : state === "empty" ? (
+                <EmptyState />
+              ) : state === "ready" ? (
+                <ReadyState target={session.activeTarget} />
+              ) : (
+                <>
+                  {inFlight && (
+                    <div className="rounded-[var(--radius-control)] bg-[var(--color-accent-tint)] px-4 py-2.5 flex items-center gap-2.5 animate-fade shadow-[inset_0_1px_2px_oklch(0.2_0.01_60_/_0.25),0_0_0_1px_var(--color-accent-line)]">
+                      <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-[var(--color-accent-strong)] border-t-transparent animate-spin" />
+                      <span className="text-[0.82rem] font-semibold text-[var(--color-accent-ink)]">
+                        Reading the light…
+                      </span>
+                    </div>
+                  )}
+                  <RecipeView onToast={showToast} />
+                  {hasAttempts && <RefineLedger onToast={showToast} />}
+                </>
+              )}
+            </section>
           </div>
-
-          {/* RIGHT: the working surface */}
-          <section className="min-w-0 flex flex-col gap-4 lg:pl-8">
-            <StorageBanner onToast={showToast} />
-            <ErrorBanner error={lastError} />
-
-            {/* main state switch */}
-            {inFlight && !hasRecipe ? (
-              <AnalyzingState />
-            ) : state === "empty" ? (
-              <EmptyState />
-            ) : state === "ready" ? (
-              <ReadyState target={session.activeTarget} />
-            ) : (
-              <>
-                {inFlight && (
-                  <div className="rounded-[var(--radius-control)] border border-[var(--color-accent-line)] bg-[var(--color-accent-tint)] px-4 py-2.5 flex items-center gap-2.5 animate-fade">
-                    <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-[var(--color-accent-strong)] border-t-transparent animate-spin" />
-                    <span className="text-[0.82rem] font-medium text-[var(--color-accent-ink)]">
-                      Working on the match…
-                    </span>
-                  </div>
-                )}
-                <RecipeView onToast={showToast} />
-                {hasAttempts && <RefineLedger onToast={showToast} />}
-              </>
-            )}
-          </section>
         </div>
       </main>
 
