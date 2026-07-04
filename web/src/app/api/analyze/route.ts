@@ -433,41 +433,58 @@ export async function POST(request: Request): Promise<Response> {
   if (first.fatal || !first.json) {
     return errorResponse("network", first.fatal || "Gateway request failed.");
   }
+  // -- extract + validate, with ONE retry ------------------------------------------
+  // The first response can miss two ways, and BOTH now get a second attempt. Before this,
+  // only a VALIDATION miss retried — a SHAPE/TRUNCATED miss gave up immediately, which is
+  // the intermittent failure seen live (2026-07-04): Opus reasons so long, or omega drops
+  // the images that round, that the reply carries no clean JSON block. The route was
+  // discarding a recoverable request.
+  //   • shape/truncated (extract failed): the reply had no parseable JSON. RE-SEND the same
+  //     request — a fresh completion almost always lands the JSON. We do NOT feed the
+  //     model's own thinking-heavy reply back (thinking blocks carry signatures the gateway
+  //     may reject on replay, and a thinking-only echo is an empty turn); a clean retry is
+  //     simpler and reliable.
+  //   • invalid (extract ok, validation failed): a param/step was off. Re-ask WITH the
+  //     specific errors so the model can correct (buildReaskTurns).
   const firstExtract = extractToolInput(first.json);
+  let reaskMessages: GatewayMessage[];
   if (!firstExtract.ok) {
-    return errorResponse(firstExtract.kind, firstExtract.message, firstExtract.raw);
+    console.error(`[analyze] first response ${firstExtract.kind} — retrying once (fresh re-send)`);
+    reaskMessages = messages;
+  } else {
+    const firstResult = validateRecipe(firstExtract.input, target, validateMode);
+    if (firstResult.ok) {
+      console.error("[analyze] verdict: recipe ok on first try");
+      return NextResponse.json({ ok: true, recipe: firstResult.cleaned });
+    }
+    console.error("[analyze] first response failed validation — re-asking with the errors");
+    const [assistantTurn, userTurn] = buildReaskTurns(
+      first.json as { content: ContentBlock[] },
+      firstResult.errors
+    );
+    reaskMessages = [...messages, assistantTurn, userTurn];
   }
 
-  // -- server-side validation + one-shot re-ask ------------------------------------
-  const firstResult = validateRecipe(firstExtract.input, target, validateMode);
-  if (firstResult.ok) {
-    return NextResponse.json({ ok: true, recipe: firstResult.cleaned });
-  }
-
-  // Re-ask ONCE with a wire-valid assistant tool_use -> user tool_result turn.
-  const [assistantTurn, userTurn] = buildReaskTurns(
-    first.json as { content: ContentBlock[] },
-    firstResult.errors
-  );
-  messages.push(assistantTurn, userTurn);
-
-  const second = await send(key, makeRequestBody(messages), fetch);
+  const second = await send(key, makeRequestBody(reaskMessages), fetch);
   if (second.authError) {
     return errorResponse("auth", "Gateway returned 401 — the API key is missing or invalid.");
   }
   if (second.fatal || !second.json) {
-    return errorResponse("network", second.fatal || "Gateway request failed on re-ask.");
+    return errorResponse("network", second.fatal || "Gateway request failed on retry.");
   }
   const secondExtract = extractToolInput(second.json);
   if (!secondExtract.ok) {
+    console.error(`[analyze] verdict: ${secondExtract.kind} (after retry)`);
     return errorResponse(secondExtract.kind, secondExtract.message, secondExtract.raw);
   }
   const secondResult = validateRecipe(secondExtract.input, target, validateMode);
   if (!secondResult.ok) {
+    console.error("[analyze] verdict: invalid (after retry)");
     return errorResponse(
       "invalid",
       `Gateway response failed validation twice: ${JSON.stringify(secondResult.errors)}`
     );
   }
+  console.error("[analyze] verdict: recipe ok after retry");
   return NextResponse.json({ ok: true, recipe: secondResult.cleaned });
 }

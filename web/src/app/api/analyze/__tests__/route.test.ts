@@ -349,4 +349,41 @@ describe("POST handler (mocked fetch)", () => {
     expect(body.ok).toBe(false);
     expect(body.error.kind).toBe("truncated");
   });
+
+  it("SHAPE first response (thinking-only, no JSON) is RETRIED with a fresh re-send and recovers", async () => {
+    // The intermittent live failure: Opus reasons at length and emits a thinking block but
+    // no JSON block that round -> extract returns kind:shape. Before the fix the route gave
+    // up; now it re-sends and the fresh completion lands the recipe.
+    const thinkingOnly = {
+      ok: true,
+      status: 200,
+      text: async () => "",
+      json: async () => ({
+        model: "claude-opus-4-8",
+        stop_reason: "end_turn",
+        content: [{ type: "thinking", thinking: "Long lighting analysis, but no JSON emitted this round." }],
+      }),
+    } as unknown as Response;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(thinkingOnly)
+      .mockResolvedValueOnce(gatewayRecipe(VALID_RECIPE_INPUT)); // fresh retry lands the recipe
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const res = await POST(makeRequest("sk-test"));
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.recipe.values[0].param).toBe("sun.intensity_mult");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The retry is a FRESH re-send: the 2nd request is the SAME single user turn — no echoed
+    // assistant turn and no tool_result (we never replay the model's thinking-heavy reply).
+    const secondBody = JSON.parse((fetchMock.mock.calls[1][1] as { body: string }).body);
+    expect(secondBody.messages).toHaveLength(1);
+    expect(secondBody.messages[0].role).toBe("user");
+    expect(
+      secondBody.messages
+        .flatMap((m: { content: unknown[] }) => m.content)
+        .some((b: { type?: string }) => b.type === "tool_result")
+    ).toBe(false);
+  });
 });
