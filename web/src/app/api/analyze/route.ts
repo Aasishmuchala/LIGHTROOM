@@ -401,17 +401,20 @@ export async function POST(request: Request): Promise<Response> {
 
   const makeRequestBody = (msgs: GatewayMessage[]) => ({
     model,
-    // 8192 (raised from 4096): the omega gateway can ignore the forced tool_choice and
-    // answer with prose + the recipe JSON in a text block; at 4096 the prose ate the
-    // budget and the JSON truncated mid-object. Headroom keeps the JSON intact even when
-    // the model insists on narrating first. The no-prose system directive is the primary
-    // fix; this is the belt-and-braces backstop.
+    // 8192: headroom so the JSON recipe never truncates mid-object.
     max_tokens: 8192,
     stream: false,
     system,
     messages: msgs,
-    tools: [tool],
-    tool_choice: { type: "tool", name: tool.name },
+    // NO tools / tool_choice. Verified 2026-07-04 against the LIVE omega gateway: a forced
+    // tool_choice ({type:"tool",name}) returns HTTP 500 with an empty body, and `tools`
+    // with no tool_choice ALSO 500s — omega's tool path is broken; only no-tools (or an
+    // explicit {type:"auto"}) return 200 (text calls at both 4096 and 8192 succeed, so it
+    // is NOT max_tokens and NOT the model). We therefore send NO tools at all and obtain
+    // the structured recipe entirely via the system prompt's embedded-schema JSON-only
+    // directive + parseJsonFromText. `tool` still arrives in the request (client contract)
+    // but is intentionally unused for the gateway call; extractToolInput's text path and
+    // buildReaskTurns' text branch already handle a tool_use-less response.
   });
 
   // -- first send ------------------------------------------------------------------

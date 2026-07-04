@@ -195,25 +195,29 @@ export function systemPrompt(target: TargetId | string, mode: ModeName | string)
     );
   }
 
-  // Output-format directive (both modes). The omega gateway does NOT reliably honor a
-  // forced tool_choice — instead of a structured tool_use block it can return a text
-  // block containing prose analysis followed by the JSON in a markdown fence, which both
-  // (a) is unparseable by a tool_use extractor and (b) blows the token budget on prose
-  // and truncates the JSON mid-object. This directive kills the prose: a tool-honoring
-  // backend still just calls the tool; a text-only backend emits the raw JSON object and
-  // nothing else, so it parses cleanly and leaves the whole budget for the recipe.
+  // Output-format directive (both modes). The omega gateway's tool path is BROKEN — a
+  // forced tool_choice returns HTTP 500 (empty body) and even `tools` with no tool_choice
+  // 500s (verified 2026-07-04 against the live gateway; plain text calls succeed at both
+  // 4096 and 8192 tokens on every model). So the route sends NO tools at all, and the
+  // model's ONLY way to convey structured output is raw JSON in its text. This directive
+  // makes that the sole, explicit contract and embeds the exact JSON Schema (the same one
+  // the tool used to enforce) so the model has the precise shape. The route parses the
+  // object out with parseJsonFromText and validates it with validateRecipe.
   lines.push("");
-  const emitName = isCorrection ? "emit_correction" : "emit_recipe";
+  const schema = isCorrection ? EMIT_CORRECTION : EMIT_RECIPE;
   const jsonWord = isCorrection ? "correction" : "recipe";
   lines.push(
-    `OUTPUT FORMAT — READ THIS LAST AND OBEY IT EXACTLY. Emit your ${jsonWord} by calling the ` +
-      `${emitName} tool. If — and ONLY if — you cannot call a tool, then respond with ONLY the raw JSON ` +
-      `object that matches that tool's input schema: NO analysis, NO explanation, NO prose, NO commentary, ` +
-      "NO markdown, NO ``` code fences, and nothing whatsoever before or after it. In that case your entire " +
-      "reply must be a single valid JSON object that begins with the character `{` and ends with the " +
-      "character `}` — the very first character you output is `{`. Do not narrate your reasoning; put any " +
-      "justification inside the JSON's own `rationale`/`why` fields, never outside the object. Any text " +
-      "outside the JSON object will be discarded and will cause the response to be rejected."
+    `OUTPUT FORMAT — READ THIS LAST AND OBEY IT EXACTLY. Your entire reply MUST be a single raw JSON ` +
+      `object that is a valid instance of this JSON Schema (the ${jsonWord}):`
+  );
+  lines.push(JSON.stringify(schema.input_schema));
+  lines.push(
+    "Output ONLY that JSON object: NO analysis, NO explanation, NO prose, NO commentary, NO markdown, " +
+      "NO ``` code fences, and nothing whatsoever before or after it. Your entire reply must begin with the " +
+      "character `{` and end with the character `}` — the very first character you output is `{`. Do not " +
+      "narrate your reasoning; put any justification inside the JSON's own `rationale`/`why` fields, never " +
+      "outside the object. Any text outside the JSON object will be discarded and will cause the response to " +
+      "be rejected."
   );
 
   lines.push("");

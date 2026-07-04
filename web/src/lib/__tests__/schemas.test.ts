@@ -185,10 +185,12 @@ describe("systemPrompt", () => {
     expect(p).toContain("surgical");
     // does NOT carry the correction-only guidance
     expect(p).not.toContain("CORRECTION ROUND");
-    // carries the JSON-only output directive naming emit_recipe
+    // carries the JSON-only output directive with the recipe schema EMBEDDED (no tool is
+    // sent — omega's tool path 500s — so the exact schema travels inside the prompt)
     expect(p).toContain("OUTPUT FORMAT");
-    expect(p).toContain("emit_recipe");
-    expect(p).toMatch(/single valid JSON object/);
+    expect(p).toContain('"hdri_mood"');
+    expect(p).toContain('"values"');
+    expect(p).toMatch(/single raw JSON object/);
     expect(p).toMatch(/NO markdown/);
     // ends with the pack fragment
     expect(p.endsWith(PACKS.promptFragment("vray7max"))).toBe(true);
@@ -199,10 +201,11 @@ describe("systemPrompt", () => {
     expect(p).toContain("CORRECTION ROUND");
     expect(p).toContain("Oscillation guard");
     expect(p).toContain("handoff_to_grade");
-    // JSON-only directive present and naming the correction tool
+    // JSON-only directive present with the correction schema EMBEDDED (no tool named)
     expect(p).toContain("OUTPUT FORMAT");
-    expect(p).toContain("emit_correction");
-    expect(p).toMatch(/single valid JSON object/);
+    expect(p).toContain('"moves"');
+    expect(p).toContain('"applied_assumed"');
+    expect(p).toMatch(/single raw JSON object/);
     expect(p.endsWith(PACKS.promptFragment("vray7max"))).toBe(true);
   });
 
