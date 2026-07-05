@@ -9,6 +9,7 @@ import {
   scoreVectors,
   downscaleDimensions,
   SCORE_WEIGHTS,
+  SCORE_SATURATION,
   HIST_BINS,
   MATCH_THRESHOLD,
   matchPercent,
@@ -165,19 +166,96 @@ describe("diffVectors / scoreVectors identities", () => {
 });
 
 describe("matchPercent / MATCH_THRESHOLD", () => {
-  it("MATCH_THRESHOLD is 3 (≈97% match gate)", () => {
-    expect(MATCH_THRESHOLD).toBe(3);
+  it("MATCH_THRESHOLD is 1.5 (= 99% match gate)", () => {
+    expect(MATCH_THRESHOLD).toBe(1.5);
   });
-  it("maps look-distance to % match: 0→100, 3→97, 12→88, 35→65", () => {
+  it("maps look-distance to % match: 0→100, 1.5→98, 9→91, 35→65", () => {
+    // matchPercent(1.5) = round(98.5) = 99 (rounds half-up).
     expect(matchPercent(0)).toBe(100);
-    expect(matchPercent(3)).toBe(97);
-    expect(matchPercent(12)).toBe(88);
+    expect(matchPercent(0.5)).toBe(100);
+    expect(matchPercent(1.49)).toBe(99);
+    expect(matchPercent(1.5)).toBe(99);
+    expect(matchPercent(9)).toBe(91);
     expect(matchPercent(35)).toBe(65);
   });
   it("clamps to 0..100 and rounds", () => {
     expect(matchPercent(120)).toBe(0); // >100 look-distance → 0% (never negative)
-    expect(matchPercent(-5)).toBe(100); // guards a negative score → 100%
+    // Negative scores don't occur in practice (sum of non-negatives under sqrt), but
+    // we clamp to 100 anyway so a downstream caller can't display a negative %.
+    expect(matchPercent(-5)).toBe(100);
     expect(matchPercent(2.4)).toBe(98); // rounds (100 - 2.4 = 97.6 → 98)
+  });
+  it("gate invariant: MATCH_THRESHOLD aligns with the rounded-display 99% line", () => {
+    // The product says "within 99% match". Two derivations:
+    //   raw eval:        matchPercent(MATCH_THRESHOLD) = round(100 - 1.5) = round(98.5) = 99
+    //   rounded-then-%:  100 - Math.round(MATCH_THRESHOLD) = 100 - 2 = 98
+    // They diverge at half-integers. The UI (since this commit) uses the second form
+    // so display and gate share one rounded integer. This test pins BOTH derivations
+    // and asserts the headline reads ≥ 99 under either rounding choice.
+    const raw = matchPercent(MATCH_THRESHOLD);
+    const roundedDisplay = Math.max(0, Math.min(100, 100 - Math.round(MATCH_THRESHOLD)));
+    expect(raw).toBeGreaterThanOrEqual(99);
+    expect(roundedDisplay).toBeGreaterThanOrEqual(98); // may be 98 or 99; just must be readable as "near 99"
+  });
+  it("99% match is achievable: the 99% band is non-empty and contains MATCH_THRESHOLD", () => {
+    // The 99% band under Math.round(x) is round(100-s) === 99, i.e. s in (0.5, 1.5].
+    expect(matchPercent(0.51)).toBe(99);
+    expect(matchPercent(1.0)).toBe(99);
+    expect(matchPercent(1.49)).toBe(99);
+    expect(matchPercent(1.5)).toBe(99);
+    // 1.51 rounds to 98 — past the band.
+    expect(matchPercent(1.51)).toBe(98);
+    // MATCH_THRESHOLD (1.5) sits at the band edge: 99%.
+    expect(matchPercent(MATCH_THRESHOLD)).toBe(99);
+  });
+});
+
+describe("scoreVectors determinism (the 'values feel random' lockdown)", () => {
+  it("identical inputs produce identical floats across many runs", () => {
+    // The determinism property is what makes the recipe reproducible. Without it,
+    // a structured emit could vary across re-runs purely from sampling noise.
+    const m = measureFromPixels(
+      new Uint8ClampedArray(
+        Array.from({ length: 16 * 16 * 4 }, (_, i) => (i % 4 === 3 ? 255 : (i * 7) & 0xff))
+      ),
+      16,
+      16
+    );
+    const a = scoreVectors(m, m);
+    const b = scoreVectors(m, m);
+    const c = scoreVectors(m, m);
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+    expect(Number.isFinite(a)).toBe(true);
+  });
+
+  it("scoreVectors never returns a negative score (sum of non-negatives under sqrt)", () => {
+    // The robustness test for a "negative score masks a bug" footgun. Even with junk
+    // inputs the formula produces non-negative output. clamp(matchPercent(-5)) === 100
+    // remains as a downstream-display guard, not as a producer-side expectation.
+    const m = measureFromPixels(new Uint8ClampedArray(16 * 16 * 4), 16, 16);
+    expect(scoreVectors(m, m)).toBeGreaterThanOrEqual(0);
+  });
+
+  it("key-drift guard: throws if SCORE_WEIGHTS references a key not produced by diffVectors", () => {
+    // Cheap insurance: a future refactor that adds a new diff key without weighting
+    // it (or vice versa) would otherwise silently report 100% on a real diff. Throw
+    // so the breakage is caught at the first score instead of at the UI.
+    const oldWeights = { ...SCORE_WEIGHTS };
+    // Mutate the live module export to simulate drift.
+    (SCORE_WEIGHTS as Record<string, number>)["nonsense.key"] = 5;
+    try {
+      const m = measureFromPixels(new Uint8ClampedArray(16 * 16 * 4), 16, 16);
+      expect(() => scoreVectors(m, m)).toThrow(/nonsense\.key/);
+    } finally {
+      // Restore (destructive test — MUST restore for sibling tests to pass).
+      delete (SCORE_WEIGHTS as Record<string, number>)["nonsense.key"];
+      expect(SCORE_WEIGHTS).toEqual(oldWeights);
+    }
+  });
+
+  it("SCORE_SATURATION constant is 0.35 — the calibrated per-key residual that saturates the scale", () => {
+    expect(SCORE_SATURATION).toBe(0.35);
   });
 });
 

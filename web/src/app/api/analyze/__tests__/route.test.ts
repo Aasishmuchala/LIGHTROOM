@@ -296,6 +296,21 @@ describe("POST handler (mocked fetch)", () => {
     expect(sent.max_tokens).toBe(8192);
   });
 
+  it("sends temperature 0 + top_p 1 for deterministic, same-input-same-output values", async () => {
+    // Deterministic model output. Identical ref+base must produce identical recipe
+    // across re-runs — without temperature 0 the default Anthropic sampling (temp 1)
+    // emits a different recipe each call. This pins the body so a future change to
+    // gateway params can't silently re-randomize. ("values feel random" regression guard.)
+    const fetchMock = vi.fn(async () => gatewayRecipe(VALID_RECIPE_INPUT)) as unknown as typeof fetch;
+    globalThis.fetch = fetchMock;
+    await POST(makeRequest("sk-test"));
+    const init = (fetchMock as unknown as { mock: { calls: [string, { body: string }][] } }).mock
+      .calls[0][1];
+    const sent = JSON.parse(init.body);
+    expect(sent.temperature).toBe(0);
+    expect(sent.top_p).toBe(1);
+  });
+
   it("TEXT gateway path: prose + fenced JSON (no tool_use) is parsed to ok:true", async () => {
     // The exact captured omega shape: a text block with prose then the recipe JSON in a
     // markdown fence, and NO tool_use block — the bug this fix targets.

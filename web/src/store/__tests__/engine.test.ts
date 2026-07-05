@@ -235,3 +235,65 @@ describe("boot / persistence", () => {
     expect(engineStore.getState().session.id).toBe(savedId);
   });
 });
+
+// =============================================================================
+// Convergence wiring (the "values feel random" / "can't reach 99%" fix).
+// =============================================================================
+describe("convergence: prevDiff forwarded from previous attempt to next correction", () => {
+  it("round 1: no prior attempt, so the correction payload omits prevDiff + CONVERGENCE block", async () => {
+    await seedReady();
+    await engineStore.getState().analyze();
+    const spy = vi.fn(async () => fakeCorrection());
+    engineStore.setState({
+      _analyze: spy as unknown as EngineStore["_analyze"],
+    });
+    await engineStore.getState().addAttempt(preCaptured(0.1));
+
+    const call = (spy.mock.calls as unknown as unknown[][])[0][0] as {
+      userContent: Array<{ type: string; text?: string }>;
+    };
+    const joined = call.userContent
+      .filter((b) => b.type === "text")
+      .map((b) => b.text || "")
+      .join("\n");
+    expect(joined).not.toContain("CONVERGENCE");
+    expect(joined).not.toMatch(/"prevDiff"/);
+  });
+
+  it("round 2: previous attempt's diff (ref - prevAttempt) is shipped to the model", async () => {
+    await seedReady();
+    await engineStore.getState().analyze();
+    const spy = vi.fn(async () => fakeCorrection());
+    engineStore.setState({
+      _analyze: spy as unknown as EngineStore["_analyze"],
+    });
+    await engineStore.getState().addAttempt(preCaptured(0.05)); // attempt 1: bias 0.05 (closer than base 0.1)
+    await engineStore.getState().addAttempt(preCaptured(0.07)); // attempt 2: bias 0.07 (regressed)
+
+    const second = (spy.mock.calls as unknown as unknown[][])[1][0] as {
+      userContent: Array<{ type: string; text?: string }>;
+    };
+    const joined = second.userContent
+      .filter((b) => b.type === "text")
+      .map((b) => b.text || "")
+      .join("\n");
+    expect(joined).toContain("CONVERGENCE");
+    // metricsBundle JSON must include prevDiff as a sibling of diff
+    expect(joined).toMatch(/"prevDiff"/);
+  });
+
+  it("score is computed against the raw ref, not against the previous attempt (look-distance measures gap to ref)", async () => {
+    // scoreVectors always consumes (ref, attempt), never (prevAttempt, attempt). Pin this:
+    // an attempt that regressed farther from ref still gets a worse score than one that
+    // closed the gap, even though both share the same previous-attempt context.
+    await seedReady();
+    await engineStore.getState().analyze();
+    const { score: closerScore } = await engineStore
+      .getState()
+      .addAttempt(preCaptured(0.02)); // closer
+    const { score: fartherScore } = await engineStore
+      .getState()
+      .addAttempt(preCaptured(0.18)); // farther from ref
+    expect(fartherScore).toBeGreaterThan(closerScore);
+  });
+});

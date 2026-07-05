@@ -479,13 +479,19 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       );
     }
     const target = s.activeTarget;
-    // Lean evidence: send ONLY the diff (base - reference), not the full reference+base
+    // Lean evidence: send ONLY the diff (reference - base), not the full reference+base
     // metric objects. Verified live 2026-07-04: the full bundle (THREE 16-cell grids + all
     // percentiles) makes Opus over-reason past both omega's token budget (JSON truncates)
     // and its ~100s wall-clock ceiling (HTTP 500). The diff alone carries the entire match
     // signal (direction + magnitude of every gap); with the system prompt's brevity guard
     // it yields a complete recipe reliably and fast. Absolute levels are conveyed by the
     // reference/base IMAGES the model already sees.
+    //
+    // Why "ref - base" (per-key): a POSITIVE per-key diff means the REFERENCE reads
+    // higher on that axis than the base, so the model should DRIVE the base's value UP
+    // on that control (more sun, warmer color, wider contrast). The sign is consistent
+    // with the correction path below (which sends "ref - attempt"), so the model's
+    // "fix this gap" reasoning carries straight through the refine loop unchanged.
     const metricsBundle = {
       diff: diffVectors(s.base!.metrics, s.ref!.metrics),
     };
@@ -551,11 +557,26 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     }
     const score = scoreVectors(s.ref!.metrics, captured.metrics);
 
-    // Lean evidence (see analyze()): the diff (attempt - reference) alone, not the full
+    // Lean evidence (see analyze()): the diff (reference - attempt) alone, not the full
     // metric objects — keeps Opus's reasoning inside omega's token + ~100s time budget.
-    const metricsBundle = {
+    //
+    // Sign convention matches analyze(): a POSITIVE per-key diff still means the REFERENCE
+    // is higher on that axis, so the model's "more sun / warmer / wider contrast" reasoning
+    // is the same vector as round 0. The score computed below (`attempt - ref`) is the
+    // same diff negated — both reflect "what's wrong with attempt vs reference".
+    const metricsBundle: { diff: Record<string, number>; prevDiff?: Record<string, number> } = {
       diff: diffVectors(captured.metrics, s.ref!.metrics),
     };
+    // ROUND-N+1 convergence signal: when an attempt already exists, attach the previous
+    // attempt's diff so the model can compare "what was wrong before" vs "what's still
+    // wrong now" and prune moves that flipped the gap. Without it the model has no way to
+    // know whether each prior move helped, hurt, or was a no-op — the refine loop cannot
+    // converge to within MATCH_THRESHOLD on that information alone.
+    const prevAttempt =
+      chain.attempts.length > 0 ? chain.attempts[chain.attempts.length - 1] : null;
+    if (prevAttempt) {
+      metricsBundle.prevDiff = diffVectors(prevAttempt.metrics, s.ref!.metrics);
+    }
     if (typeof chain._attemptCount !== "number") chain._attemptCount = chain.attempts.length;
     chain._attemptCount++;
     const attemptN = chain._attemptCount;

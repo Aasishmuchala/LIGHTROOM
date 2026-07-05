@@ -420,6 +420,15 @@ export async function POST(request: Request): Promise<Response> {
     stream: false,
     system,
     messages: msgs,
+    // Deterministic emit. The default Anthropic temperature (1.0) introduces per-call
+    // variance on otherwise identical requests — a ref + base pair can produce a different
+    // recipe each time the user re-runs Analyze. For a structured lighting recipe the
+    // same input MUST produce the same output: temp 0 collapses sampling to the single
+    // most-probable completion, with top_p = 1 leaving the first-token distribution intact.
+    // Without this, identical (ref, base) pairs can yield different `set` values on rerun,
+    // which the user reads as "the values are random".
+    temperature: 0,
+    top_p: 1,
     // NO tools / tool_choice. Verified 2026-07-04 against the LIVE omega gateway: a forced
     // tool_choice ({type:"tool",name}) returns HTTP 500 with an empty body, and `tools`
     // with no tool_choice ALSO 500s — omega's tool path is broken; only no-tools (or an

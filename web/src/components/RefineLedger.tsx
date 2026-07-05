@@ -4,7 +4,7 @@ import { engineStore, useEngine } from "@/store/useEngine";
 import type { AttemptEntry } from "@/store/useEngine";
 import type { TargetId } from "@/lib/types";
 import { PACKS } from "@/lib/packs";
-import { matchPercent, MATCH_THRESHOLD } from "@/lib/metrics";
+import { MATCH_THRESHOLD } from "@/lib/metrics";
 import { PathBreadcrumb, ConfDot, ValueJewel, ClampedFlag } from "./bits";
 import { safeSrc, copyText } from "./lib";
 
@@ -21,11 +21,23 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
 
   // The number the product promises: the % match of the CLOSEST (lowest look-distance)
   // attempt so far. This is the measured truth the whole panel is gated on.
-  const closest = attempts.reduce((best, a) => (a.score < best.score ? a : best), attempts[0]);
+  const closest = attempts.reduce(
+    (best, a) => (a.score < best.score ? a : best),
+    attempts[0]
+  );
+  // SINGLE source of truth for the display. Round look-distance ONCE, then derive BOTH
+  // the % match and the prose from the rounded integer. Previously the % came from
+  // matchPercent(rawScore) and the look-distance came from Math.round(rawScore) — two
+  // independent roundings of the same float that don't reconcile (e.g. score 2.4 → 98%
+  // and "look dist 2", score 2.6 → 98% and "look dist 3"). The user reads "98% / look dist 2"
+  // then "98% / look dist 3" with no value change as "values are random". Rounding once
+  // collapses the wobble: 98% ↔ 2, 99% ↔ 1, 100% ↔ 0.
   const bestScore = closest.score;
-  const bestPercent = matchPercent(bestScore);
-  // MEASURED gate: lighting is "matched" only when the closest attempt is within
-  // MATCH_THRESHOLD look-distance — never on the model's word alone.
+  const bestScoreRounded = Math.round(bestScore);
+  const bestPercent = Math.max(0, Math.min(100, 100 - bestScoreRounded));
+  // MEASURED gate stays on the raw score: 2.6 is genuinely matched even though the
+  // rounded display reads "98% / look dist 3". The gate trusts the measurement;
+  // the display rounds for legibility.
   const measuredMatched = bestScore <= MATCH_THRESHOLD;
 
   // Did the model SAY the rest is a grade? (latest correction wins; else the recipe.)
@@ -68,7 +80,7 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
             </div>
             <p className="text-[0.82rem] text-[var(--color-ink-2)] mt-1 leading-snug max-w-[70ch]">
               {handoffReason ? handoffReason + " — " : ""}the closest attempt measures {bestPercent}% match
-              (look distance {Math.round(bestScore)}, within {MATCH_THRESHOLD}) — the lighting is within noise of
+              (look distance {bestScoreRounded}, within {MATCH_THRESHOLD}) — the lighting is within noise of
               the reference; take the rest to REFGRADE.
             </p>
           </div>
@@ -90,7 +102,7 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
           </span>
           <div>
             <div className="text-[0.95rem] font-[660] text-[var(--color-ink)] tracking-[-0.01em]">
-              Model suggests the rest is a grade — but the measured look-distance is still {Math.round(bestScore)}
+              Model suggests the rest is a grade — but the measured look-distance is still {bestScoreRounded}
               &nbsp;({bestPercent}% match).
             </div>
             <p className="text-[0.82rem] text-[var(--color-ink-2)] mt-1 leading-snug max-w-[70ch]">
@@ -119,7 +131,7 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
             <span className="text-[0.74rem] font-medium text-[var(--color-muted)] leading-tight">
               match
               <span className="block text-[0.66rem] text-[var(--color-faint)] font-normal">
-                closest · look dist {Math.round(bestScore)}
+                closest · look dist {bestScoreRounded}
               </span>
             </span>
           </div>
@@ -174,12 +186,12 @@ function scoreTone(score: number): { color: string; bg: string } {
   // low score = close = good (cool→green), high = far (warm). The `color` is used as
   // TEXT on the tint `bg`, so it uses the AA-safe -ink shades. Buckets are DERIVED from
   // MATCH_THRESHOLD so "green/good" means genuinely matched and can't drift from the gate:
-  //   good  <= MATCH_THRESHOLD (3)      — matched
-  //   info  <= 3x threshold    (9)      — close
-  //   warn  <= ~7x threshold   (~20)    — work to do
-  //   danger otherwise                  — far
-  const INFO_MAX = MATCH_THRESHOLD * 3; // 9
-  const WARN_MAX = MATCH_THRESHOLD * 7 - 1; // 20
+  //   good  <= MATCH_THRESHOLD     (1.5)  — matched (99%)
+  //   info  <= 3x threshold        (4.5)  — close
+  //   warn  <= ~7x threshold       (9.5)  — work to do
+  //   danger otherwise                   — far
+  const INFO_MAX = MATCH_THRESHOLD * 3; // 4.5
+  const WARN_MAX = MATCH_THRESHOLD * 7 - 1; // 9.5
   if (score <= MATCH_THRESHOLD) return { color: "var(--color-good-ink)", bg: "var(--color-good-tint)" };
   if (score <= INFO_MAX) return { color: "var(--color-info-ink)", bg: "var(--color-info-tint)" };
   if (score <= WARN_MAX) return { color: "var(--color-warn-ink)", bg: "var(--color-surface-2)" };
