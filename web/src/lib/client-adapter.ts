@@ -185,6 +185,37 @@ export function buildUserContent({
     text: `${legend}\n${JSON.stringify(metricsBundle, round4)}${asymmetryLine}`,
   });
 
+  // Convergence feedback (correction mode only, round 2+): tell the model which
+  // per-key diff SHANK between the previous attempt and this one, so it can prune
+  // moves that closed the gap (no-op now) or pushed it the wrong way (worsened).
+  // Without this, the refine loop oscillates because the model only sees the snapshot —
+  // it has no way to tell whether a prior move helped.
+  const prevDiff =
+    (metricsBundle as { prevDiff?: Record<string, unknown> })?.prevDiff;
+  const currDiff =
+    (metricsBundle as { diff?: Record<string, unknown> })?.diff;
+  if (
+    mode === "correction" &&
+    prevDiff &&
+    currDiff &&
+    typeof prevDiff === "object" &&
+    typeof currDiff === "object"
+  ) {
+    const r4 = (v: number) => Math.round(v * 1e4) / 1e4;
+    const lines: string[] = [
+      "CONVERGENCE (previous attempt − this attempt): positive = that key CLOSED the gap (no further push needed); negative = that key WORSENED (reverse or skip it).",
+    ];
+    for (const key of Object.keys(currDiff).sort()) {
+      const prev = Number(prevDiff[key]);
+      const curr = Number(currDiff[key]);
+      if (!Number.isFinite(prev) || !Number.isFinite(curr)) continue;
+      const delta = prev - curr; // positive means "got closer to ref"
+      if (Math.abs(delta) < 1e-4) continue; // skip near-zero keys (no signal)
+      lines.push(`  ${key}: ${r4(delta)}`);
+    }
+    if (lines.length > 1) content.push({ type: "text", text: lines.join("\n") });
+  }
+
   if (context && Object.keys(context).length) {
     const chips = Object.entries(context)
       .map(([k, v]) => `${k}: ${v}`)
