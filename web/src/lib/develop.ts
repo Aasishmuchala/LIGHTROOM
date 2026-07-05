@@ -19,6 +19,8 @@
 // that touches a canvas; it delegates to the pure core and returns both the canvas (fed
 // to the EXISTING measure()/downscaleForSend() pipeline) and a preview data URL.
 
+import { cctFromLinearRGB, tintGMFromLinearRGB } from "./metrics";
+
 // ---------------------------------------------------------------------------
 // Pure per-channel transforms (no DOM).
 // ---------------------------------------------------------------------------
@@ -110,6 +112,158 @@ export function autoExposureEV(
   if (ev < EV_MIN) ev = EV_MIN;
   if (ev > EV_MAX) ev = EV_MAX;
   return ev;
+}
+
+// ---------------------------------------------------------------------------
+// Linear-domain statistics (EXR-native evidence, 2026-07-05) — pure, node-testable.
+//
+// WHY here and not metrics.ts: this module is the scene-referred linear surface
+// (autoExposureEV already runs percentile math over the same retained Float32 RGBA
+// buffer); metrics.ts is the display-referred sRGB surface. Measuring the RETAINED
+// linear buffer sidesteps everything the develop transform destroys: the exposure
+// gap is exact (no Reinhard compression of the medians), the dynamic range is the
+// scene's (not the 8-bit clamp's), and the highlight CCT is read from the light
+// itself rather than from tone-mapped pixels. All statistics are computed BEFORE
+// any EV gain, so they are exposure-independent — compute once at decode and reuse.
+// None of this feeds the look-distance score; it is model evidence only.
+// ---------------------------------------------------------------------------
+
+/** Cap on how many pixels linearStats visits. EXRs can be 8K+ (33M px); a fixed
+ *  deterministic STRIDE (not random sampling) keeps the cost bounded AND makes the
+ *  result a pure function of the buffer — same buffer, same stats, always. */
+export const LINEAR_STATS_MAX_SAMPLES = 200_000;
+
+/** Scene-referred statistics of a LINEAR RGBA buffer. All luminances are Rec.709
+ *  weights over the raw linear floats (NO OETF, NO tone-map) on the buffer's own
+ *  physical scale — only ratios/log-gaps between two buffers are meaningful. Every
+ *  field is null for a black/degenerate buffer (no light = no statistic). */
+export interface LinearStats {
+  /** Median linear luminance (sampled percentile; null when the median carries no light). */
+  median_lum: number | null;
+  /** 99th-percentile linear luminance (the working highlight level, robust to fireflies). */
+  p99_lum: number | null;
+  /** log2(p99 / p1) in stops — the scene's usable dynamic range. Null when either
+   *  end is black (a log of 0/x or x/0 is not a range, it's a missing floor). */
+  dynamic_range_ev: number | null;
+  /** CCT (kelvin) of the mean linear RGB over pixels at/above the luminance p75 —
+   *  the color of the LIGHT, measured pre-tonemap. Null on no signal. */
+  highlight_cct_k: number | null;
+  /** Green–magenta tint of the same highlight mean (same axis as metrics' tint_gm). */
+  highlight_tint_gm: number | null;
+}
+
+/**
+ * Measure scene-referred statistics from a LINEAR RGBA buffer (length >= w*h*4).
+ *
+ * Percentiles are taken by SORTED SAMPLING (not a histogram): the linear domain is
+ * unbounded (V-Ray radiance can span 0.001..5000 in one frame), so any fixed-bin
+ * histogram needs a log transform + range guess; sorting <=200k sampled values is
+ * exact, allocation-cheap, and runs once per decode. Sampling is a fixed pixel
+ * stride (ceil(n / LINEAR_STATS_MAX_SAMPLES)) — deterministic by construction.
+ * Non-finite pixels (NaN/Inf channels from a degenerate EXR) never vote.
+ */
+export function linearStats(
+  linear: Float32Array | ArrayLike<number>,
+  w: number,
+  h: number
+): LinearStats {
+  const NULLS: LinearStats = {
+    median_lum: null,
+    p99_lum: null,
+    dynamic_range_ev: null,
+    highlight_cct_k: null,
+    highlight_tint_gm: null,
+  };
+  // Trust the smaller of the declared and actual pixel counts — a short buffer must
+  // not read past its end, and a mismatched header is degenerate, not fatal.
+  const n = Math.min(w * h, Math.floor(linear.length / 4));
+  if (!(n > 0)) return NULLS;
+
+  const stride = Math.max(1, Math.ceil(n / LINEAR_STATS_MAX_SAMPLES));
+  // First pass: sampled luminances + the byte offset of each sampled pixel (kept so
+  // the highlight pass below revisits exactly the same deterministic sample set).
+  const lums: number[] = [];
+  const offs: number[] = [];
+  for (let i = 0; i < n; i += stride) {
+    const p = i * 4;
+    const L = linearLuminance(linear[p], linear[p + 1], linear[p + 2]);
+    if (!Number.isFinite(L)) continue;
+    lums.push(L);
+    offs.push(p);
+  }
+  if (lums.length === 0) return NULLS; // every sample was NaN/Inf — nothing to measure
+
+  const sorted = lums.slice().sort((a, b) => a - b);
+  // Same nearest-rank convention as autoExposureEV: floor(p/100 * (len-1)).
+  const pick = (pct: number) =>
+    sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor((pct / 100) * (sorted.length - 1))))];
+  const p1 = pick(1);
+  const p50 = pick(50);
+  const p75 = pick(75);
+  const p99 = pick(99);
+
+  // Highlight region: sampled pixels whose luminance is AT/ABOVE the p75 value.
+  // >= (not >) so a flat frame — where every sample equals p75 — still yields a
+  // highlight color instead of an empty set; the set is then the whole frame, which
+  // is exactly the honest answer for flat light.
+  let hr = 0,
+    hg = 0,
+    hb = 0,
+    hn = 0;
+  for (let k = 0; k < offs.length; k++) {
+    if (lums[k] >= p75) {
+      const p = offs[k];
+      hr += linear[p];
+      hg += linear[p + 1];
+      hb += linear[p + 2];
+      hn++;
+    }
+  }
+
+  // Null guards: a percentile of 0 means that tonal band carries no light — report
+  // null, never 0 (0 would read as "measured black", which log/ratio math downstream
+  // would happily divide by). cct/tint helpers already null out black/invalid means.
+  const median_lum = p50 > 0 && Number.isFinite(p50) ? p50 : null;
+  const p99_lum = p99 > 0 && Number.isFinite(p99) ? p99 : null;
+  let dynamic_range_ev: number | null = null;
+  if (p1 > 0 && p99 > 0) {
+    const dr = Math.log2(p99 / p1);
+    // 2dp — the EV precision convention wbExposureEvidence already uses.
+    dynamic_range_ev = Number.isFinite(dr) ? Math.round(dr * 100) / 100 : null;
+  }
+  const highlight_cct_k = hn > 0 ? cctFromLinearRGB(hr / hn, hg / hn, hb / hn) : null;
+  const highlight_tint_gm = hn > 0 ? tintGMFromLinearRGB(hr / hn, hg / hn, hb / hn) : null;
+
+  return { median_lum, p99_lum, dynamic_range_ev, highlight_cct_k, highlight_tint_gm };
+}
+
+/** The scene-referred evidence block spread into the model's metricsBundle when BOTH
+ *  compared images are EXR-backed. exposure_gap_ev_exact is the linear-domain twin of
+ *  metrics' display-referred exposure_gap_ev — same sign convention (positive = the
+ *  current render is that many stops too dark), but EXACT because the medians were
+ *  never tone-mapped. */
+export interface LinearEvidence {
+  exposure_gap_ev_exact: number | null;
+  reference: LinearStats;
+  current: LinearStats;
+}
+
+// -- linearEvidence(ref, cur): pair two LinearStats into the evidence block. The gap
+//    is log2(ref median / cur median), 2dp, null when either side carries no light
+//    (median_lum is already null-guarded > 0 by linearStats). Pure — the engine only
+//    decides WHEN to include it (both slots EXR-backed), never how it is computed. --
+export function linearEvidence(ref: LinearStats, cur: LinearStats): LinearEvidence {
+  let gap: number | null = null;
+  if (
+    ref.median_lum != null &&
+    cur.median_lum != null &&
+    ref.median_lum > 0 &&
+    cur.median_lum > 0
+  ) {
+    const v = Math.log2(ref.median_lum / cur.median_lum);
+    gap = Number.isFinite(v) ? Math.round(v * 100) / 100 : null;
+  }
+  return { exposure_gap_ev_exact: gap, reference: ref, current: cur };
 }
 
 // ---------------------------------------------------------------------------

@@ -365,3 +365,71 @@ on `wind.cloud_direction`, intensity examples 0/100 and 100/300 give practical r
   the 1 placeholder). vray7max unchanged at 51.
 - SELFTEST: **PASS (7488 asserts)**, up from 6846 (+642 for the 28 net-new entries across the
   packs + sheet suites).
+
+---
+
+# 2026-07-05 — Re-verification pass over every `verified:false` entry (docs re-checked, no changes)
+
+All **47** `verified:false` entries in `web/src/lib/packs.ts` (12 in `vray7max`, 35 in
+`vantage33`) were re-checked against the CURRENT Chaos docs. Same method as above: full page
+bodies via the public Confluence Cloud REST API
+(`https://docs-chaos.atlassian.net/wiki/rest/api/content?spaceKey=…&title=…&expand=body.view`,
+spaces `VMAX` and `LAV`); `docs.chaos.com/display/…` remain the canonical URLs. For each
+entry the fetched page text was queried for an explicitly stated default value and/or slider
+range (verbatim-quote-or-NOT-STATED protocol; no inference allowed).
+
+**Outcome: 0 of 47 closable from the docs.** Every queried control is still described
+semantically without a printed factory default or spinner bound, so — per the decision rule
+"doc still silent → leave `verified:false`, do not touch" — **no pack entry was changed** in
+either `web/src/lib/packs.ts` or the `lightmatch.html` mirror. Entry counts stay 159/144.
+
+**Fetch-pipeline sanity check (the "NOT STATED" verdicts are trusted because the same fetches
+DID surface the pages' real default statements, all matching already-verified entries):**
+
+- VMAX Plane-Disc-Sphere Light: "A value of 0 (default) makes the light shine in all
+  directions around the light source." (Directional) · "The default value is 0.001." (Cutoff)
+- VMAX VRayEnvironmentFog: "Default value of 0.0 scatters the light uniformly in all
+  directions" (Fog phase function → `fog.phase`, verified 2026-07-03)
+- VMAX VRayAerialPerspective: "The default value 1.0 is physically accurate" (Inscattered
+  light intensity → `aerial.inscatter`) · "This option is enabled by default" (Affect
+  background → `aerial.affect_background`) · "This option is disabled by default because the
+  VRaySky texture already takes into account the amount of scattered sunlight." (Affect
+  environment rays — folded in `aerial.enabled` notes)
+
+## Pages fetched (2026-07-05) → per-entry verdicts
+
+| Page | Entries checked | Verdict |
+|---|---|---|
+| VMAX Dome Light | `dome.intensity` (Multiplier), `dome.temperature` (Temperature) | still-unprintable — no default/range stated |
+| VMAX Plane - Disc - Sphere Light | `fill.sphere_intensity` (Multiplier) | still-unprintable |
+| VMAX VRayPhysicalCamera | `cam.iso` (Film speed), `cam.fnumber` (F-Number), `cam.shutter` (Shutter speed), `cam.wb_kelvin` (Temperature) | still-unprintable — the page's only "default" sentence refers to the VRaySun/VRaySky example renders |
+| VMAX VRayEnvironmentFog | `fog.distance`, `fog.height`, `fog.scatter_gi` | still-unprintable |
+| VMAX VRayAerialPerspective | `aerial.visibility_range`, `aerial.atmosphere_height` | still-unprintable |
+| LAV Camera Tab | `cam.exposure_mode` (Exposure dropdown), `cam.exposure_value` (EV), `cam.fnumber` | still-unprintable — the page's only "default" sentence is the right-click-to-reset tip |
+| LAV Viewport Bar | `cam.auto_exposure` (Toggle auto-exposure startup state) | still-unprintable |
+| LAV Color Corrections Tab | `post.highlight_burn` (default/range), `post.tonemap_type` (default selection Hable vs AMPAS) | still-unprintable — only "default" mention is the non-deletable default color-correction sub-state |
+| LAV Fog | `fog.max_opacity` | still-unprintable — page contains no "default" sentence at all |
+| LAV Clouds | `clouds.density`, `clouds.variety`, `clouds.cirrus_amount`, `clouds.start_height`, `clouds.thickness` | still-unprintable — page contains no "default" sentence at all |
+| LAV Wetting | `wet.size`, `wet.amount` (Wet cover value), `wet.puddles`, `wet.occlusion_radius`, `wet.surface_drops_scale`, `wet.drops_tiling`, `wet.drops_amount`, `wet.drops_base_bump`, `wet.puddle_ripples_strength`, `wet.ripple_size`, `wet.ripple_amount`, `wet.puddle_wobble_strength`, `wet.wobble_size`, `wet.height_effect`, `wet.transition`, `wet.max_puddle_slope`, `wet.noise_size`, `wet.ray_offset`, `wet.ripple_lifetime`, `wet.wobble_speed` (20) | still-unprintable — page contains no "default" sentence at all |
+| LAV Wind | `wind.cloud_direction`, `wind.cloud_intensity`, `wind.vegetation_intensity` | still-unprintable — page contains no "default" sentence at all |
+| VMAX Layers (re-check for the ±100-scale advisory below) | `cm.saturation` / `cm.contrast` / tint slider bounds | still-unprintable — no numeric bounds or defaults for the Hue/Saturation, Exposure-Contrast or White-Balance-tint sliders |
+
+## Needs in-product check (docs cannot resolve these)
+
+- **`cm.saturation` ±100 VFB scale** (and the same-convention `post.saturation` /
+  `post.wb_tint` in vantage33): Chaos docs print no slider bounds for the VFB
+  Hue/Saturation layer — if the slider is actually -1..1 the pack's ±100 is a 100x scale
+  mismatch. Only an in-product look at the VFB / Vantage slider resolves it.
+- **All 47 factory defaults above**: readable only from a fresh 3ds Max + V-Ray 7 install
+  (dome/sphere-light creation values, VRayPhysicalCamera Aperture values,
+  VRayEnvironmentFog / VRayAerialPerspective creation values) and a fresh Chaos Vantage 3.3
+  install (Camera-tab exposure trio, auto-exposure startup state, Highlight burn /
+  Filmic-tonemap Type, Fog max opacity, the five Clouds spinners, the 20 Wetting spinners,
+  the three Wind spinners).
+
+## Summary (2026-07-05)
+
+- vray7max: **159** entries — 12 `verified:false`, all re-checked, **all still unprintable**.
+- vantage33: **144** entries — 35 `verified:false`, all re-checked, **all still unprintable**.
+- No data changed anywhere (packs, mirror, tests); this section is the only artifact of the
+  pass.

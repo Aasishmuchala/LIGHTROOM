@@ -151,6 +151,10 @@ export interface SheetRow {
   why?: string;
   clamped: boolean;
   applied: boolean | null;
+  /** OPTIONAL consensus agreement count (2026-07-05 addition): carried through from a
+   *  Consensus ×3 merged recipe's value. Absent on single-call recipes and on rows
+   *  built from older persisted sessions — consumers must null-guard. */
+  consensus_n?: number;
 }
 
 // -- buildSheet(target, recipe, chain): the COMPLETE settings sheet as flat ordered
@@ -191,6 +195,11 @@ export function buildSheet(
           why: move.why as string,
           clamped: !!move.clamped,
           applied: isCorrection ? true : isRecipeApplied(chain, e.id),
+          // Consensus agreement count rides through ONLY when it is a real number —
+          // single-call recipes / old sessions never grow a phantom field here.
+          ...(typeof move.consensus_n === "number"
+            ? { consensus_n: move.consensus_n as number }
+            : {}),
         });
       } else {
         rows.push({
@@ -282,9 +291,80 @@ export async function copyText(text: string): Promise<void> {
   }
 }
 
+// -- downloadText: save a string as a file via Blob + a.download (the export buttons'
+// sink; the CONTENT comes from the pure lib/export formatters). Object URL is revoked
+// on the next tick — revoking synchronously races the click navigation in some
+// browsers. Never throws past the caller (same contract as copyText above). ---------
+export function downloadText(filename: string, text: string, mime = "text/plain"): void {
+  try {
+    const url = URL.createObjectURL(new Blob([text], { type: mime }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch {
+    /* a failed download is a minor annoyance, not a crash */
+  }
+}
+
 // -- split a verbatim ui_path into breadcrumb segments (last = leaf). --------------
 export function splitPath(uiPath: string): { segs: string[]; leaf: string } {
   const parts = String(uiPath).split(" ▸ ");
   const leaf = parts.pop() || uiPath;
   return { segs: parts, leaf };
+}
+
+/* ============================================================================
+   Refine-ledger DIFF HEATMAP — pure math only; rendering lives in RefineLedger.
+   Maps the per-cell luminance delta between an attempt's 4x4 grid and the
+   reference's (MetricVector.grid: mean linear luminance, row-major) to a signed
+   overlay intensity. Contract per cell (diff = attempt - ref):
+     sign :  1 attempt BRIGHTER than ref, -1 darker, 0 within noise (|diff| <
+             HEAT_NOISE_FLOOR — rendered fully transparent so a matched cell
+             stays quiet).
+     mag  : |diff| / HEAT_FULL_DELTA clamped to [0,1] — a 0.15 mean-luminance
+             delta (or more) saturates the tint.
+   The renderer multiplies mag by HEAT_ALPHA_MAX for the cell's rgba alpha.
+   ============================================================================ */
+
+/** Linear-luminance delta that renders at FULL tint intensity (mag = 1). */
+export const HEAT_FULL_DELTA = 0.15;
+/** Deltas below this read as "same" — sign 0, cell stays transparent. */
+export const HEAT_NOISE_FLOOR = 0.01;
+/** Overlay tint alpha at mag = 1 (kept quiet so the thumbnail stays readable). */
+export const HEAT_ALPHA_MAX = 0.45;
+
+export interface HeatCell {
+  sign: -1 | 0 | 1;
+  mag: number;
+}
+
+/** Per-cell heat for the attempt-vs-reference grid overlay. SAFETY: persisted
+ *  sessions from older versions may lack `.grid`, and a decode bug could yield
+ *  odd lengths — any non-array input or a length mismatch returns [] so the
+ *  overlay simply does not render; never throws. Non-finite entries collapse to
+ *  a neutral cell for the same reason. */
+export function gridHeatCells(
+  refGrid: readonly number[] | null | undefined,
+  attemptGrid: readonly number[] | null | undefined
+): HeatCell[] {
+  if (!Array.isArray(refGrid) || !Array.isArray(attemptGrid)) return [];
+  if (refGrid.length !== attemptGrid.length) return [];
+  const cells: HeatCell[] = [];
+  for (let i = 0; i < refGrid.length; i++) {
+    const diff = attemptGrid[i] - refGrid[i];
+    if (!Number.isFinite(diff)) {
+      cells.push({ sign: 0, mag: 0 }); // corrupt cell -> transparent, not NaN alpha
+      continue;
+    }
+    const abs = Math.abs(diff);
+    cells.push({
+      sign: abs < HEAT_NOISE_FLOOR ? 0 : diff > 0 ? 1 : -1,
+      mag: Math.min(1, abs / HEAT_FULL_DELTA),
+    });
+  }
+  return cells;
 }

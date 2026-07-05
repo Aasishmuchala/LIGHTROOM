@@ -16,6 +16,10 @@
 
 import { openDB, type IDBPDatabase } from "idb";
 import type { TargetId } from "./types";
+// KNOWN_PROPS is the allow-list that sanitizes the LIVE-pull path (max-bridge.mapPullResult).
+// The import/persist path needs the SAME boundary, else a hand-crafted session file smuggles
+// attacker-chosen rows into the model-facing "CURRENT SCENE SETTINGS" block. Pure map, no DOM.
+import { KNOWN_PROPS } from "./export";
 
 // ---------------------------------------------------------------------------
 // Types for the persisted shapes this module validates (kept loose on purpose —
@@ -26,12 +30,43 @@ import type { TargetId } from "./types";
 export interface Prefs {
   model: string;
   target: TargetId | string;
+  /** Consensus ×3 (2026-07-05 addition, ADDITIVE): when true, analyze() fires THREE
+   *  identical model calls and merges them into one recipe (median numerics, majority
+   *  strings) to kill run-to-run LLM variance — steadier values at 3× cost/time.
+   *  Old lm_prefs blobs LACK this key; prefs() fills it from PREFS_DEFAULTS (false). */
+  consensus: boolean;
 }
 
 /** A stored image slot: a data URL plus (for ref/base) its measured metrics. */
 export interface StoredSlot {
   dataUrl: string;
   metrics?: unknown;
+}
+
+/** One settled parameter of a matched session: the LAST value the chain landed on
+ *  (recipe round 0 then every correction, last write per param wins, applied-only). */
+export interface PriorValue {
+  param: string;
+  value: number | string;
+}
+
+/** A scene prior (2026-07-05 addition): the settled values of a PAST session that
+ *  reached the measured match gate (or a handoff_to_grade), keyed by target + the
+ *  user's scene-context chips. The engine saves one when a chain lands; analyze()
+ *  looks the best one up so a similar new scene starts biased toward a known-good
+ *  landing zone instead of from scratch. */
+export interface Prior {
+  target: TargetId | string;
+  /** The session's context chips as saved ({scene, time, rig}; extra keys allowed).
+   *  Matching is EXACT-equality on non-empty fields — priors never fuzzy-match. */
+  context: Record<string, string>;
+  values: PriorValue[];
+  /** The measured "% match" the session settled at (metrics.matchPercent of the
+   *  triggering score) — travels into the prompt so the model knows how good the
+   *  landing zone was. */
+  matchPercent: number;
+  /** ISO timestamp of the save — the recency tiebreaker in bestPrior. */
+  at: string;
 }
 
 /** One per-target chain as persisted. Kept loose; ENGINE owns the exact recipe shape. */
@@ -85,8 +120,8 @@ export const STORE = {
     ls()?.setItem("lm_key", (k || "").trim());
   },
 
-  // -- prefs: {model, target}, localStorage JSON, defaults filled in on read ----------
-  PREFS_DEFAULTS: { model: "claude-opus-4-8", target: "vray7max" } as Prefs,
+  // -- prefs: {model, target, consensus}, localStorage JSON, defaults filled in on read
+  PREFS_DEFAULTS: { model: "claude-opus-4-8", target: "vray7max", consensus: false } as Prefs,
   prefs(): Prefs {
     let stored: Partial<Prefs> = {};
     try {
@@ -100,6 +135,89 @@ export const STORE = {
     const merged = Object.assign({}, this.prefs(), patch || {});
     ls()?.setItem("lm_prefs", JSON.stringify(merged));
     return merged;
+  },
+
+  // -- SCENE PRIORS (2026-07-05 addition): "remember what worked" ----------------------
+  // localStorage JSON array under "lm_priors", capped FIFO at PRIORS_CAP (oldest out —
+  // a prior that survived 20 later matches is stale by definition). Lives in
+  // localStorage, NOT IndexedDB: priors must outlive the 5-session IDB retention cap
+  // (that cap is the whole reason they exist) and are tiny (params + scalars, no
+  // images). Degrade-never-throw, like everything else in STORE: a corrupt/missing
+  // blob reads as [], a blocked or full localStorage makes savePrior a silent no-op —
+  // priors are a BIAS, never load-bearing state.
+  PRIORS_KEY: "lm_priors",
+  PRIORS_CAP: 20,
+
+  // -- loadPriors(): every stored prior, oldest-first (append order). Rows that fail
+  // the minimal shape check (object with a string target and an array values) are
+  // dropped silently — one corrupt row must not poison the rest. ---------------------
+  loadPriors(): Prior[] {
+    try {
+      const raw = ls()?.getItem(this.PRIORS_KEY);
+      if (!raw) return [];
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(
+        (p): p is Prior =>
+          !!p &&
+          typeof p === "object" &&
+          typeof (p as Prior).target === "string" &&
+          Array.isArray((p as Prior).values)
+      );
+    } catch {
+      return [];
+    }
+  },
+
+  // -- savePrior(p): append + FIFO-trim + write back. Re-reads through loadPriors()
+  // so a corrupt existing blob heals to [p] instead of throwing. Never throws
+  // (localStorage.setItem can throw QuotaExceeded even when available). --------------
+  savePrior(p: Prior): void {
+    try {
+      if (!p || typeof p.target !== "string" || !Array.isArray(p.values)) return;
+      const all = this.loadPriors();
+      all.push(p);
+      while (all.length > this.PRIORS_CAP) all.shift(); // FIFO: oldest out
+      ls()?.setItem(this.PRIORS_KEY, JSON.stringify(all));
+    } catch {
+      /* degrade: a prior that fails to save costs nothing but a lost head start */
+    }
+  },
+
+  // -- bestPrior(target, context): the most relevant stored prior, or null. A prior
+  // qualifies only on the SAME target AND at least one EXACTLY-equal NON-EMPTY context
+  // field (empty-vs-empty is not a signal — every blank session would "match" every
+  // other). Ranking: more matching fields wins; ties go to the NEWER `at` (a fresher
+  // landing zone reflects the user's current workflow). `>=` on the tie so equal
+  // timestamps fall to the later-stored (newer) row. ---------------------------------
+  bestPrior(
+    target: TargetId | string,
+    context: Record<string, unknown> | null | undefined
+  ): Prior | null {
+    try {
+      let best: Prior | null = null;
+      let bestMatches = 0;
+      let bestAt = "";
+      for (const p of this.loadPriors()) {
+        if (p.target !== target) continue;
+        let matches = 0;
+        if (context && p.context && typeof p.context === "object") {
+          for (const [k, v] of Object.entries(context)) {
+            if (typeof v === "string" && v !== "" && p.context[k] === v) matches++;
+          }
+        }
+        if (matches < 1) continue;
+        const at = typeof p.at === "string" ? p.at : "";
+        if (matches > bestMatches || (matches === bestMatches && at >= bestAt)) {
+          best = p;
+          bestMatches = matches;
+          bestAt = at;
+        }
+      }
+      return best;
+    } catch {
+      return null;
+    }
   },
 
   // -- IndexedDB plumbing -------------------------------------------------------------
@@ -237,6 +355,47 @@ export const STORE = {
     return typeof v === "string" && this.DATAURL_RE.test(v);
   },
 
+  // -- _sanitizeImportedLiveSettings(v): the import analogue of mapPullResult's KNOWN_PROPS
+  // gate. liveSettings flows VERBATIM into buildUserContent's high-trust "CURRENT SCENE
+  // SETTINGS" evidence block (client-adapter.ts), so an imported file must not be allowed to
+  // inject arbitrary keys/values or an unbounded number of rows. Returns a CLEAN object, or
+  // null when absent/malformed (null is a valid persisted state — older sessions lack it).
+  // Drops any params key not in KNOWN_PROPS (own-property check — never inherited names),
+  // coerces values to finite number | string, and is naturally capped by |KNOWN_PROPS|.
+  _sanitizeImportedLiveSettings(v: unknown): {
+    renderer: string;
+    at: string;
+    counts: { suns: number; vrayLights: number; physCams: number };
+    params: Record<string, number | string>;
+  } | null {
+    if (v == null || typeof v !== "object" || Array.isArray(v)) return null;
+    const o = v as Record<string, unknown>;
+    const rawParams =
+      o.params && typeof o.params === "object" && !Array.isArray(o.params)
+        ? (o.params as Record<string, unknown>)
+        : {};
+    const params: Record<string, number | string> = {};
+    for (const [k, val] of Object.entries(rawParams)) {
+      if (!Object.prototype.hasOwnProperty.call(KNOWN_PROPS, k)) continue; // allow-list only
+      if (typeof val === "number" && Number.isFinite(val)) params[k] = val;
+      else if (typeof val === "string") params[k] = val;
+    }
+    // Nothing survivable → treat as no live block rather than persisting an empty husk.
+    if (!Object.keys(params).length) return null;
+    const rawCounts =
+      o.counts && typeof o.counts === "object" ? (o.counts as Record<string, unknown>) : {};
+    return {
+      renderer: typeof o.renderer === "string" ? o.renderer : "unknown",
+      at: typeof o.at === "string" ? o.at : "",
+      counts: {
+        suns: Number(rawCounts.suns) || 0,
+        vrayLights: Number(rawCounts.vrayLights) || 0,
+        physCams: Number(rawCounts.physCams) || 0,
+      },
+      params,
+    };
+  },
+
   // -- importJSON(str): validate the session shape, reject malformed with a clear
   // message, stamp `created` = now (so the import becomes loadLatest()'s newest and
   // survives prune), enforce the XSS boundary on every dataUrl, then save. ----------
@@ -270,7 +429,16 @@ export const STORE = {
     }
     // -- ACTIVATE THE IMPORT: stamp `created` to now so loadLatest() returns it and
     // prune can't drop it as stale (deliberately overrides any timestamp in the file).
-    o.created = new Date().toISOString();
+    // STRICTLY AFTER the current latest: loadLatest() compares with `>` — an import
+    // landing in the same millisecond as the last save would TIE on the ISO string and
+    // lose to IndexedDB key order, so the imported session would silently not load.
+    let stamp = new Date().toISOString();
+    const prev = await this.loadLatest();
+    if (prev && prev.created >= stamp) {
+      const prevMs = Date.parse(prev.created);
+      if (Number.isFinite(prevMs)) stamp = new Date(prevMs + 1).toISOString();
+    }
+    o.created = stamp;
     // -- STORED-XSS BOUNDARY (CRITICAL): every dataUrl-bearing field is untrusted and
     // flows into an <img src="${...}"> sink. Walk them all and REJECT the whole import
     // on the first bad payload — do NOT strip-and-continue.
@@ -286,6 +454,12 @@ export const STORE = {
         if (att && !this._validImportedDataUrl(att.dataUrl)) throw new Error(REJECT);
       }
     }
+    // -- LIVE-SETTINGS BOUNDARY: liveSettings never went through the KNOWN_PROPS allow-list
+    // (that lives on the pull path only), so an imported file could carry arbitrary,
+    // unbounded, model-facing rows. Replace it with a sanitized copy (or null). Cast through
+    // the loose StoredSession shape — this field is engine-owned and not in STORE's type.
+    (o as unknown as { liveSettings?: unknown }).liveSettings =
+      this._sanitizeImportedLiveSettings((o as unknown as { liveSettings?: unknown }).liveSettings);
     await this.saveSession(o);
     return o;
   },

@@ -2,3 +2,6 @@
 *.local.*
 
 # probes/results.md stays tracked (explicitly not ignored here)
+
+# CI-local installs (playwright for probes/ci-selftest.mjs)
+node_modules/

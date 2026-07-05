@@ -31,10 +31,22 @@ import {
   downscaleForSend,
   diffVectors,
   scoreVectors,
+  wbExposureEvidence,
+  sceneEvidence,
+  matchPercent,
+  MATCH_THRESHOLD,
   type DrawableSource,
 } from "@/lib/metrics";
 import { decodeExrFile, isExrFile } from "@/lib/exr";
-import { developExr, autoExposureEV, EV_MIN, EV_MAX } from "@/lib/develop";
+import {
+  developExr,
+  autoExposureEV,
+  EV_MIN,
+  EV_MAX,
+  linearStats,
+  linearEvidence,
+  type LinearStats,
+} from "@/lib/develop";
 import { PACKS } from "@/lib/packs";
 import { systemPrompt, validateRecipe, EMIT_RECIPE, EMIT_CORRECTION } from "@/lib/schemas";
 import { STORE, type StoredSession } from "@/lib/store";
@@ -75,6 +87,12 @@ export interface ExrSlotState {
   width: number;
   height: number;
   ev: number;
+  /** Scene-referred statistics of the RETAINED linear buffer (develop.linearStats).
+   *  Exposure-INDEPENDENT — EV gain is applied at develop time, the buffer itself never
+   *  changes — so it is computed ONCE at decode and carried through re-develops.
+   *  Optional with null-guards at every read: slot state injected by older tests/tools
+   *  may lack it, and a slot without stats simply contributes no linear evidence. */
+  stats?: LinearStats;
 }
 export const EXR_SLOTS = ["ref", "base", "settings"] as const;
 export type ExrSlotName = (typeof EXR_SLOTS)[number];
@@ -85,12 +103,56 @@ export interface AttemptEntry {
   correction: Correction;
   appliedParams: Record<string, boolean>;
 }
+
+// ---------------------------------------------------------------------------
+// Calibration probe (2026-07-05 addition): after the initial recipe the user can
+// re-render with ONE knob changed (the probe) so corrections are scaled by the
+// scene's MEASURED sensitivity to that knob instead of the model's guess. The probe
+// render is NOT an attempt — it never scores, never becomes a history round, never
+// ticks _attemptCount; it exists only to produce the response deltas below.
+// ---------------------------------------------------------------------------
+/** The measured scene response to the ONE probed knob: probe render vs the BASE
+ *  render, per channel. Each channel is null when the pixels carry no signal for it
+ *  (black frame, degenerate grid) — the SAME guards wbExposureEvidence/sceneEvidence
+ *  use, so a null here can never be a fabricated number. */
+export interface ProbeResponse {
+  /** log2(probe median / base median) in stops; positive = the probe render came out brighter. */
+  d_ev: number | null;
+  /** probe wb.warmthHighlight − base's ((R−B)/(R+B) on highlight linear means). */
+  d_warmth_highlight: number | null;
+  /** light-centroid x shift (probe − base) in −1..1 frame units; positive = light mass moved right. */
+  d_centroid_x: number | null;
+  /** key:fill ratio shift (probe − base); positive = the probe render is more directional. */
+  d_key_fill_ratio: number | null;
+}
+/** A single-knob probe instruction: re-render with ONLY `param` changed from → to. */
+export interface ProbeSuggestion {
+  param: string;
+  from: number;
+  to: number;
+}
+/** The armed probe on a chain, plus (once the probe render lands) its measured response. */
+export interface ProbeState extends ProbeSuggestion {
+  response?: ProbeResponse;
+}
+
 export interface Chain {
   recipe: Recipe | null;
   attempts: AttemptEntry[];
   _attemptCount: number;
   recipeApplied?: Record<string, boolean> | null;
   _evictedScores?: { score: number }[];
+  /** OPTIONAL calibration probe (2026-07-05 addition). Persisted sessions from
+   *  older versions LACK this field — every consumer must null-guard. */
+  probe?: ProbeState | null;
+}
+/** Settings pulled LIVE from a running 3ds Max via /api/max (2026-07-05 addition).
+ *  Persisted with the session; older sessions LACK this field — null-guard reads. */
+export interface LiveSettings {
+  renderer: string;
+  at: string;
+  counts: { suns: number; vrayLights: number; physCams: number };
+  params: Record<string, number | string>;
 }
 export interface Session {
   id: string;
@@ -101,6 +163,7 @@ export interface Session {
   settingsShot: { dataUrl: string } | null;
   activeTarget: TargetId | string;
   chains: Record<string, Chain>;
+  liveSettings?: LiveSettings | null;
 }
 
 export type EngineState = "empty" | "ready" | "analyzed" | "refining";
@@ -141,7 +204,7 @@ function isPreCaptured(input: ImageInput): input is PreCaptured {
 // call is in flight (concurrency guard). Carries kind:"busy" directly, like vanilla.
 // ---------------------------------------------------------------------------
 export class BusyError extends Error {
-  kind: "busy" = "busy";
+  kind = "busy" as const;
   constructor(message: string) {
     super(message);
     this.name = "BusyError";
@@ -161,6 +224,165 @@ export class DecodeError extends Error {
 // ---------------------------------------------------------------------------
 export const ATTEMPTS_CAP = 8;
 export const SESSION_RETENTION_CAP = 5;
+
+// ---------------------------------------------------------------------------
+// suggestProbe(recipe, target) — PURE: pick the one recipe move worth probing.
+// Selection contract (why each rule exists):
+//   - steps 2-4 only. Step 1 (exposure/WB) is already arithmetic from the measured
+//     evidence — probing it teaches nothing new; steps 5-6 (color mapping /
+//     atmosphere) are display-side or coupled and make poor single-knob probes.
+//   - numeric moves only: strings (dropdown/color/checkbox tokens) and placement
+//     kinds are instructions, not scalar knobs — a measured response cannot be
+//     scaled by them.
+//   - largest RELATIVE change wins: |set − from| / max(|from|, range span × 0.1).
+//     The span floor keeps a from≈0 knob (e.g. dome 0 → 0.5) from reading as an
+//     infinite relative change just because its starting point happens to be zero.
+// Returns null when nothing qualifies (all-string recipe, no recipe, no step-2..4
+// numeric moves) — the caller simply offers no probe.
+// ---------------------------------------------------------------------------
+export function suggestProbe(
+  recipe: Recipe | null | undefined,
+  target: TargetId | string
+): ProbeSuggestion | null {
+  if (!recipe || !Array.isArray(recipe.values)) return null;
+  let best: ProbeSuggestion | null = null;
+  let bestRel = 0;
+  for (const v of recipe.values) {
+    if (!v || typeof v.param !== "string") continue;
+    if (!(typeof v.step === "number" && v.step >= 2 && v.step <= 4)) continue;
+    if (typeof v.set !== "number" || !Number.isFinite(v.set)) continue;
+    if (typeof v.from !== "number" || !Number.isFinite(v.from)) continue;
+    const entry = PACKS.lookup(target, v.param);
+    if (entry && entry.kind === "placement") continue; // an instruction, not a knob
+    const span = entry && entry.range[0] < entry.range[1] ? entry.range[1] - entry.range[0] : 0;
+    const denom = Math.max(Math.abs(v.from), span * 0.1);
+    if (!(denom > 0)) continue; // no scale to judge relative change against
+    const rel = Math.abs(v.set - v.from) / denom;
+    if (rel > bestRel) {
+      bestRel = rel;
+      best = { param: v.param, from: v.from, to: v.set };
+    }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------
+// mergeConsensusRecipes(runs, target) — PURE: fold N fulfilled recipe emits from
+// IDENTICAL requests into ONE recipe (the Consensus ×3 merge; kills run-to-run LLM
+// variance). Contract (why each rule exists):
+//   - per param, across runs: numeric `set` values -> MEDIAN (the robust middle —
+//     one outlier run cannot drag the value), then PACKS.clamp defensively (a
+//     median of in-range values is in range, but the clamp is the last belt);
+//     string `set` values (dropdown/placement/color tokens) -> MAJORITY vote,
+//     ties resolved to the FIRST run's value (deterministic, no coin flips).
+//   - from/step/confidence/why (and any other per-item metadata) come from the
+//     FIRST run that emitted the param — mixing metadata across runs would stitch
+//     a `why` onto a number it never justified.
+//   - consensus_n = how many runs emitted the param. Params emitted by only ONE
+//     run are KEPT (with consensus_n: 1) rather than dropped: silently discarding
+//     a model's move loses data the user can judge — the UI flags low agreement
+//     instead, which is strictly more honest.
+//   - envelope (baseline/hdri_mood/rationale/gi_notes/status/status_reason) comes
+//     from the first run; a `consensus: {runs}` marker is added so the UI knows
+//     the denominator.
+//   - the schema's values maxItems is re-enforced AFTER the merge (a union of
+//     three 30-move recipes can exceed 32): lowest-consensus_n items are dropped
+//     first (ties: the LAST-appearing one goes), so agreement survives truncation.
+// ---------------------------------------------------------------------------
+export function mergeConsensusRecipes(
+  runs: Array<Record<string, unknown>>,
+  target: TargetId | string
+): Record<string, unknown> {
+  type Item = Record<string, unknown>;
+  const first = runs[0] || {};
+  // First-appearance param order (run 1's order, then run 2's new params, ...) with
+  // the per-run items collected in run order — items[0] is always the FIRST run that
+  // emitted the param.
+  const order: string[] = [];
+  const byParam = new Map<string, Item[]>();
+  for (const run of runs) {
+    const values = run && Array.isArray(run.values) ? (run.values as Item[]) : [];
+    const seenInRun = new Set<string>(); // belt: validateRecipe already drops duplicates
+    for (const item of values) {
+      if (!item || typeof item.param !== "string") continue;
+      if (seenInRun.has(item.param)) continue;
+      seenInRun.add(item.param);
+      if (!byParam.has(item.param)) {
+        byParam.set(item.param, []);
+        order.push(item.param);
+      }
+      byParam.get(item.param)!.push(item);
+    }
+  }
+
+  const merged: Item[] = [];
+  for (const param of order) {
+    const items = byParam.get(param)!;
+    const firstItem = items[0];
+    // Metadata (from/step/confidence/why/clamped/...) from the first emitting run.
+    const out: Item = { ...firstItem, consensus_n: items.length };
+    const sets = items.map((it) => it.set);
+    const allNumeric = sets.every((v) => typeof v === "number" && Number.isFinite(v));
+    if (allNumeric) {
+      const sorted = (sets as number[]).slice().sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const median =
+        sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+      // Defensive clamp: inputs were route-validated, but an even-count average (or a
+      // stubbed test run) could stray — never let an out-of-range number downstream.
+      const clampRes = PACKS.clamp(target, param, median);
+      out.set = clampRes.value;
+      // Preserve an upstream clamped flag (all runs pinned at a range edge would
+      // otherwise read as never-clamped) OR flag a clamp applied right here.
+      out.clamped = firstItem.clamped === true || clampRes.clamped;
+    } else {
+      // Majority vote over the exact values. Keys carry the typeof so a numeric 1 and
+      // a string "1" from a mixed emit can never merge into one bucket. Map iteration
+      // is insertion-ordered and the first-inserted key is the FIRST run's value, so
+      // the strict `>` below resolves ties to the first run deterministically.
+      const counts = new Map<string, { v: unknown; n: number }>();
+      for (const v of sets) {
+        const key = typeof v + ":" + String(v);
+        const c = counts.get(key) || { v, n: 0 };
+        c.n++;
+        counts.set(key, c);
+      }
+      let bestV: unknown = sets[0];
+      let bestN = 0;
+      for (const { v, n } of counts.values()) {
+        if (n > bestN) {
+          bestN = n;
+          bestV = v;
+        }
+      }
+      out.set = bestV;
+    }
+    merged.push(out);
+  }
+
+  // Re-enforce the schema cap AFTER the merge: drop the lowest-consensus_n item
+  // (ties: the last-appearing one) until the array fits. Read from the schema so
+  // this can never drift from EMIT_RECIPE.
+  const maxItems =
+    (EMIT_RECIPE.input_schema.properties.values as { maxItems?: number })?.maxItems ?? 32;
+  while (merged.length > maxItems) {
+    let minN = Infinity;
+    let minIdx = -1;
+    for (let i = 0; i < merged.length; i++) {
+      const n = typeof merged[i].consensus_n === "number" ? (merged[i].consensus_n as number) : 1;
+      if (n <= minN) {
+        // `<=` keeps scanning so ties land on the LAST occurrence of the minimum.
+        minN = n;
+        minIdx = i;
+      }
+    }
+    merged.splice(minIdx, 1);
+  }
+
+  // Envelope from the first fulfilled run; values replaced by the merge; the runs
+  // marker tells the UI the agreement denominator.
+  return { ...first, values: merged, consensus: { runs: runs.length } };
+}
 
 // ---------------------------------------------------------------------------
 // Store state + actions.
@@ -198,6 +420,8 @@ export interface EngineStore {
   // -- actions --
   reset(): Session;
   setContext(patch: Partial<Session["context"]>): Promise<Session>;
+  /** Record (or clear) settings pulled live from 3ds Max; persisted with the session. */
+  setLiveSettings(live: LiveSettings | null): Promise<Session>;
   setActiveTarget(target: TargetId | string): Promise<Session>;
   setImage(slot: ImageSlotName, input: ImageInput): Promise<ImageSlot | { dataUrl: string }>;
   /** Re-develop an EXR-backed named slot at a new EV from its retained linear buffer,
@@ -208,6 +432,16 @@ export interface EngineStore {
   exrEv(slot: ExrSlotName): number | null;
   analyze(): Promise<Recipe>;
   addAttempt(input: ImageInput): Promise<{ score: number; correction: Correction }>;
+  /** Arm the calibration probe for `param` from the CURRENT recipe (records
+   *  chain.probe = {param, from: value.from, to: value.set}). Returns null (no
+   *  mutation) when the param is not a numeric recipe move — strings/placements
+   *  cannot be probed. Re-arming clears any prior measured response. */
+  setProbe(param: string): Promise<ProbeState | null>;
+  /** Decode/measure the single-knob probe render (same captureSlot path as attempts,
+   *  EXR branch included) and store its measured response vs the BASE image on
+   *  chain.probe.response. NOT an attempt: no score, no history round, no attempt
+   *  number. Guarded by the shared in-flight gate. */
+  addProbeRender(input: ImageInput): Promise<ProbeResponse>;
   reanalyzeOtherTarget(): Promise<Recipe>;
   setRecipeApplied(param: string, applied: boolean): Promise<Record<string, boolean> | null>;
   toggleAttemptApplied(
@@ -449,6 +683,37 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     return rounds;
   };
 
+  // -- SCENE PRIORS (2026-07-05): the SETTLED values of a chain — what the sheet
+  // actually reads after the whole refine conversation. Walks round 0 (recipe values)
+  // then every STORED correction's moves in order; LAST write per param wins (a later
+  // trim supersedes the recipe's opening move); rows the user marked applied:false are
+  // skipped entirely (they never reached the render, so "remembering" them would teach
+  // the next session a value nobody verified). Same applied semantics as
+  // historyForActiveChain: an ABSENT applied map means everything was applied.
+  // Degrades with the ATTEMPTS_CAP eviction — moves on evicted rows are gone, which
+  // only makes the prior thinner, never wrong. -------------------------------------
+  const settledValuesForChain = (chain: Chain): { param: string; value: number | string }[] => {
+    const last = new Map<string, number | string>();
+    if (chain.recipe && Array.isArray(chain.recipe.values)) {
+      for (const v of chain.recipe.values) {
+        if (!v || typeof v.param !== "string" || v.set === undefined) continue;
+        const applied = chain.recipeApplied ? chain.recipeApplied[v.param] !== false : true;
+        if (!applied) continue;
+        last.set(v.param, v.set);
+      }
+    }
+    for (const att of Array.isArray(chain.attempts) ? chain.attempts : []) {
+      if (!att || !att.correction || !Array.isArray(att.correction.moves)) continue;
+      for (const m of att.correction.moves) {
+        if (!m || typeof m.param !== "string" || m.to === undefined) continue;
+        const applied = !att.appliedParams || att.appliedParams[m.param] !== false;
+        if (!applied) continue;
+        last.set(m.param, m.to);
+      }
+    }
+    return Array.from(last.entries()).map(([param, value]) => ({ param, value }));
+  };
+
   // -- push an attempt, enforcing ATTEMPTS_CAP by evicting from the front (keeping the
   // evicted entry's score on _evictedScores). --------------------------------------
   const pushAttempt = (chain: Chain, entry: AttemptEntry): void => {
@@ -488,6 +753,20 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     // reference/base IMAGES the model already sees.
     const metricsBundle = {
       diff: diffVectors(s.base!.metrics, s.ref!.metrics),
+      // Measured WB/exposure grounding (2026-07-05): CCT estimates + EV gap so the
+      // step-1 lock is arithmetic, not the model's kelvin guesswork.
+      ...wbExposureEvidence(s.ref!.metrics, s.base!.metrics),
+      // Measured spatial/structural grounding: light centroid (key direction),
+      // key:fill ratio (directionality), absolute anchors (haze/burn levels).
+      ...sceneEvidence(s.ref!.metrics, s.base!.metrics),
+      // Scene-referred linear evidence (EXR-native, 2026-07-05): included ONLY when
+      // BOTH compared images are EXR-backed with computed stats — a mixed PNG/EXR pair
+      // would compare scene-referred floats against display-referred pixels, so it is
+      // omitted entirely. A restored session has no linear buffers (exrSlots is never
+      // persisted), so this is naturally absent there too.
+      ...(get().exrSlots.ref?.stats && get().exrSlots.base?.stats
+        ? { linear_evidence: linearEvidence(get().exrSlots.ref!.stats!, get().exrSlots.base!.stats!) }
+        : {}),
     };
     const images: AdapterImage[] = [
       { role: "reference", dataUrl: s.ref!.dataUrl, mediaType: mediaTypeFromDataUrl(s.ref!.dataUrl) },
@@ -501,18 +780,96 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       });
     }
     const system = systemPrompt(target, "recipe");
-    const userContent = buildUserContent({ mode: "recipe", images, metricsBundle, context: s.context });
+    // Calibration probe: once the single-knob probe render has been measured, every
+    // subsequent model call for this chain — re-analyze included — carries the
+    // measured sensitivity so magnitudes are scaled by the scene, not guessed.
+    // Null-guarded: persisted sessions from older versions have no `probe` field,
+    // and an armed-but-unrendered probe (no response yet) carries no evidence.
+    const probe = s.chains[target].probe;
+    // Scene prior (2026-07-05): the best-matching PAST session's settled values ride
+    // along as a starting bias — same target, >= 1 exactly-equal non-empty context
+    // chip (STORE.bestPrior; degrade-never-throw, so a corrupt priors blob simply
+    // yields no prior). The evidence blocks above always outrank it on conflict.
+    const prior = STORE.bestPrior(target, s.context);
+    const userContent = buildUserContent({
+      mode: "recipe",
+      images,
+      metricsBundle,
+      context: s.context,
+      ...(probe && probe.response ? { probe } : {}),
+      ...(prior ? { prior } : {}),
+      // Live 3ds Max settings (2026-07-05): the scene's ACTUAL current values,
+      // pulled over the bridge — the model's `from` baseline stops being an
+      // assumption. Null-guarded: older sessions lack the field.
+      ...(s.liveSettings ? { liveSettings: s.liveSettings } : {}),
+    });
+
+    // The one request this analysis sends — built ONCE so the consensus path fires
+    // three byte-identical calls (same system, same content, same tool).
+    const request: Parameters<typeof analyzeViaApi>[0] = {
+      model: STORE.prefs().model,
+      system,
+      userContent,
+      tool: EMIT_RECIPE,
+      mode: "recipe",
+      target,
+    };
 
     let cleaned: Record<string, unknown>;
     try {
-      cleaned = await get()._analyze({
-        model: STORE.prefs().model,
-        system,
-        userContent,
-        tool: EMIT_RECIPE,
-        mode: "recipe",
-        target,
-      });
+      if (STORE.prefs().consensus === true) {
+        // CONSENSUS ×3 (2026-07-05): fire THREE identical analyses in parallel and
+        // merge them (median numerics / majority strings — mergeConsensusRecipes)
+        // to kill run-to-run LLM variance on the INITIAL recipe. allSettled, not
+        // all: one flaky gateway response must not waste the other two runs — any
+        // >= 1 fulfilled, shape-valid runs still produce a (thinner) consensus.
+        // Correction rounds deliberately STAY single-call: a trim is 3-5 cheap
+        // moves and is HISTORY-COUPLED — three parallel corrections would each
+        // reason against the same move history, and a cross-run merge of their
+        // trims would not correspond to any one model's coherent plan.
+        const settled = await Promise.allSettled([
+          get()._analyze(request),
+          get()._analyze(request),
+          get()._analyze(request),
+        ]);
+        const fulfilled: Record<string, unknown>[] = [];
+        for (const r of settled) {
+          // A fulfilled-but-wrong-shape run (missing values[]) is as unusable as a
+          // rejection — exclude it from the merge rather than crash inside it.
+          if (
+            r.status === "fulfilled" &&
+            r.value &&
+            Array.isArray((r.value as { values?: unknown }).values)
+          ) {
+            fulfilled.push(r.value as Record<string, unknown>);
+          }
+        }
+        if (fulfilled.length === 0) {
+          // All three failed: surface the FIRST rejection reason unchanged so the
+          // existing annotateError path classifies it exactly as a single-call
+          // failure would have been; all-fulfilled-but-malformed becomes shape.
+          const firstRejection = settled.find((r) => r.status === "rejected") as
+            | PromiseRejectedResult
+            | undefined;
+          if (firstRejection) throw firstRejection.reason;
+          throw new AdapterError(
+            "Consensus: every run returned a non-recipe shape (missing values[]) — all responses were discarded.",
+            "shape"
+          );
+        }
+        cleaned = mergeConsensusRecipes(fulfilled, target);
+      } else {
+        cleaned = await get()._analyze(request);
+      }
+      // Shape belt: the route guarantees a validated recipe, but a broken proxy/stub
+      // answering with the wrong mode's shape must become a typed error here — storing
+      // it would crash every values[] read downstream (RecipeView, history, export).
+      if (!cleaned || !Array.isArray((cleaned as { values?: unknown }).values)) {
+        throw new AdapterError(
+          "Analyze returned a non-recipe shape (missing values[]) — the response was discarded.",
+          "shape"
+        );
+      }
     } catch (e) {
       throw annotateError(e);
     }
@@ -543,8 +900,13 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     // immutable ledger row (re-scoring history would corrupt the refine chain), so the
     // exposure slider is offered only on the named ref/base/settings slots, not here.
     let captured: { dataUrl: string; metrics: MetricVector };
+    // Transient scene-referred stats for THIS attempt only: attempts are immutable
+    // ledger rows with no exposure slider, so the linear buffer is NOT retained — it is
+    // measured once here and released, feeding only the linear evidence block below.
+    let attemptLinearStats: LinearStats | null = null;
     if (input instanceof Blob && (await isExrFile(input as File))) {
       const dev = await developExrToCanvas(input);
+      attemptLinearStats = linearStats(dev.linear, dev.width, dev.height);
       captured = await captureSlot(dev.canvas as unknown as DrawableSource);
     } else {
       captured = await captureSlot(input);
@@ -555,7 +917,21 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     // metric objects — keeps Opus's reasoning inside omega's token + ~100s time budget.
     const metricsBundle = {
       diff: diffVectors(captured.metrics, s.ref!.metrics),
+      // Same measured WB/exposure + spatial grounding as analyze(), vs THIS attempt.
+      ...wbExposureEvidence(s.ref!.metrics, captured.metrics),
+      ...sceneEvidence(s.ref!.metrics, captured.metrics),
+      // Scene-referred linear evidence: only when the REFERENCE slot is EXR-backed AND
+      // this attempt arrived as an EXR (mixed pairs are omitted entirely — see analyze).
+      ...(get().exrSlots.ref?.stats && attemptLinearStats
+        ? { linear_evidence: linearEvidence(get().exrSlots.ref!.stats!, attemptLinearStats) }
+        : {}),
     };
+    // Snapshot the history BEFORE the attempt counter increments: stored rounds are
+    // numbered off _attemptCount, so incrementing first shifts every prior round's
+    // label by +1 in the MOVE HISTORY the model reads (attempt 1's correction would
+    // arrive marked "round 2" while analyzing attempt 2 — misnumbered input to the
+    // oscillation guard). The vanilla source has the same ordering bug; fixed here.
+    const history = historyForActiveChain();
     if (typeof chain._attemptCount !== "number") chain._attemptCount = chain.attempts.length;
     chain._attemptCount++;
     const attemptN = chain._attemptCount;
@@ -563,7 +939,6 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       { role: "reference", dataUrl: s.ref!.dataUrl, mediaType: mediaTypeFromDataUrl(s.ref!.dataUrl) },
       { role: "attempt", n: attemptN, dataUrl: captured.dataUrl, mediaType: mediaTypeFromDataUrl(captured.dataUrl) },
     ];
-    const history = historyForActiveChain();
     const system = systemPrompt(target, "correction");
     const userContent = buildUserContent({
       mode: "correction",
@@ -571,6 +946,12 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       metricsBundle,
       context: s.context,
       history,
+      // Calibration probe (see analyzeImpl): the measured single-knob sensitivity
+      // rides along on every correction round once it exists. Null-guarded — old
+      // persisted sessions have no probe; an unrendered probe has no response.
+      ...(chain.probe && chain.probe.response ? { probe: chain.probe } : {}),
+      // Live 3ds Max settings ride along on corrections too (see analyzeImpl).
+      ...(s.liveSettings ? { liveSettings: s.liveSettings } : {}),
     });
 
     let cleaned: Record<string, unknown>;
@@ -583,7 +964,19 @@ export const engineStore = createStore<EngineStore>((set, get) => {
         mode: "correction",
         target,
       });
+      // Shape belt (see analyzeImpl): a wrong-mode response must not reach the ledger.
+      if (!cleaned || !Array.isArray((cleaned as { moves?: unknown }).moves)) {
+        throw new AdapterError(
+          "Analyze returned a non-correction shape (missing moves[]) — the round was discarded.",
+          "shape"
+        );
+      }
     } catch (e) {
+      // A failed round consumes NO attempt number: without this rollback every gateway
+      // failure permanently shifts the stored attempts' labels (attempt 1 starts
+      // rendering as "Attempt 2") and inflates the "N so far" caption, because
+      // attemptNumberForChain assumes each increment ended in a stored row.
+      chain._attemptCount--;
       throw annotateError(e);
     }
 
@@ -598,9 +991,112 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       correction,
       appliedParams,
     });
+
+    // SCENE PRIORS (2026-07-05): the chain just LANDED — either the measured score
+    // entered the match band (score <= MATCH_THRESHOLD, the same gate the RefineLedger
+    // shows) or the model declared handoff_to_grade (the residual is a color grade,
+    // not a lighting problem). Remember the settled sheet so the NEXT session over a
+    // similar scene starts from this known-good landing zone. Runs AFTER pushAttempt
+    // so the just-stored correction's trims are part of the settlement. FIRE-AND-
+    // FORGET: savePrior never throws by contract, and the belt here guarantees a
+    // storage failure can never break the attempt flow the user is mid-way through.
+    try {
+      if (score <= MATCH_THRESHOLD || correction.status === "handoff_to_grade") {
+        STORE.savePrior({
+          target,
+          context: { ...get().session.context },
+          values: settledValuesForChain(chain),
+          matchPercent: matchPercent(score),
+          at: new Date().toISOString(),
+        });
+      }
+    } catch {
+      /* fire-and-forget: a lost prior costs the next session a head start, nothing else */
+    }
+
     set({ session: { ...get().session } });
     await persist();
     return { score, correction };
+  };
+
+  // -- the calibration-probe implementation (runs inside the shared guard, like
+  // addAttemptImpl — but a probe is NOT an attempt: it never scores, never becomes a
+  // history round, never ticks _attemptCount, and makes NO model call. It exists only
+  // to measure the scene's response to the single armed knob against the BASE image
+  // (the render the recipe's `from` values describe), so the delta is attributable to
+  // that one change. ----------------------------------------------------------------
+  const addProbeRenderImpl = async (input: ImageInput): Promise<ProbeResponse> => {
+    const s = get().session;
+    const st = deriveState(s);
+    if (st !== "analyzed" && st !== "refining") {
+      throw new Error(
+        `addProbeRender(): active target must have a recipe first (state is "${st}"); call analyze() first.`
+      );
+    }
+    const target = s.activeTarget;
+    const probe = s.chains[target].probe;
+    if (!probe) {
+      throw new Error(
+        "addProbeRender(): no probe armed for the active target — call setProbe(param) first."
+      );
+    }
+    // Decode/measure through the SAME captureSlot path as attempts, EXR branch
+    // included. The linear buffer is NOT retained — the probe wants only the measured
+    // deltas below. EXPOSURE-CRITICAL: an EXR probe must be developed at the BASE
+    // slot's retained EV, NOT auto-EV — auto-exposure pins every frame's median to the
+    // same target, which cancels the very brightness response the probe exists to
+    // measure (a sun ×3 probe would read "median +0 EV"). When the base is not
+    // EXR-backed there is no shared EV frame, so d_ev is reported as null (honest)
+    // rather than a fabricated ~0.
+    let captured: { dataUrl: string; metrics: MetricVector };
+    let exposureComparable = true;
+    if (input instanceof Blob && (await isExrFile(input as File))) {
+      const baseExr = get().exrSlots.base;
+      const dev = await developExrToCanvas(input, baseExr ? baseExr.ev : undefined);
+      captured = await captureSlot(dev.canvas as unknown as DrawableSource);
+      exposureComparable = !!baseExr;
+    } else {
+      captured = await captureSlot(input);
+    }
+
+    // Measured response, probe vs BASE. Each channel reuses the corresponding
+    // evidence helper's math + null-guards so a no-signal frame reads as null, never
+    // a fabricated number. deriveState !== "empty" above guarantees s.base exists.
+    const baseM = s.base!.metrics;
+    const probeM = captured.metrics;
+    // d_ev: wbExposureEvidence's guarded log2 median ratio. Argument order
+    // (probe, base) yields log2(probe.p50 / base.p50) — positive = probe brighter.
+    const d_ev = exposureComparable ? wbExposureEvidence(probeM, baseM).exposure_gap_ev : null;
+    const warmthDelta = probeM.wb.warmthHighlight - baseM.wb.warmthHighlight;
+    const d_warmth_highlight = Number.isFinite(warmthDelta)
+      ? Math.round(warmthDelta * 1e4) / 1e4
+      : null;
+    // Centroid / key:fill via sceneEvidence with base as "reference" and the probe as
+    // "current" — the same projection the model already reads, so signs agree.
+    const sc = sceneEvidence(baseM, probeM);
+    const cRef = sc.light_centroid.reference;
+    const cCur = sc.light_centroid.current;
+    const d_centroid_x = cRef && cCur ? Math.round((cCur.x - cRef.x) * 1e3) / 1e3 : null;
+    const kRef = sc.key_fill_ratio.reference;
+    const kCur = sc.key_fill_ratio.current;
+    const d_key_fill_ratio =
+      kRef !== null && kCur !== null ? Math.round((kCur - kRef) * 100) / 100 : null;
+    const response: ProbeResponse = { d_ev, d_warmth_highlight, d_centroid_x, d_key_fill_ratio };
+
+    // IMMUTABLE update (same reasoning as setRecipeApplied: fresh refs so subscribed
+    // components re-render), re-read AFTER the capture awaits so a concurrent-free
+    // but later session ref is the one written.
+    const s2 = get().session;
+    const chain2 = s2.chains[target];
+    const probe2 = chain2.probe || probe;
+    set({
+      session: {
+        ...s2,
+        chains: { ...s2.chains, [target]: { ...chain2, probe: { ...probe2, response } } },
+      },
+    });
+    await persist();
+    return response;
   };
 
   return {
@@ -651,6 +1147,15 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       return s;
     },
 
+    async setLiveSettings(live) {
+      set({ lastError: null });
+      const s = get().session;
+      const next = { ...s, liveSettings: live };
+      set({ session: next });
+      await persist();
+      return next;
+    },
+
     async setContext(patch) {
       set({ lastError: null });
       const s = get().session;
@@ -696,6 +1201,10 @@ export const engineStore = createStore<EngineStore>((set, get) => {
           width: dev.width,
           height: dev.height,
           ev: dev.ev,
+          // Scene-referred stats are exposure-independent (measured on the raw linear
+          // buffer, before any EV gain) — compute ONCE here at decode; redevelopExrSlot
+          // only changes the developed EV and carries these through.
+          stats: linearStats(dev.linear, dev.width, dev.height),
         };
         set({ exrSlots: nextExr });
       } else {
@@ -714,6 +1223,12 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       else if (slot === "base") next.base = captured;
       else if (slot === "settings") next.settingsShot = { dataUrl: captured.dataUrl };
       else throw new Error(`setImage: unknown slot "${slot}" (expected ref|base|settings)`);
+      // STALENESS INVALIDATION: liveSettings describes ONE specific scene. Swapping the
+      // matched ref/base image makes those `from` values describe a DIFFERENT scene, yet the
+      // evidence block marks them highest-trust — strictly worse than no live block. Clear
+      // the pull on a ref/base swap, mirroring the exrSlots clear that already guards this
+      // slot for the same staleness reason. (A `settings` shot is not a matched scene image.)
+      if ((slot === "ref" || slot === "base") && next.liveSettings) next.liveSettings = null;
       set({ session: next });
       await persist();
       return slot === "settings" ? { dataUrl: captured.dataUrl } : captured;
@@ -747,7 +1262,9 @@ export const engineStore = createStore<EngineStore>((set, get) => {
         lossless: slot === "settings",
       });
       const nextExr = { ...get().exrSlots };
-      nextExr[slot] = { ...exr, ev: clamped };
+      // Stats are exposure-independent — carry them through unchanged. Backfill from the
+      // retained buffer if this slot's state predates the stats field (injected state).
+      nextExr[slot] = { ...exr, ev: clamped, stats: exr.stats ?? linearStats(exr.linear, exr.width, exr.height) };
       const s = get().session;
       const next = { ...s };
       if (slot === "ref") next.ref = captured;
@@ -769,6 +1286,47 @@ export const engineStore = createStore<EngineStore>((set, get) => {
 
     addAttempt(input) {
       return guarded(() => addAttemptImpl(input));
+    },
+
+    async setProbe(param) {
+      if (get()._inFlight) {
+        throw annotateError(
+          new BusyError(
+            "setProbe(): an analyze/attempt/reanalyze call is already in flight — wait for it to finish before arming a probe."
+          )
+        );
+      }
+      set({ lastError: null });
+      const s = get().session;
+      const target = s.activeTarget;
+      const chain = s.chains[target];
+      if (!chain || !chain.recipe || !Array.isArray(chain.recipe.values)) return null;
+      const v = chain.recipe.values.find((x) => x && x.param === param);
+      // Only a NUMERIC move can be probed (the response math needs a scalar knob) —
+      // a string/placement instruction reads as "no probe" rather than throwing.
+      if (
+        !v ||
+        typeof v.set !== "number" ||
+        !Number.isFinite(v.set) ||
+        typeof v.from !== "number" ||
+        !Number.isFinite(v.from)
+      ) {
+        return null;
+      }
+      // A fresh arm carries NO response: the measurement belongs to the render of
+      // THIS from→to change, so re-arming always discards the old one.
+      const probe: ProbeState = { param: v.param, from: v.from, to: v.set };
+      // IMMUTABLE update (same reasoning as setRecipeApplied: fresh chain/session
+      // refs so the probe card actually re-renders).
+      set({
+        session: { ...s, chains: { ...s.chains, [target]: { ...chain, probe } } },
+      });
+      await persist();
+      return probe;
+    },
+
+    addProbeRender(input) {
+      return guarded(() => addProbeRenderImpl(input));
     },
 
     reanalyzeOtherTarget() {
@@ -870,7 +1428,16 @@ export const engineStore = createStore<EngineStore>((set, get) => {
 
     async importJSON(str) {
       const imported = (await STORE.importJSON(str)) as unknown as Session;
-      set({ session: imported, lastError: null });
+      // Clear the EXR side channel exactly like boot()/reset(): the retained linear
+      // buffers belong to the PREVIOUS session's slots. Left in place, the next
+      // analyze would attach linear_evidence computed from the old EXRs to the
+      // imported session's images — and the legend tells the model to PREFER that
+      // (stale) block over the correct display-referred estimates.
+      set({
+        session: imported,
+        lastError: null,
+        exrSlots: { ref: null, base: null, settings: null },
+      });
       return imported;
     },
   };

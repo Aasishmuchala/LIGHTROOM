@@ -502,7 +502,7 @@ export const PACKS: Packs = {
         notes: "0 = no change; positive pushes colors away from mid grey, negative toward it (docs). Practical range; slider bounds not stated in docs. Display-side: keep identical across attempts. Layer is not in the VFB's default stack — add it via V-Ray Frame Buffer ▸ Layers panel ▸ + (Add layer) if not present (docs)." },
       { id: "cm.saturation", ui_path: "V-Ray Frame Buffer ▸ Layers panel ▸ Hue/Saturation layer ▸ Saturation",
         group: "V-Ray Frame Buffer · Hue/Saturation layer", kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-02",
-        notes: "Lower moves toward greyscale, higher intensifies colors (docs); 0 = no change. Display-side: keep identical across attempts. Layer is not in the VFB's default stack — add it via V-Ray Frame Buffer ▸ Layers panel ▸ + (Add layer) if not present (docs). Range pending in-product confirmation — Chaos docs don't print slider bounds; if the VFB Hue/Saturation slider is actually -1..1, this is a 100x scale mismatch (pending an in-product check)." },
+        notes: "Lower moves toward greyscale, higher intensifies colors (docs); 0 = no change. Display-side: keep identical across attempts. Layer is not in the VFB's default stack — add it via V-Ray Frame Buffer ▸ Layers panel ▸ + (Add layer) if not present (docs). Range −100..100: the Chaos-Player HSL color-correction docs (same VFB/Player family) state Saturation −100..+∞, so a ±100-scale is the right order of magnitude here — NOT the −1..1 the separate Vantage product uses (that Vantage value was in-product confirmed and is product-specific). Definitive VFB bounds still want a live glance, but this is NOT the 100x twin of the Vantage bug." },
       { id: "vfb.exposure", ui_path: "V-Ray Frame Buffer ▸ Layers panel ▸ Exposure layer ▸ Exposure",
         group: "V-Ray Frame Buffer · Exposure layer", kind: "spinner", unit: "stops", range: [-5, 5], default: 0, lighting: true, verified: "2026-07-02",
         notes: "Doc-stated default 0.0 = original brightness; +1.0 doubles, -1.0 halves (docs). Practical range; slider bounds not stated in docs. Display-side only — keep identical across attempts. Layer is not in the VFB's default stack — add it via V-Ray Frame Buffer ▸ Layers panel ▸ + (Add layer) if not present (docs)." },
@@ -789,14 +789,14 @@ export const PACKS: Packs = {
         kind: "checkbox", unit: "", range: [0, 0], default: "off", lighting: true, verified: "2026-07-03",
         notes: "Master toggle for the global Hue/Saturation/Lightness sliders. off = neutral." },
       { id: "post.hue", ui_path: "Color correction tab ▸ Hue / Saturation ▸ Hue", group: "Color correction · Hue / Saturation",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-03",
-        notes: "Global hue rotation (centered/symmetric slider); 0 = no change. Range pending in-product confirmation — the ±100 vs −1..1 slider bound is a known gap in the inventory; if the slider is actually −1..1 this is a 100x scale mismatch." },
+        kind: "spinner", unit: "°", range: [-180, 180], default: 0, lighting: true, verified: "2026-07-05",
+        notes: "Global hue rotation in DEGREES (grey stays intact); 0 = no change. Range −180..180° doc-confirmed (Chaos HSL color-correction docs, 2026-07-05) — this is ANGULAR, NOT the normalized −1..1 the sibling Saturation uses: the Color-corrections family is NOT uniform, each control has its own scale." },
       { id: "post.saturation", ui_path: "Color correction tab ▸ Hue / Saturation ▸ Saturation", group: "Color correction · Hue / Saturation",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-02",
-        notes: "Positive = more vibrant, negative = desaturated (docs); 0 = no change. Requires the Hue / Saturation toggle ON. Range pending in-product confirmation — Chaos docs don't print slider bounds; if the Hue/Saturation slider is actually -1..1, this is a 100x scale mismatch (pending an in-product check)." },
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, lighting: true, verified: "2026-07-05",
+        notes: "Positive = more vibrant, negative = desaturated (docs); 0 = no change. Requires the Hue / Saturation toggle ON. Slider bounds −1..1 USER-CONFIRMED in the live Vantage product 2026-07-05 (max = 1). NOTE: Chaos Player docs list this control as −100..+∞ for that product, so the scale is product-specific — trust the Vantage in-product read here. Typical grades sit within ±0.3." },
       { id: "post.lightness", ui_path: "Color correction tab ▸ Hue / Saturation ▸ Lightness", group: "Color correction · Hue / Saturation",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-03",
-        notes: "Global lightness (centered/symmetric slider); 0 = no change. Range pending in-product confirmation (same ±100 vs −1..1 gap as Hue/Saturation)." },
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, lighting: true, verified: false,
+        notes: "Global lightness (higher adds white, lower subtracts); 0 = no change. Range −1..1 is INFERRED from the confirmed Saturation and NOT individually confirmed — since Hue turned out to be degrees, do not trust the family as uniform. Provisional; confirm the real Lightness slider bounds in the live Vantage UI. Keep adjustments small until then." },
 
       // -- Color correction · Color mixer --------------------------------------------
       { id: "post.color_mixer_enabled", ui_path: "Color correction tab ▸ Color mixer (toggle)", group: "Color correction · Color mixer",
@@ -811,14 +811,14 @@ export const PACKS: Packs = {
         kind: "checkbox", unit: "", range: [0, 0], default: "off", lighting: true, verified: "2026-07-03",
         notes: "Master toggle for the three color-balance sliders (per range tab: All/Highlights/Midtones/Shadows). off = neutral." },
       { id: "post.balance_cyan_red", ui_path: "Color correction tab ▸ Color balance ▸ Cyan – Red", group: "Color correction · Color balance",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-03",
-        notes: "Shifts the selected tonal range along cyan↔red; 0 = neutral. Range pending in-product confirmation (±100 vs −1..1 gap)." },
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, lighting: true, verified: false,
+        notes: "Shifts the selected tonal range along cyan↔red; 0 = neutral. Range −1..1 INFERRED from the confirmed Saturation, NOT individually confirmed (the family is not uniform — Hue is degrees). Provisional; confirm the real slider bounds in the live Vantage UI." },
       { id: "post.balance_magenta_green", ui_path: "Color correction tab ▸ Color balance ▸ Magenta – Green", group: "Color correction · Color balance",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-03",
-        notes: "Shifts the selected tonal range along magenta↔green; 0 = neutral. Range pending in-product confirmation (±100 vs −1..1 gap)." },
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, lighting: true, verified: false,
+        notes: "Shifts the selected tonal range along magenta↔green; 0 = neutral. Range −1..1 INFERRED from the confirmed Saturation, NOT individually confirmed (the family is not uniform — Hue is degrees). Provisional; confirm in the live Vantage UI." },
       { id: "post.balance_yellow_blue", ui_path: "Color correction tab ▸ Color balance ▸ Yellow – Blue", group: "Color correction · Color balance",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-03",
-        notes: "Shifts the selected tonal range along yellow↔blue; 0 = neutral. Range pending in-product confirmation (±100 vs −1..1 gap)." },
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, lighting: true, verified: false,
+        notes: "Shifts the selected tonal range along yellow↔blue; 0 = neutral. Range −1..1 INFERRED from the confirmed Saturation, NOT individually confirmed (the family is not uniform — Hue is degrees). Provisional; confirm in the live Vantage UI." },
       { id: "post.balance_range", ui_path: "Color correction tab ▸ Color balance ▸ range tabs (All / Highlights / Midtones / Shadows)", group: "Color correction · Color balance",
         kind: "dropdown", unit: "", range: [0, 0], default: "All", lighting: true, verified: "2026-07-03",
         notes: "Options: All | Highlights | Midtones | Shadows — which tonal range the three balance sliders act on. All = default." },
@@ -831,8 +831,8 @@ export const PACKS: Packs = {
         kind: "spinner", unit: "K", range: [1000, 20000], default: 6500, lighting: true, verified: "2026-07-02",
         notes: "Lower = bluer, higher = more amber (docs). 6500 K = neutral (no correction; derived, not doc-stated). Requires the White balance toggle ON. Practical range." },
       { id: "post.wb_tint", ui_path: "Color correction tab ▸ White balance ▸ Magenta-Green tint", group: "Color correction · White balance",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-02",
-        notes: "Positive = greener, negative = more purple (docs); 0 = neutral. Range pending in-product confirmation — Chaos docs don't print slider bounds; if the Magenta-Green tint slider is actually -1..1, this is a 100x scale mismatch (pending an in-product check)." },
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, lighting: true, verified: false,
+        notes: "Positive = greener, negative = more purple (docs); 0 = neutral. Range −1..1 INFERRED from the confirmed Saturation, NOT individually confirmed (the family is not uniform — Hue is degrees). Provisional; confirm in the live Vantage UI. Keep tint fixes small until then." },
       { id: "post.wb_color", ui_path: "Color correction tab ▸ White balance ▸ Color", group: "Color correction · White balance",
         kind: "color", unit: "", range: [0, 0], default: "white", lighting: true, verified: "2026-07-03",
         notes: "Color-swatch white balance (an alternative to the Temperature/tint numerics). white = neutral. Emit as a color instruction." },
@@ -1068,15 +1068,21 @@ export const PACKS: Packs = {
     const pack = (this as unknown as Record<string, TargetPack | undefined>)[target];
     if (!pack || !Array.isArray(pack.entries)) return null;
     if (!pack._index) {
-      pack._index = {};
+      // Null-prototype map: the id comes from a MODEL emit, so a plain {} would make
+      // lookup("__proto__") / lookup("constructor") return Object.prototype members —
+      // truthy non-entries that crash clamp() (entry.range is undefined) instead of
+      // reading as the unknown params they are.
+      pack._index = Object.create(null) as Record<string, PackEntry>;
       for (const e of pack.entries) pack._index[e.id] = e;
     }
     return pack._index[id] || null;
   },
 
   // Numeric values are clamped into the entry's range; strings and non-range kinds pass through.
-  // ⚠ slider-scale (±100 vs ±1) unverified — confirm the real UI range before trusting these
-  // dimensions (post.saturation/hue/lightness, post.balance_*, post.wb_tint, cm.saturation).
+  // Slider scales: the Vantage Color-corrections family (post.saturation/hue/lightness,
+  // post.balance_*, post.wb_tint) is −1..1 — user-confirmed in product 2026-07-05 (saturation
+  // max = 1; the pack previously assumed ±100). ⚠ V-Ray's VFB cm.saturation ±100 remains
+  // unconfirmed — check the VFB Hue/Saturation layer slider before trusting that dimension.
   clamp(target: TargetId | string, id: string, value: unknown): ClampResult {
     const e = this.lookup(target, id);
     if (

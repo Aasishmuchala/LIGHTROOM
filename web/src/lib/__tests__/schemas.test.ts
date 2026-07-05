@@ -105,6 +105,58 @@ describe("validateRecipe — unknown param fails and is dropped", () => {
   });
 });
 
+describe("validateRecipe — display-only (lighting:false) params rejected", () => {
+  it("clouds.seed (RECIPE-CRITICAL display-only) -> ok:false and item dropped, good item kept", () => {
+    const r = validateRecipe(
+      recipe([value("clouds.seed", 42, 6), value("sun.turbidity", 8, 2)]),
+      "vray7max"
+    );
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.includes("display-only"))).toBe(true);
+    const kept = r.cleaned.values as Record<string, unknown>[];
+    expect(kept.length).toBe(1);
+    expect(kept[0].param).toBe("sun.turbidity");
+  });
+
+  it("viewport-only control (light.vp_wire_color) is rejected the same way", () => {
+    const r = validateRecipe(recipe([value("light.vp_wire_color", "red", 4)]), "vray7max");
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.includes('"light.vp_wire_color"'))).toBe(true);
+    expect((r.cleaned.values as unknown[]).length).toBe(0);
+  });
+
+  it("correction mode rejects display-only params too", () => {
+    const r = validateRecipe(
+      {
+        moves: [move("clouds.seed", 7, 6)],
+        rationale: "r",
+        status: "continue",
+        status_reason: "s",
+        applied_assumed: true,
+      },
+      "vray7max",
+      "correction"
+    );
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.includes("display-only") && e.includes("correction"))).toBe(true);
+    expect((r.cleaned.moves as unknown[]).length).toBe(0);
+  });
+
+  it("every lighting:true param remains accepted (spot check across kinds)", () => {
+    const r = validateRecipe(
+      recipe([
+        value("sun.turbidity", 8, 2), // spinner
+        value("sun.sky_model", "CIE Overcast", 3), // dropdown (string passes through)
+        value("sun.placement_elevation", 15, 2), // placement with numeric target
+        value("light.color", "warm amber", 4), // color instruction
+      ]),
+      "vray7max"
+    );
+    expect(r.ok).toBe(true);
+    expect((r.cleaned.values as unknown[]).length).toBe(4);
+  });
+});
+
 describe("validateRecipe — non-finite numeric rejected", () => {
   it("NaN set fails", () => {
     const r = validateRecipe(recipe([value("sun.turbidity", NaN)]), "vray7max");

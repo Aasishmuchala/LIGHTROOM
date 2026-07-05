@@ -33,7 +33,10 @@ import type { ModeName, TargetId } from "@/lib/types";
 // This route performs a live network request at request time — never prerender it.
 export const dynamic = "force-dynamic";
 
-const GATEWAY_URL = "https://omega.kesarcloud.in/v1/messages";
+// The omega gateway by default; overridable via OMEGA_GATEWAY_URL so the real POST path
+// can be smoke-tested against a cheaper Anthropic-Messages-shaped endpoint (or a local
+// echo) WITHOUT the production omega key (audit now-action, 2026-07-05).
+const GATEWAY_URL = process.env.OMEGA_GATEWAY_URL || "https://omega.kesarcloud.in/v1/messages";
 
 // -- backoff schedule: a CONSTANT (not a function of attempt number) so it is directly
 // assertable in a test without calling fetch. 3 entries = 3 retry attempts after the

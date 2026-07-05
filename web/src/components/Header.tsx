@@ -31,6 +31,7 @@ function Wordmark() {
 export function Header() {
   const target = useEngine((s) => s.session.activeTarget);
   const [model, setModel] = useState<string>("claude-opus-4-8");
+  const [consensus, setConsensus] = useState(false);
   const [hasKey, setHasKey] = useState(false);
   const [keyEditing, setKeyEditing] = useState(false);
   const keyRef = useRef<HTMLInputElement>(null);
@@ -41,6 +42,7 @@ export function Header() {
   // defaults on the server, real values here).
   useEffect(() => {
     setModel(STORE.prefs().model);
+    setConsensus(STORE.prefs().consensus === true);
     setHasKey(!!STORE.key());
   }, []);
 
@@ -56,6 +58,11 @@ export function Header() {
   const onModel = (m: string) => {
     setModel(m);
     STORE.setPrefs({ model: m });
+  };
+  const onConsensus = () => {
+    const next = !consensus;
+    setConsensus(next);
+    STORE.setPrefs({ consensus: next });
   };
   const onKeyCommit = () => {
     const v = keyRef.current?.value.trim() || "";
@@ -134,6 +141,19 @@ export function Header() {
                 </option>
               ))}
             </select>
+
+            {/* Consensus ×3 toggle — an illuminated pushbutton (same .btn-chip
+                data-on styling as the context chips) beside the model it triples. */}
+            <button
+              type="button"
+              className="btn-chip flex-none"
+              data-on={consensus}
+              aria-pressed={consensus}
+              title="Consensus ×3 — three analyses merged; steadier values, 3× cost/time"
+              onClick={onConsensus}
+            >
+              ×3
+            </button>
 
             {/* API key — wrapped in a form so the browser knows the password field has a
                 home; submit is prevented (there's nowhere to post). */}

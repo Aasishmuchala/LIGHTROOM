@@ -24,7 +24,14 @@ export const EMIT_RECIPE: ToolSchema = {
     required: ["baseline", "values", "rationale", "hdri_mood", "gi_notes", "status"],
     properties: {
       baseline: { type: "string", enum: ["factory_defaults", "settings_screenshot"] },
-      hdri_mood: { type: "string", description: "One line: what HDRI to reach for" },
+      hdri_mood: {
+        type: "string",
+        description:
+          "One line: what HDRI to reach for, phrased as 3-6 concrete SEARCH KEYWORDS an asset " +
+          "library understands (time of day, weather, sun height, environment, warmth — e.g. " +
+          "'golden hour low sun clear rural warm'), NOT poetic prose; if a specific well-known " +
+          "Poly Haven HDRI clearly fits, append its name",
+      },
       values: {
         type: "array",
         minItems: 4,
@@ -194,6 +201,23 @@ export function systemPrompt(target: TargetId | string, mode: ModeName | string)
       "approximation. Be surgical, not tasteful — small, evidence-backed moves that close the measured gap beat " +
       "confident-sounding creative reinterpretation."
   );
+  lines.push(
+    "White balance and exposure are ARITHMETIC, not taste: the evidence carries wb_estimate_k (measured " +
+      "CCTs of each image's highlights/shadows), tint_gm (the measured green–magenta offset — the white point's " +
+      "second axis), and exposure_gap_ev (measured stops). Set the step-1 lock FROM those numbers — close most " +
+      "of the measured kelvin gap with the WB Temperature (both hosts: higher = warmer image), close a tint_gm " +
+      "gap with the magenta-green tint control (temperature cannot fix a green/magenta cast), and the full EV " +
+      "gap with the exposure control (Vantage Exposure Value is inverse: higher = darker) — do not re-derive " +
+      "any of them from the images by eye."
+  );
+  lines.push(
+    "Spatial structure is measured too: light_centroid (where the light mass sits per image) drives the " +
+      "step-2 azimuth/elevation/HDRI-rotation move, key_fill_ratio drives key-vs-fill intensity, sky_estimate " +
+      "(level + CCT of the detected sky region, when present) drives sky-model/HDRI/env intensity and sun-vs-sky " +
+      "color, and the per-image `anchors` (absolute black/median/white, clip, saturation) tell haze from " +
+      "underexposure. Judge softness, cloud/texture content, and per-fixture colors from the images — those are " +
+      "not measured; everything measured takes precedence over your visual read."
+  );
   lines.push("");
   lines.push(
     "Full control set, surgical output: the pack listing below is the target's COMPLETE lighting " +
@@ -219,6 +243,11 @@ export function systemPrompt(target: TargetId | string, mode: ModeName | string)
         "you, along with which of those moves the user actually applied. Return a correction card, not a new " +
         "recipe: 3-5 moves max, each prioritized by how much of the remaining measured gap it closes. Small trims " +
         "beat re-matching from scratch."
+    );
+    lines.push(
+      "ALWAYS include `status_reason` — it is REQUIRED on every correction, even a routine " +
+        'status:"continue" trim. One short line on what this round changed and why (e.g. "warmed the key ~300 K ' +
+        'and lifted the fill; contrast still slightly high"). Never omit it.'
     );
     lines.push(
       "Oscillation guard: never reverse a prior move by more than half its distance from its own " +
@@ -275,6 +304,14 @@ export function systemPrompt(target: TargetId | string, mode: ModeName | string)
 // `set`) is the default when `mode` is omitted, `mode:"correction"` switches to
 // `moves[]`/`to`. Returns {ok, errors[], cleaned}:
 //   - unknown `param` (not in the target pack)      -> ERROR (value/move dropped from cleaned, ok:false)
+//   - display-only `param` (pack lighting:false)     -> ERROR (dropped): the prompt only offers the
+//                                                        lighting:true set, but the pack also carries
+//                                                        display-only completeness controls (viewport wire
+//                                                        color, sampling, seeds, night-sky detail) for the
+//                                                        settings sheet — an emit that names one anyway must
+//                                                        not flow into the recipe (clouds.seed is
+//                                                        RECIPE-CRITICAL: varying it changes the cloud
+//                                                        pattern between attempts and breaks convergence)
 //   - non-finite numeric `set`/`to` (NaN/Infinity)   -> ERROR (never let it into cleaned; PACKS.clamp alone does
 //                                                        NOT catch this — it passes non-finite numbers through
 //                                                        unflagged by design, so this check is done HERE, first)
@@ -295,7 +332,13 @@ export function validateRecipe(
   const valKey = isCorrection ? "to" : "set";
   const errors: string[] = [];
 
-  const source = (obj || {}) as Record<string, unknown>;
+  // Normalize the envelope to a REAL object first: a primitive or array here (a model
+  // replying `"ok"` / `[...]`, or a caller passing junk) must read as an empty invalid
+  // emit, not crash the `field in source` checks below with a TypeError.
+  const source = (obj && typeof obj === "object" && !Array.isArray(obj) ? obj : {}) as Record<
+    string,
+    unknown
+  >;
   const cleaned: Record<string, unknown> = Object.assign({}, source);
   const rawArr = source[arrKey];
   const items = Array.isArray(rawArr) ? (rawArr as Record<string, unknown>[]) : [];
@@ -316,10 +359,35 @@ export function validateRecipe(
   const required = (schema && schema.input_schema && schema.input_schema.required) || [];
   for (const field of required) {
     if (field === arrKey) continue; // the array is checked (presence + non-empty) just above
+    // status_reason is a SOFT field: a pure human-readable annotation with no downstream
+    // consumer that breaks on absence. On a routine status:"continue" correction the model
+    // legitimately has nothing notable to say and often omits it — hard-rejecting there (and
+    // again on the re-ask) would discard an otherwise-valid refine round entirely (audit
+    // blocker, 2026-07-05). Default-fill it instead of failing. The schema's required list
+    // is unchanged (the selftest pins it); only this local acceptance is lenient.
+    if (field === "status_reason") {
+      if (!obj || !(field in source) || typeof source[field] !== "string") cleaned[field] = "";
+      continue;
+    }
     if (!obj || !(field in source)) errors.push(`missing required field "${field}"`);
   }
 
-  for (let i = 0; i < items.length; i++) {
+  // Schema maxItems is enforced HERE, not just stated in the prompt: the omega gateway's
+  // broken tool path means no tool-layer validation ever runs, so without this check a
+  // runaway emit (hundreds of values) floods the recipe UI, the persisted session, and
+  // every subsequent MOVE HISTORY block. Items beyond the cap are not even processed —
+  // `cleaned` stays bounded no matter what arrives.
+  const maxItems =
+    ((schema.input_schema.properties[arrKey] as { maxItems?: number })?.maxItems ??
+      Number.POSITIVE_INFINITY);
+  if (items.length > maxItems) {
+    errors.push(
+      `"${arrKey}" carries ${items.length} items — the schema caps it at ${maxItems}; emit only the moves that close the gap`
+    );
+  }
+  const seenParams = new Set<string>();
+
+  for (let i = 0; i < Math.min(items.length, maxItems); i++) {
     const item = items[i];
     const where = `${arrKey}[${i}]`;
     if (!item || typeof item.param !== "string") {
@@ -331,6 +399,21 @@ export function validateRecipe(
       errors.push(`${where}: unknown param "${item.param}" — not in pack "${target}"`);
       continue;
     }
+    if (entry.lighting !== true) {
+      errors.push(
+        `${where}: param "${item.param}" is a display-only control (lighting:false) — it is not in the ` +
+          `allowed lighting set and must not be part of a ${isCorrection ? "correction" : "recipe"}`
+      );
+      continue;
+    }
+    // One value per control: a duplicate param is two conflicting instructions for the
+    // same knob — keep the FIRST occurrence, error (and drop) the repeats so the re-ask
+    // names the conflict instead of the UI rendering both.
+    if (seenParams.has(item.param as string)) {
+      errors.push(`${where}: duplicate param "${item.param}" — a ${isCorrection ? "correction" : "recipe"} may set each control once`);
+      continue;
+    }
+    seenParams.add(item.param as string);
     const step = item.step;
     if (typeof step !== "number" || !Number.isInteger(step) || step < 1 || step > 6) {
       errors.push(`${where} (${item.param}): "step" must be an integer 1..6, got ${JSON.stringify(step)}`);
@@ -339,6 +422,13 @@ export function validateRecipe(
 
     const rawVal = item[valKey];
     const outItem: Record<string, unknown> = Object.assign({}, item);
+    if (typeof rawVal !== "number" && typeof rawVal !== "string") {
+      // The schema types `set`/`to` as number|string — booleans/objects/null are junk.
+      errors.push(
+        `${where} (${item.param}): "${valKey}" must be a number or string, got ${rawVal === null ? "null" : typeof rawVal}`
+      );
+      continue;
+    }
     if (typeof rawVal === "number") {
       // Carry-forward fix (mandatory, Task 2 review): PACKS.clamp passes non-finite
       // numbers through UNFLAGGED — a NaN/Infinity `set`/`to` must be rejected here,
@@ -350,8 +440,23 @@ export function validateRecipe(
       const clampResult = PACKS.clamp(target, item.param as string, rawVal);
       outItem[valKey] = clampResult.value;
       outItem.clamped = clampResult.clamped;
+    } else if (entry.kind === "spinner") {
+      // A spinner is a NUMERIC control: a bare-number string ("14", " 8.5 ") is coerced
+      // and clamped like a number, but prose ("very high") would bypass the range clamp
+      // entirely — the exact hole "values cannot be random" forbids. Reject it so the
+      // re-ask demands the number.
+      const coerced = rawVal.trim() === "" ? NaN : Number(rawVal.trim());
+      if (!Number.isFinite(coerced)) {
+        errors.push(
+          `${where} (${item.param}): kind:"spinner" needs a numeric "${valKey}", got ${JSON.stringify(rawVal)}`
+        );
+        continue;
+      }
+      const clampResult = PACKS.clamp(target, item.param as string, coerced);
+      outItem[valKey] = clampResult.value;
+      outItem.clamped = clampResult.clamped;
     } else {
-      // string (dropdown/slot/placement kinds): pass through untouched, unflagged.
+      // string on dropdown/slot/placement/color/checkbox kinds: pass through untouched.
       outItem.clamped = false;
     }
     cleanedItems.push(outItem);

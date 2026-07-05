@@ -2,6 +2,7 @@
 
 import { engineStore, useEngine } from "@/store/useEngine";
 import { DropSlot } from "./DropSlot";
+import { MaxBridge } from "./MaxBridge";
 import { SLOT_DEFS, CHIP_GROUPS, acceptsFile } from "./lib";
 
 // The two primary image ports. The settings-screenshot slot was retired from the UI
@@ -168,6 +169,11 @@ export function InputPanel({
                 </div>
               );
             })}
+          </div>
+          {/* Live 3ds Max bridge — optional accelerator: pulls the scene's REAL
+              current values so recipes baseline on truth, not assumed defaults. */}
+          <div className="mt-3">
+            <MaxBridge onToast={onToast} />
           </div>
         </Step>
 

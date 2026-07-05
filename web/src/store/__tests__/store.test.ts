@@ -131,6 +131,21 @@ describe("importJSON — XSS dataUrl boundary", () => {
     const latest = await STORE.loadLatest();
     expect(latest?.id).toBe(s.id);
   });
+
+  it("still becomes latest when the last save ties (same millisecond) or is ahead", async () => {
+    // A save whose `created` lands AT/AFTER the import's own clock read — the
+    // same-millisecond tie loadLatest's strict `>` cannot break in the import's
+    // favor. The stamp must land STRICTLY after it, or the import silently never
+    // loads (found by the vanilla selftest under a fast profile).
+    const ahead = new Date(Date.now() + 5).toISOString();
+    await STORE.saveSession(validSession({ id: "aaa-prior-save", created: ahead }));
+    const imported = await STORE.importJSON(
+      JSON.stringify(validSession({ id: "zzz-imported", created: "2020-01-01T00:00:00.000Z" }))
+    );
+    expect(imported.created > ahead).toBe(true);
+    const latest = await STORE.loadLatest();
+    expect(latest?.id).toBe("zzz-imported");
+  });
 });
 
 describe("saveSession / loadLatest / pruneToNewest", () => {

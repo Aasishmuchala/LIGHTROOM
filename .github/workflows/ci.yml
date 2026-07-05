@@ -1,0 +1,68 @@
+# =============================================================================
+# CI — two independent gates:
+#   web:      the Next.js app under web/ — unit suite, lint, production build.
+#   selftest: the legacy single-file app (lightmatch.html) — runs its in-page
+#             ?selftest assert suite headless via probes/ci-selftest.mjs.
+# =============================================================================
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Unit tests
+        run: npx vitest run
+
+      # Lint is advisory for now: the tree carries 3 pre-existing errors
+      # (refs-in-render + set-state-in-effect in src/components/Header.tsx,
+      # prefer-as-const in src/store/useEngine.ts). They live inside src/, so
+      # narrowing the lint scope cannot green this step — continue-on-error
+      # keeps the signal visible without blocking. Flip it off once fixed.
+      - name: Lint (advisory)
+        run: npx eslint .
+        continue-on-error: true
+
+      - name: Build
+        run: npm run build
+
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Playwright is installed --no-save/--no-package-lock at the repo root
+      # (which has no package.json), so nothing in the repo is created or
+      # modified — the runner workspace is ephemeral. `playwright install`
+      # then fetches a matching chromium + OS deps for headless runs.
+      - name: Install Playwright chromium
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install chromium --with-deps
+
+      # probes/ci-selftest.mjs serves the repo root on :8321, opens
+      # lightmatch.html?selftest headless, and polls document.title for the
+      # "SELFTEST: PASS" verdict — exit 0/1, 120s hard wall.
+      - name: Run in-page selftest
+        run: node probes/ci-selftest.mjs

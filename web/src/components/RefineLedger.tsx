@@ -1,12 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { engineStore, useEngine } from "@/store/useEngine";
 import type { AttemptEntry } from "@/store/useEngine";
 import type { TargetId } from "@/lib/types";
 import { PACKS } from "@/lib/packs";
 import { matchPercent, MATCH_THRESHOLD } from "@/lib/metrics";
 import { PathBreadcrumb, ConfDot, ValueJewel, ClampedFlag } from "./bits";
-import { safeSrc, copyText } from "./lib";
+import { safeSrc, copyText, gridHeatCells, HEAT_ALPHA_MAX } from "./lib";
+
+// The two SEMANTIC heat tints (the only saturated colors this overlay may use):
+// amber = attempt BRIGHTER than the reference, blue = darker. Alpha is supplied
+// per cell (mag * HEAT_ALPHA_MAX), so these are rgb prefixes, not full colors.
+const HEAT_BRIGHTER_RGB = "232,161,58"; // amber
+const HEAT_DARKER_RGB = "90,130,200"; // blue
 
 // The refine loop: correction cards (deltas) with the look-distance score + trend,
 // a filmstrip of reference + attempts, the caveat, and the REFGRADE handoff banner
@@ -15,9 +22,16 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
   const session = useEngine((s) => s.session);
   const chain = useEngine((s) => s.activeChain());
   const target = session.activeTarget as TargetId;
+  // Heat-overlay toggle: session-ephemeral by design (persist NOTHING) — hover
+  // always reveals the overlay per card; this pins it on across the filmstrip.
+  const [heatOn, setHeatOn] = useState(false);
 
   const attempts = chain?.attempts || [];
   if (!session.ref || attempts.length === 0) return null;
+
+  // Reference 4x4 luminance grid for the heat overlay. Guarded: sessions persisted
+  // by older builds may lack metrics/grid — gridHeatCells degrades to [] downstream.
+  const refGrid = session.ref.metrics ? session.ref.metrics.grid : null;
 
   // The number the product promises: the % match of the CLOSEST (lowest look-distance)
   // attempt so far. This is the measured truth the whole panel is gated on.
@@ -107,6 +121,18 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
           <div className="flex items-baseline gap-2.5">
             <span className="eyebrow">Refine ledger</span>
             <span className="text-[0.72rem] text-[var(--color-faint)]">closest at the lowest score</span>
+            {/* heat chip: pins the luminance-diff overlay on for every attempt
+                (hovering a card shows it regardless). Deliberately NOT persisted. */}
+            <button
+              type="button"
+              className="btn-mini !px-1.5 !py-0.5"
+              aria-pressed={heatOn}
+              onClick={() => setHeatOn((v) => !v)}
+              title="Overlay the 4x4 luminance-diff heat grid on each attempt"
+              style={heatOn ? { color: "var(--color-accent-ink)" } : undefined}
+            >
+              heat {heatOn ? "on" : "off"}
+            </button>
           </div>
           {/* HERO stat: the promised "% match" of the closest attempt. */}
           <div className="flex items-baseline gap-2">
@@ -145,7 +171,14 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
           </figure>
 
           {attempts.map((att, idx) => (
-            <FilmstripAttempt key={idx} att={att} idx={idx} prev={idx > 0 ? attempts[idx - 1] : null} />
+            <FilmstripAttempt
+              key={idx}
+              att={att}
+              idx={idx}
+              prev={idx > 0 ? attempts[idx - 1] : null}
+              refGrid={refGrid}
+              heatOn={heatOn}
+            />
           ))}
         </div>
 
@@ -158,6 +191,10 @@ export function RefineLedger({ onToast }: { onToast: (m: string) => void }) {
           </div>
           <span className="text-[0.76rem] italic text-[var(--color-muted)]">
             trust your eyes first, the numbers second
+          </span>
+          {/* heat-overlay legend (w-full wraps it to its own quiet line) */}
+          <span className="w-full text-[0.66rem] text-[var(--color-faint)]">
+            heat overlay — amber = attempt brighter than reference, blue = darker
           </span>
         </div>
       </section>
@@ -190,14 +227,22 @@ function FilmstripAttempt({
   att,
   idx,
   prev,
+  refGrid,
+  heatOn,
 }: {
   att: AttemptEntry;
   idx: number;
   prev: AttemptEntry | null;
+  refGrid: number[] | null;
+  heatOn: boolean;
 }) {
   const n = useEngine((s) => s.attemptNumberAt(idx));
   const src = safeSrc(att.dataUrl);
   const tone = scoreTone(att.score);
+  // Heat cells for THIS attempt vs the reference. gridHeatCells returns [] on any
+  // missing/mismatched grid (older persisted sessions) — the length gate below is
+  // what keeps a partial grid from rendering as a lopsided overlay.
+  const heatCells = gridHeatCells(refGrid, att.metrics ? att.metrics.grid : null);
   let trend: React.ReactNode = null;
   if (prev) {
     trend =
@@ -210,14 +255,41 @@ function FilmstripAttempt({
       );
   }
   return (
-    <figure className="flex-none w-[132px]">
-      <div className="rounded-[10px] overflow-hidden border border-[var(--color-line)] bg-[var(--color-surface-2)] aspect-[4/3]">
+    <figure className="flex-none w-[132px] group">
+      <div className="relative rounded-[10px] overflow-hidden border border-[var(--color-line)] bg-[var(--color-surface-2)] aspect-[4/3]">
         {src ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={src} alt={`Attempt ${n}`} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full grid place-items-center text-[0.68rem] text-[var(--color-faint)]">
             unavailable
+          </div>
+        )}
+        {/* 4x4 luminance-diff heat overlay: amber = attempt brighter than the
+            reference, blue = darker, transparent = within noise. Shown while the
+            card is hovered OR pinned by the header "heat" chip. Purely visual —
+            pointer-events-none so it never intercepts the thumbnail. */}
+        {src && heatCells.length === 16 && (
+          <div
+            aria-hidden
+            className={
+              "absolute inset-0 grid grid-cols-4 grid-rows-4 pointer-events-none transition-opacity " +
+              (heatOn ? "opacity-100" : "opacity-0 group-hover:opacity-100")
+            }
+          >
+            {heatCells.map((c, i) => (
+              <div
+                key={i}
+                style={{
+                  background:
+                    c.sign === 1
+                      ? `rgba(${HEAT_BRIGHTER_RGB},${(c.mag * HEAT_ALPHA_MAX).toFixed(3)})`
+                      : c.sign === -1
+                        ? `rgba(${HEAT_DARKER_RGB},${(c.mag * HEAT_ALPHA_MAX).toFixed(3)})`
+                        : "transparent",
+                }}
+              />
+            ))}
           </div>
         )}
       </div>

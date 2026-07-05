@@ -1642,14 +1642,14 @@ const PACKS = {
         kind: "checkbox", unit: "", range: [0, 0], default: "off", lighting: true, verified: "2026-07-03",
         notes: "Master toggle for the global Hue/Saturation/Lightness sliders. off = neutral." },
       { id: "post.hue", ui_path: "Color correction tab ▸ Hue / Saturation ▸ Hue", group: "Color correction · Hue / Saturation",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-03",
-        notes: "Global hue rotation (centered/symmetric slider); 0 = no change. Range pending in-product confirmation — the ±100 vs −1..1 slider bound is a known gap in the inventory; if the slider is actually −1..1 this is a 100x scale mismatch." },
+        kind: "spinner", unit: "°", range: [-180, 180], default: 0, lighting: true, verified: "2026-07-05",
+        notes: "Global hue rotation in DEGREES (grey stays intact); 0 = no change. Range −180..180° doc-confirmed (Chaos HSL color-correction docs, 2026-07-05) — ANGULAR, NOT the normalized −1..1 the sibling Saturation uses: the Color-corrections family is NOT uniform." },
       { id: "post.saturation", ui_path: "Color correction tab ▸ Hue / Saturation ▸ Saturation", group: "Color correction · Hue / Saturation",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-02",
-        notes: "Positive = more vibrant, negative = desaturated (docs); 0 = no change. Requires the Hue / Saturation toggle ON. Range pending in-product confirmation — Chaos docs don't print slider bounds; if the Hue/Saturation slider is actually -1..1, this is a 100x scale mismatch (pending an in-product check)." },
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, lighting: true, verified: "2026-07-05",
+        notes: "Positive = more vibrant, negative = desaturated (docs); 0 = no change. Requires the Hue / Saturation toggle ON. Slider bounds −1..1 USER-CONFIRMED in product 2026-07-05 (max = 1). Typical grades sit within ±0.3." },
       { id: "post.lightness", ui_path: "Color correction tab ▸ Hue / Saturation ▸ Lightness", group: "Color correction · Hue / Saturation",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-03",
-        notes: "Global lightness (centered/symmetric slider); 0 = no change. Range pending in-product confirmation (same ±100 vs −1..1 gap as Hue/Saturation)." },
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, lighting: true, verified: false,
+        notes: "Global lightness (higher adds white); 0 = no change. Range −1..1 INFERRED from the confirmed Saturation, NOT individually confirmed (family not uniform — Hue is degrees). Provisional; confirm in the live Vantage UI." },
 
       // -- Color correction · Color mixer --------------------------------------------
       { id: "post.color_mixer_enabled", ui_path: "Color correction tab ▸ Color mixer (toggle)", group: "Color correction · Color mixer",
@@ -1664,14 +1664,14 @@ const PACKS = {
         kind: "checkbox", unit: "", range: [0, 0], default: "off", lighting: true, verified: "2026-07-03",
         notes: "Master toggle for the three color-balance sliders (per range tab: All/Highlights/Midtones/Shadows). off = neutral." },
       { id: "post.balance_cyan_red", ui_path: "Color correction tab ▸ Color balance ▸ Cyan – Red", group: "Color correction · Color balance",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-03",
-        notes: "Shifts the selected tonal range along cyan↔red; 0 = neutral. Range pending in-product confirmation (±100 vs −1..1 gap)." },
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, lighting: true, verified: false,
+        notes: "Shifts the selected tonal range along cyan↔red; 0 = neutral. Range −1..1 INFERRED from the confirmed Saturation, NOT individually confirmed (family not uniform — Hue is degrees). Provisional; confirm in the live Vantage UI." },
       { id: "post.balance_magenta_green", ui_path: "Color correction tab ▸ Color balance ▸ Magenta – Green", group: "Color correction · Color balance",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-03",
-        notes: "Shifts the selected tonal range along magenta↔green; 0 = neutral. Range pending in-product confirmation (±100 vs −1..1 gap)." },
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, lighting: true, verified: false,
+        notes: "Shifts the selected tonal range along magenta↔green; 0 = neutral. Range −1..1 INFERRED from the confirmed Saturation, NOT individually confirmed (family not uniform — Hue is degrees). Provisional; confirm in the live Vantage UI." },
       { id: "post.balance_yellow_blue", ui_path: "Color correction tab ▸ Color balance ▸ Yellow – Blue", group: "Color correction · Color balance",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-03",
-        notes: "Shifts the selected tonal range along yellow↔blue; 0 = neutral. Range pending in-product confirmation (±100 vs −1..1 gap)." },
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, lighting: true, verified: false,
+        notes: "Shifts the selected tonal range along yellow↔blue; 0 = neutral. Range −1..1 INFERRED from the confirmed Saturation, NOT individually confirmed (family not uniform — Hue is degrees). Provisional; confirm in the live Vantage UI." },
       { id: "post.balance_range", ui_path: "Color correction tab ▸ Color balance ▸ range tabs (All / Highlights / Midtones / Shadows)", group: "Color correction · Color balance",
         kind: "dropdown", unit: "", range: [0, 0], default: "All", lighting: true, verified: "2026-07-03",
         notes: "Options: All | Highlights | Midtones | Shadows — which tonal range the three balance sliders act on. All = default." },
@@ -1684,8 +1684,8 @@ const PACKS = {
         kind: "spinner", unit: "K", range: [1000, 20000], default: 6500, lighting: true, verified: "2026-07-02",
         notes: "Lower = bluer, higher = more amber (docs). 6500 K = neutral (no correction; derived, not doc-stated). Requires the White balance toggle ON. Practical range." },
       { id: "post.wb_tint", ui_path: "Color correction tab ▸ White balance ▸ Magenta-Green tint", group: "Color correction · White balance",
-        kind: "spinner", unit: "", range: [-100, 100], default: 0, lighting: true, verified: "2026-07-02",
-        notes: "Positive = greener, negative = more purple (docs); 0 = neutral. Range pending in-product confirmation — Chaos docs don't print slider bounds; if the Magenta-Green tint slider is actually -1..1, this is a 100x scale mismatch (pending an in-product check)." },
+        kind: "spinner", unit: "", range: [-1, 1], default: 0, lighting: true, verified: false,
+        notes: "Positive = greener, negative = purple (docs); 0 = neutral. Range −1..1 INFERRED from the confirmed Saturation, NOT individually confirmed (family not uniform — Hue is degrees). Provisional; confirm in the live Vantage UI." },
       { id: "post.wb_color", ui_path: "Color correction tab ▸ White balance ▸ Color", group: "Color correction · White balance",
         kind: "color", unit: "", range: [0, 0], default: "white", lighting: true, verified: "2026-07-03",
         notes: "Color-swatch white balance (an alternative to the Temperature/tint numerics). white = neutral. Emit as a color instruction." },
@@ -2709,7 +2709,16 @@ const STORE = {
     // stale. This deliberately overrides any timestamp in the file — an imported
     // session is the one the user wants to work on right now, so it must sort as the
     // latest regardless of when it was originally exported.
-    obj.created = new Date().toISOString();
+    // STRICTLY AFTER the current latest: loadLatest() compares with `>` — an import
+    // landing in the same millisecond as the last save TIES on the ISO string and
+    // loses to IDB key order, so the imported session would silently not load.
+    let importStamp = new Date().toISOString();
+    const prevLatest = await this.loadLatest();
+    if (prevLatest && prevLatest.created >= importStamp) {
+      const prevMs = Date.parse(prevLatest.created);
+      if (Number.isFinite(prevMs)) importStamp = new Date(prevMs + 1).toISOString();
+    }
+    obj.created = importStamp;
     // -- STORED-XSS BOUNDARY (CRITICAL): every dataUrl-bearing field in an imported
     // file is untrusted and flows into an <img src="${...}"> sink. Walk them all and
     // REJECT the whole import on the first bad payload — do NOT strip-and-continue,
@@ -4877,7 +4886,7 @@ SELFTEST.suites.packs = async function () {
       this.ok(Array.isArray(e.range) && e.range.length === 2, `${w}: range is a pair`);
       this.ok(typeof e.ui_path === "string" && e.ui_path.length > 8, `${w}: ui_path non-trivial`);
       this.ok(typeof e.notes === "string" && e.notes.length > 0, `${w}: notes non-empty`);
-      this.ok(e.verified === false || e.verified === "2026-07-02" || e.verified === "2026-07-03", `${w}: verified is check-date or false`);
+      this.ok(e.verified === false || e.verified === "2026-07-02" || e.verified === "2026-07-03" || e.verified === "2026-07-05", `${w}: verified is check-date or false`);
       // -- Phase-1 sheet metadata: every entry carries a non-empty group string + boolean lighting flag
       this.ok(typeof e.group === "string" && e.group.length > 0, `${w}: group is a non-empty string`);
       this.ok(typeof e.lighting === "boolean", `${w}: lighting is a boolean`);
