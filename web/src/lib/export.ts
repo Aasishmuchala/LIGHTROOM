@@ -240,19 +240,24 @@ function msLinesFor(v: RecipeValue, target: TargetId | string): MsLineResult {
   const key = typeof v.set === "string" ? v.set.trim().toLowerCase() : "";
   const idx = Object.prototype.hasOwnProperty.call(m.options, key) ? m.options[key] : undefined;
   if (idx === undefined) return fallback;
-  // CPU/GPU-aware (2026-07-05): color mapping is a RENDERER property, and the property
-  // set differs by engine — `colorMapping_type` exists on the V-Ray CPU renderer
-  // (V_Ray_Adv_*) but NOT on V-Ray GPU (V_Ray_GPU_*). isProperty checks presence on the
-  // ACTUAL current renderer FIRST, so CPU sets it and GPU records a clean miss (no error)
-  // reported at the end as "set by hand". (Every scene-NODE setter above — sun/light/cam
-  // — is identical on CPU and GPU, so only this renderer branch is engine-specific.)
+  // CPU/GPU-aware (2026-07-05): color mapping is a RENDERER property whose name/availability
+  // differs by engine — `colorMapping_type` exists on the V-Ray CPU renderer (V_Ray_Adv_*)
+  // but is absent on V-Ray GPU (V_Ray_GPU_* / RTEngine). Rather than hard-code a name (or
+  // use isProperty, which *accesses* the property), the script ENUMERATES the ACTUAL
+  // renderer's exposed property list with getPropNames and sets whatever color-mapping-type
+  // property it finds — so it works on V-Ray CPU, on V-Ray GPU IF that engine exposes one
+  // under any name, and honestly reports a manual step when the engine has none. (Scene-NODE
+  // setters above — sun/light/cam — are identical on CPU and GPU; only this branch varies.)
+  const pat = m.prop.replace(/_/g, "*"); // colorMapping_type -> "colorMapping*type" (match by shape, any engine's name)
   return {
     lines: [
       tail,
       `if (matchPattern ((classof renderers.current) as string) pattern:"V_Ray*") then (`,
-      `  if (isProperty renderers.current #${m.prop}) then (`,
-      `    try ( renderers.current.${m.prop} = ${idx}; append lmOk ${pq} ) catch ( append lmFail ${pq} )`,
-      `  ) else ( append lmFail ${pq} ) -- this renderer (e.g. V-Ray GPU) has no ${m.prop} — set it by hand`,
+      `  local lmCm = undefined`,
+      `  try ( for p in (getPropNames renderers.current) while lmCm == undefined do ( if (matchPattern (p as string) pattern:"${pat}" ignoreCase:true) do lmCm = p ) ) catch ()`,
+      `  if lmCm != undefined then (`,
+      `    try ( setProperty renderers.current lmCm ${idx}; append lmOk ${pq} ) catch ( append lmFail ${pq} )`,
+      `  ) else ( append lmFail ${pq}; format "  ! color mapping type is not scriptable on this renderer (e.g. V-Ray GPU) - set it manually in Render Setup\\n" )`,
       `) else ( append lmFail ${pq} )`,
     ],
     scripted: true,

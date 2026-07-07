@@ -59,8 +59,11 @@ describe("toMaxScript — deterministic setters", () => {
     expect(ms).toContain("lmSun.invisible = false");
   });
 
-  it("cm.type maps the verified dropdown enum (Reinhard = 6) behind a renderer guard", () => {
-    expect(ms).toContain("renderers.current.colorMapping_type = 6");
+  it("cm.type maps the verified dropdown enum (Reinhard = 6), set on the discovered renderer prop", () => {
+    // CPU/GPU-aware: enumerate the renderer's real props and set whatever color-mapping-type
+    // property it exposes (colorMapping_type on CPU; a clean miss on V-Ray GPU).
+    expect(ms).toContain("getPropNames renderers.current");
+    expect(ms).toContain("setProperty renderers.current lmCm 6"); // Reinhard = 6
     expect(ms).toContain('pattern:"V_Ray*"'); // guarded, never a hard error off-V-Ray
   });
 
