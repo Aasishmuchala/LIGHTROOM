@@ -240,11 +240,19 @@ function msLinesFor(v: RecipeValue, target: TargetId | string): MsLineResult {
   const key = typeof v.set === "string" ? v.set.trim().toLowerCase() : "";
   const idx = Object.prototype.hasOwnProperty.call(m.options, key) ? m.options[key] : undefined;
   if (idx === undefined) return fallback;
+  // CPU/GPU-aware (2026-07-05): color mapping is a RENDERER property, and the property
+  // set differs by engine — `colorMapping_type` exists on the V-Ray CPU renderer
+  // (V_Ray_Adv_*) but NOT on V-Ray GPU (V_Ray_GPU_*). isProperty checks presence on the
+  // ACTUAL current renderer FIRST, so CPU sets it and GPU records a clean miss (no error)
+  // reported at the end as "set by hand". (Every scene-NODE setter above — sun/light/cam
+  // — is identical on CPU and GPU, so only this renderer branch is engine-specific.)
   return {
     lines: [
       tail,
       `if (matchPattern ((classof renderers.current) as string) pattern:"V_Ray*") then (`,
-      `  try ( renderers.current.${m.prop} = ${idx}; append lmOk ${pq} ) catch ( append lmFail ${pq} )`,
+      `  if (isProperty renderers.current #${m.prop}) then (`,
+      `    try ( renderers.current.${m.prop} = ${idx}; append lmOk ${pq} ) catch ( append lmFail ${pq} )`,
+      `  ) else ( append lmFail ${pq} ) -- this renderer (e.g. V-Ray GPU) has no ${m.prop} — set it by hand`,
       `) else ( append lmFail ${pq} )`,
     ],
     scripted: true,

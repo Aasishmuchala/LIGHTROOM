@@ -34,9 +34,13 @@ describe("toMaxScript — every setter is crash-isolated (try/catch + lmOk/lmFai
     expect(s).toContain('try ( lmCam.ISO = 200; append lmOk "cam.iso" ) catch ( append lmFail "cam.iso" )');
   });
 
-  it("the renderer enum (colorMapping_type) is try/catch'd INSIDE the V-Ray guard", () => {
+  it("the renderer enum (colorMapping_type) is CPU/GPU-aware: isProperty-guarded + try/catch'd", () => {
+    // color mapping is a RENDERER property that exists on V-Ray CPU (V_Ray_Adv) but NOT on
+    // V-Ray GPU (V_Ray_GPU) — so we probe the ACTUAL current renderer before setting it.
+    expect(s).toContain("if (isProperty renderers.current #colorMapping_type) then (");
     expect(s).toContain('try ( renderers.current.colorMapping_type = 6; append lmOk "cm.type" ) catch ( append lmFail "cm.type" )');
-    // non-V-Ray current renderer records a miss, not an error
+    // a renderer that lacks the property (V-Ray GPU) or a non-V-Ray renderer records a
+    // clean miss (no error), reported as "set by hand" at the end
     expect(s).toContain(') else ( append lmFail "cm.type" )');
   });
 
