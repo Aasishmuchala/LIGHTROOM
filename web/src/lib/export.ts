@@ -203,12 +203,21 @@ function msLinesFor(v: RecipeValue, target: TargetId | string): MsLineResult {
   const m = KNOWN_PROPS[String(v.param)];
   if (!m) return fallback; // unmapped (or unknown) — the honesty rule
   const tail = `-- ${uiPath}${why ? ` — ${why}` : ""}`;
+  const pq = msQuote(String(v.param)); // ASCII param id for the ok/fail tally
 
+  // RESILIENCE (2026-07-05, real-Max bug): every setter is wrapped in try/catch and
+  // tallied into lmOk/lmFail. A property a KNOWN_PROPS entry vouches for can STILL be
+  // absent on a given renderer/scene — e.g. `colorMapping_type` does NOT exist on the
+  // V-Ray GPU renderer (V_Ray_GPU_*). Without try/catch that one "Unknown property"
+  // aborts the ENTIRE FileIn and nothing applies. Wrapping each setter (exactly as the
+  // live bridge's buildApplyScript already does) isolates the miss: everything settable
+  // still lands, and the failures are printed at the end as "set them by hand".
   if (m.type === "bool") {
     const b = toBool(v.set);
     if (b === null) return fallback; // not clearly on/off — don't guess a boolean
+    const nv = NODE_VAR[m.node as Exclude<MsNode, "renderer">];
     return {
-      lines: [`${NODE_VAR[m.node as Exclude<MsNode, "renderer">]}.${m.prop} = ${b} ${tail}`],
+      lines: [tail, `try ( ${nv}.${m.prop} = ${b}; append lmOk ${pq} ) catch ( append lmFail ${pq} )`],
       scripted: true,
       node: m.node,
     };
@@ -216,25 +225,27 @@ function msLinesFor(v: RecipeValue, target: TargetId | string): MsLineResult {
 
   if (m.type === "float") {
     if (typeof v.set !== "number" || !Number.isFinite(v.set)) return fallback;
+    const nv = NODE_VAR[m.node as Exclude<MsNode, "renderer">];
     return {
-      lines: [`${NODE_VAR[m.node as Exclude<MsNode, "renderer">]}.${m.prop} = ${v.set} ${tail}`],
+      lines: [tail, `try ( ${nv}.${m.prop} = ${v.set}; append lmOk ${pq} ) catch ( append lmFail ${pq} )`],
       scripted: true,
       node: m.node,
     };
   }
 
-  // enum (renderer dropdown): only an EXACTLY known option string maps to its int —
-  // guarded at runtime so a non-V-Ray current renderer prints instead of erroring.
+  // enum (renderer dropdown): only an EXACTLY known option string maps to its int. The
+  // matchPattern guard records a miss (not an error) on a non-V-Ray renderer, and the
+  // assignment is try/catch'd so an unsupported property (V-Ray GPU has no
+  // colorMapping_type) is a reported miss, never a fatal FileIn exception.
   const key = typeof v.set === "string" ? v.set.trim().toLowerCase() : "";
   const idx = Object.prototype.hasOwnProperty.call(m.options, key) ? m.options[key] : undefined;
   if (idx === undefined) return fallback;
   return {
     lines: [
+      tail,
       `if (matchPattern ((classof renderers.current) as string) pattern:"V_Ray*") then (`,
-      `  renderers.current.${m.prop} = ${idx} ${tail}`,
-      `) else (`,
-      `  print ${msQuote(`LightMatch: current renderer is not V-Ray — SET MANUALLY: ${uiPath} = ${String(v.set)}`)}`,
-      `)`,
+      `  try ( renderers.current.${m.prop} = ${idx}; append lmOk ${pq} ) catch ( append lmFail ${pq} )`,
+      `) else ( append lmFail ${pq} )`,
     ],
     scripted: true,
     node: "renderer",
@@ -287,7 +298,9 @@ export function toMaxScript(recipe: Recipe, target: TargetId | string): string {
     out.push("-- every value is listed for manual setup (use the checklist export instead).");
   } else {
     out.push("-- Create-or-find: the FIRST existing node of each class is modified; a node is");
-    out.push("-- created only when the scene has none. Review before running.");
+    out.push("-- created only when the scene has none. Each setter is wrapped in try/catch —");
+    out.push("-- a property this renderer/scene lacks is skipped and reported at the end, never");
+    out.push("-- halting the run (e.g. V-Ray GPU has no colorMapping_type). Review before running.");
   }
   out.push("-- ============================================================================");
 
@@ -332,12 +345,15 @@ export function toMaxScript(recipe: Recipe, target: TargetId | string): string {
   for (const n of ["sun", "light", "plane", "dome", "cam"] as const) {
     if (nodes.has(n)) out.push(`  ${NODE_SETUP[n]}`);
   }
+  // running tallies: every try/catch setter appends its param id to one of these.
+  out.push("  local lmOk = #()   -- setters that landed");
+  out.push("  local lmFail = #() -- setters this renderer/scene rejected (set by hand)");
   out.push("");
   // per value, in recipe order: real setter or fallback comment.
   for (const x of results) for (const line of x.lines) out.push(`  ${line}`);
   out.push("");
   out.push(
-    `  format "LightMatch: % value(s) scripted, % left as SET MANUALLY comments\\n" ${scriptedCount} ${manualCount}`
+    `  if lmFail.count > 0 then ( format "LightMatch: applied %/% scripted value(s); these errored on THIS renderer/scene — set them by hand: %\\n" lmOk.count (lmOk.count + lmFail.count) (lmFail as string) ) else ( format "LightMatch: applied all % scripted value(s).\\n" lmOk.count )`
   );
   out.push(")");
   return out.join("\n");
