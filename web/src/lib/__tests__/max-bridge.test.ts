@@ -166,9 +166,16 @@ describe("buildApplyScript", () => {
     expect(script).toContain("lmSun.turbidity = 6");
     expect(script).toContain("lmSun.enabled = true");
     expect(script).toContain("lmCam.ISO = 200");
-    expect(script).toContain("renderers.current.colorMapping_type = 6");
+    // cm.type is a RENDERER property whose name differs by engine (V-Ray GPU has no
+    // colorMapping_type) — the live bridge now DISCOVERS it exactly like export.ts
+    // (2026-07-13 parity fix) instead of hard-coding the CPU name.
+    expect(script).toContain("getPropNames renderers.current");
+    expect(script).toContain("setProperty renderers.current lmRProp 6"); // Reinhard = 6
+    expect(script).not.toContain("renderers.current.colorMapping_type =");
     expect((script.match(/append okArr/g) || []).length).toBe(4);
-    expect((script.match(/append failArr/g) || []).length).toBe(4);
+    // the discovery branch fails on TWO paths (no matching prop; the block threw),
+    // so cm.type contributes 2 failArr sites where plain setters contribute 1.
+    expect((script.match(/append failArr/g) || []).length).toBe(5);
   });
 
   it("only sets up the nodes it actually touches, and ends with the JSON summary", () => {

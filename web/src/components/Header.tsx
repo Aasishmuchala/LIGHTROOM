@@ -5,6 +5,7 @@ import { engineStore, useEngine } from "@/store/useEngine";
 import { STORE } from "@/lib/store";
 import { TARGETS } from "./lib";
 import { SetupMenu } from "./SetupMenu";
+import { SessionsMenu } from "./SessionsMenu";
 
 // The wordmark IS the instrument's axis: a little ivory meter face with a marigold
 // needle, then the wordmark set tight. Reads as a light-meter faceplate. -----------
@@ -117,6 +118,7 @@ export function Header() {
             />
           </form>
 
+          <SessionsMenu onFlash={flashMsg} />
           <SetupMenu onFlash={flashMsg} />
         </div>
       </div>

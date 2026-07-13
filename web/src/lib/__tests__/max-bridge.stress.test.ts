@@ -69,10 +69,12 @@ describe("buildApplyScript — MAXScript injection is impossible even via a DIRE
       { param: "cm.type", set: "Reinhard" }, // the only legit one
     ]);
     expect(isClean(script)).toBe(true);
-    // exactly one cm.type setter, RHS is the integer 6 — never the hostile string
-    const setters = script.split("\n").filter((l) => l.includes("colorMapping_type ="));
+    // exactly one cm.type setter (the GPU/CPU-aware discovery line, 2026-07-13),
+    // RHS is the integer 6 — never the hostile string
+    const setters = script.split("\n").filter((l) => l.includes("setProperty renderers.current lmRProp"));
     expect(setters.length).toBe(1);
-    expect(setters[0]).toContain("= 6");
+    expect(setters[0]).toContain("lmRProp 6");
+    expect(script).not.toContain("deletefile");
   });
 
   it("an astronomically large finite number (exponential String()) is skipped, not emitted as 1e+21", () => {

@@ -308,8 +308,22 @@ export function buildApplyScript(scriptable: ApplyValue[]): string {
       rhs = String(m.options[key]);
     }
     usedNodes.add(m.node);
-    const lhs =
-      m.node === "renderer" ? `renderers.current.${m.prop}` : `${nodeLocal(m.node)}.${m.prop}`;
+    if (m.node === "renderer") {
+      // GPU/CPU parity (2026-07-13, mirrors export.ts's discovery): renderer color-
+      // mapping properties differ by engine — `colorMapping_type` exists on V-Ray CPU
+      // (V_Ray_Adv_*) but not on V-Ray GPU. Hard-coding the name made every GPU apply
+      // report cm.type as failed even when the engine exposes an equivalent under
+      // another name. ENUMERATE the actual renderer's properties (getPropNames — never
+      // isProperty, which ACCESSES the property) and set whichever matches the shape;
+      // no match = honest failArr entry. The inner parens block scopes the local; the
+      // outer try/catch keeps a non-V-Ray renderer a reported miss, never a crash.
+      const pat = m.prop.replace(/_/g, "*");
+      setters.push(
+        `try ( ( local lmRProp = undefined; for p in (getPropNames renderers.current) while lmRProp == undefined do ( if (matchPattern (p as string) pattern:"${pat}" ignoreCase:true) do lmRProp = p ); if lmRProp != undefined then ( setProperty renderers.current lmRProp ${rhs}; append okArr "${v.param}" ) else ( append failArr "${v.param}" ) ) ) catch ( append failArr "${v.param}" )`
+      );
+      continue;
+    }
+    const lhs = `${nodeLocal(m.node)}.${m.prop}`;
     setters.push(
       `try ( ${lhs} = ${rhs}; append okArr "${v.param}" ) catch ( append failArr "${v.param}" )`
     );

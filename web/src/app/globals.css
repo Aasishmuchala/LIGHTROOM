@@ -348,6 +348,44 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
 .setup-divider { height: 1px; background: var(--color-line); margin: 0.2rem 0.55rem; }
 .setup-foot { font-size: 0.68rem; color: var(--color-faint); padding: 0.3rem 0.6rem 0.15rem; }
 
+/* -- Sessions switcher (extends the setup-panel shell). ----------------------- */
+.sessions-panel { width: min(23rem, calc(100vw - 1rem)); }
+.sessions-head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.35rem 0.55rem 0.1rem; }
+.sessions-list { display: flex; flex-direction: column; gap: 2px; max-height: min(21rem, 55vh); overflow-y: auto; margin-top: 0.3rem; }
+.session-row { display: flex; align-items: center; gap: 0.4rem; border-radius: 9px; padding: 0.3rem 0.35rem; }
+.session-row:hover { background: oklch(0.90 0.016 85 / 0.5); }
+.session-row.is-live { background: var(--color-accent-tint); box-shadow: 0 0 0 1px var(--color-accent-line); }
+.session-open {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 0.6rem;
+  border: none; background: transparent; cursor: pointer; text-align: left; padding: 0.15rem;
+  border-radius: 7px;
+}
+.session-open:disabled { cursor: default; }
+.session-thumb {
+  flex: none; width: 52px; height: 36px; border-radius: 5px; object-fit: cover;
+  background: var(--color-canvas-deep);
+  box-shadow: 0 1px 2px oklch(0.15 0.01 60 / 0.35), 0 0 0 1px oklch(0.15 0.01 60 / 0.2) inset;
+}
+.session-thumb--empty { display: block; background: linear-gradient(135deg, oklch(0.86 0.014 86), oklch(0.80 0.016 84)); }
+.session-meta { min-width: 0; display: flex; flex-direction: column; gap: 0.12rem; }
+.session-name {
+  display: flex; align-items: center; gap: 0.4rem; min-width: 0;
+  font-size: 0.8rem; font-weight: 640; color: var(--color-ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.session-live-tag, .session-lock-tag {
+  flex: none; font-size: 0.56rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase;
+  padding: 0.1rem 0.32rem; border-radius: 4px;
+}
+.session-live-tag { color: oklch(0.30 0.09 48); background: radial-gradient(circle at 40% 30%, var(--color-accent-hi), var(--color-accent)); box-shadow: 0 0 4px var(--amber-glow); }
+.session-lock-tag { color: var(--color-accent-ink); background: oklch(0.9 0.03 84); box-shadow: 0 0 0 1px var(--color-accent-line); }
+.session-sub { font-size: 0.68rem; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-pct { font-weight: 700; color: var(--color-accent-ink); }
+.session-pct--matched { color: var(--color-good-ink); }
+.session-actions { flex: none; display: flex; align-items: center; gap: 0.25rem; }
+.session-rename { font-size: 0.78rem !important; padding: 0.28rem 0.5rem !important; width: 100%; }
+.session-del-confirm { color: #fff !important; background: var(--color-danger) !important; box-shadow: none !important; }
+
 /* ============================================================================
    AREA-MODE LOCK — the big-project switch in the rail's Analyze cell. A wide
    illuminated toggle: dark lamp = globals free; lit amber lamp = this session is a

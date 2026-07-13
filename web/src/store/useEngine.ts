@@ -189,6 +189,8 @@ export interface LiveSettings {
 export interface Session {
   id: string;
   created: string;
+  /** Optional human label (session switcher); persisted, import-sanitized. */
+  name?: string;
   context: { scene: string; time: string; rig: string; [k: string]: string };
   ref: ImageSlot | null;
   base: ImageSlot | null;
@@ -262,7 +264,9 @@ export class DecodeError extends Error {
 // Constants (source-of-truth, matching vanilla ENGINE).
 // ---------------------------------------------------------------------------
 export const ATTEMPTS_CAP = 8;
-export const SESSION_RETENTION_CAP = 5;
+// Raised 5 → 24 (2026-07-13): Area mode = one session per area on a big project;
+// a cap of 5 silently pruned a six-room job's earlier rooms out of existence.
+export const SESSION_RETENTION_CAP = 24;
 
 // ---------------------------------------------------------------------------
 // suggestProbe(recipe, target) — PURE: pick the one recipe move worth probing.
@@ -528,6 +532,21 @@ export interface EngineStore {
   boot(): Promise<Session>;
   exportJSON(): Promise<string>;
   importJSON(str: string): Promise<Session>;
+
+  // -- session switching (the multi-area workflow) --
+  /** Open a stored session by id: hydrates it as the live session, re-stamps
+   *  `created` (recency = prune survival + list order), clears the EXR side channel
+   *  and any stale error. Refuses (BusyError) while a gated call is in flight — the
+   *  same cross-session-corruption rule as importJSON. Throws on an unknown id. */
+  openSession(id: string): Promise<Session>;
+  /** Start a fresh blank session and make it live. The PREVIOUS session stays
+   *  persisted exactly as it was (nothing to save for the blank until it changes). */
+  newSession(): Promise<Session>;
+  /** Rename any stored session (the LIVE one updates in memory too). */
+  renameSession(id: string, name: string): Promise<void>;
+  /** Delete a stored session. Deleting the LIVE one swaps to the newest remaining
+   *  session (or a blank). Refuses while in flight. */
+  deleteSession(id: string): Promise<Session>;
 
   // -- expert chat --
   /** The transcript (empty array when the session has none). */
@@ -1642,6 +1661,90 @@ export const engineStore = createStore<EngineStore>((set, get) => {
         exrSlots: { ref: null, base: null, settings: null },
       });
       return imported;
+    },
+
+    // -- session switching -----------------------------------------------------------
+    async openSession(id) {
+      // Same gate as importJSON: a resolving analyze would stamp its result onto the
+      // freshly opened session (cross-session corruption).
+      if (get()._inFlight) {
+        throw annotateError(
+          new BusyError(
+            "openSession(): an analyze/attempt call is in flight — wait for it to finish before switching sessions."
+          )
+        );
+      }
+      const stored = await STORE.loadById(id);
+      if (!stored) throw new Error(`openSession(): no stored session with id "${id}".`);
+      // Re-stamp `created` = now (strictly after the current latest — the same tie
+      // guard importJSON uses) so the opened session becomes loadLatest()'s pick,
+      // survives prune, and the switcher lists most-recently-USED first.
+      let stamp = new Date().toISOString();
+      const prev = await STORE.loadLatest();
+      if (prev && prev.created >= stamp) {
+        const prevMs = Date.parse(prev.created);
+        if (Number.isFinite(prevMs)) stamp = new Date(prevMs + 1).toISOString();
+      }
+      stored.created = stamp;
+      await STORE.saveSession(stored);
+      // Hydrate exactly like importJSON: the EXR side channel belongs to the previous
+      // session's slots; a stale banner must not survive the switch.
+      set({
+        session: stored as unknown as Session,
+        lastError: null,
+        exrSlots: { ref: null, base: null, settings: null },
+      });
+      return get().session;
+    },
+
+    async newSession() {
+      if (get()._inFlight) {
+        throw annotateError(
+          new BusyError(
+            "newSession(): an analyze/attempt call is in flight — wait for it to finish first."
+          )
+        );
+      }
+      // The previous session is already persisted after its every mutation; the blank
+      // one is NOT saved until the user actually puts something in it (persist runs on
+      // first setImage/setContext/etc.), so abandoned blanks never clutter the list.
+      set({
+        session: blankSession(get()._testSessionId),
+        lastError: null,
+        exrSlots: { ref: null, base: null, settings: null },
+      });
+      return get().session;
+    },
+
+    async renameSession(id, name) {
+      await STORE.renameSession(id, name);
+      // Keep the live session's label in sync when it was the one renamed.
+      const s = get().session;
+      if (s.id === id) {
+        set({ session: { ...s, name: String(name ?? "").trim().slice(0, STORE.NAME_CAP) } });
+      }
+    },
+
+    async deleteSession(id) {
+      if (get()._inFlight) {
+        throw annotateError(
+          new BusyError(
+            "deleteSession(): an analyze/attempt call is in flight — wait for it to finish first."
+          )
+        );
+      }
+      await STORE.deleteSession(id);
+      if (get().session.id === id) {
+        // The live session is gone from disk — swap to the newest remaining one (or a
+        // blank), with the same side-channel hygiene as openSession.
+        const latest = await STORE.loadLatest();
+        set({
+          session: (latest as unknown as Session) || blankSession(get()._testSessionId),
+          lastError: null,
+          exrSlots: { ref: null, base: null, settings: null },
+        });
+      }
+      return get().session;
     },
 
     // -- expert chat -----------------------------------------------------------------

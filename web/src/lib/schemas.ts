@@ -181,7 +181,11 @@ export function systemPrompt(
         `${ALLOWED_GROUPS_PROSE}. Close the measured gap with camera exposure/WB first, then local lights. ` +
         "If the reference genuinely cannot be matched without touching a locked control, still emit the best " +
         "achievable camera+local recipe and state in `rationale` (or `status_reason`) exactly which locked " +
-        "control is the blocker and what it would need — the user decides whether to revisit the hero shot."
+        "control is the blocker and what it would need — the user decides whether to revisit the hero shot. " +
+        "When a PRIOR block appears in the user content, it is the settled sheet of the user's matched HERO " +
+        "session: its GLOBAL entries are the exact values the locked stage is standing at — reason WITH them " +
+        "(e.g. the sun is already at that intensity/direction) instead of assuming factory defaults for the " +
+        "locked groups."
     );
   }
   lines.push("");

@@ -80,6 +80,8 @@ export interface StoredChain {
 export interface StoredSession {
   id: string;
   created: string;
+  /** Optional human label (session switcher rename); capped at NAME_CAP. */
+  name?: string;
   context?: Record<string, unknown>;
   ref?: StoredSlot | null;
   base?: StoredSlot | null;
@@ -87,6 +89,22 @@ export interface StoredSession {
   activeTarget?: TargetId | string;
   chains: Record<string, StoredChain>;
   [k: string]: unknown;
+}
+
+/** What the session switcher lists — everything needed to recognize a session,
+ *  none of its weight (attempt images etc. are NOT retained). */
+export interface SessionSummary {
+  id: string;
+  created: string;
+  name: string;
+  activeTarget: string;
+  /** The reference thumbnail (already-downscaled slot dataUrl), DATAURL_RE-vetted. */
+  refThumb: string | null;
+  attempts: number;
+  /** Minimum look-distance across both chains' attempts; null when never scored. */
+  bestScore: number | null;
+  hasRecipe: boolean;
+  lockGlobals: boolean;
 }
 
 const isBrowser = (): boolean => typeof window !== "undefined";
@@ -317,10 +335,73 @@ export const STORE = {
     await db.delete(this.STORE_NAME, id);
   },
 
-  // -- pruneToNewest(n=5): keep only the newest n sessions by `created`, deleting older
+  // -- loadById(id): one session by key, or null. The session-switcher open path. ----
+  async loadById(id: string): Promise<StoredSession | null> {
+    const db = await this._openDB();
+    if (!db) {
+      const s = this._mem.get(id);
+      return s ? (JSON.parse(JSON.stringify(s)) as StoredSession) : null;
+    }
+    return ((await db.get(this.STORE_NAME, id)) as StoredSession | undefined) ?? null;
+  },
+
+  // -- listSessions(): lightweight summaries of EVERY stored session, newest first —
+  // the session-switcher's list. Full sessions are deserialized (IDB stores whole
+  // objects) but only summary fields are RETAINED, so the big image payloads are
+  // immediately collectible. bestScore is the minimum look-distance across BOTH
+  // chains' attempts (the session's closest approach, whichever target) — the UI
+  // renders it via matchPercent; null when no attempt was ever scored. --------------
+  async listSessions(): Promise<SessionSummary[]> {
+    const all = await this._all();
+    const summaries = all.map((s) => {
+      let bestScore: number | null = null;
+      let attempts = 0;
+      for (const key of Object.keys(s.chains || {})) {
+        const chain = s.chains[key];
+        const rows = chain && Array.isArray(chain.attempts) ? chain.attempts : [];
+        attempts += rows.length;
+        for (const a of rows as Array<{ score?: unknown }>) {
+          if (a && typeof a.score === "number" && Number.isFinite(a.score)) {
+            bestScore = bestScore === null ? a.score : Math.min(bestScore, a.score);
+          }
+        }
+      }
+      const hasRecipe = Object.keys(s.chains || {}).some((k) => !!s.chains[k]?.recipe);
+      return {
+        id: s.id,
+        created: s.created,
+        name: typeof s.name === "string" ? s.name : "",
+        activeTarget: typeof s.activeTarget === "string" ? s.activeTarget : "vray7max",
+        refThumb:
+          s.ref && typeof s.ref.dataUrl === "string" && this.DATAURL_RE.test(s.ref.dataUrl)
+            ? s.ref.dataUrl
+            : null,
+        attempts,
+        bestScore,
+        hasRecipe,
+        lockGlobals: (s as { lockGlobals?: unknown }).lockGlobals === true,
+      };
+    });
+    summaries.sort((a, b) => (a.created > b.created ? -1 : a.created < b.created ? 1 : 0));
+    return summaries;
+  },
+
+  // -- renameSession(id, name): stamp a human label on a stored session (trimmed,
+  // capped — same cap the import boundary enforces). No-op on a missing id. ----------
+  async renameSession(id: string, name: string): Promise<void> {
+    const s = await this.loadById(id);
+    if (!s) return;
+    s.name = String(name ?? "").trim().slice(0, this.NAME_CAP);
+    await this.saveSession(s);
+  },
+  NAME_CAP: 60,
+
+  // -- pruneToNewest(n): keep only the newest n sessions by `created`, deleting older
   // rows (highest survives — same ordering rule as loadLatest). Best-effort: a delete
-  // failure on one row must not stop the rest. --------------------------------------
-  async pruneToNewest(n = 5): Promise<void> {
+  // failure on one row must not stop the rest. Default raised 5 → 24 (2026-07-13):
+  // Area mode means ONE SESSION PER AREA on a big project — a cap of 5 silently ate
+  // a six-room job's earlier rooms. -------------------------------------------------
+  async pruneToNewest(n = 24): Promise<void> {
     const all = await this._all();
     if (all.length <= n) return;
     const sorted = all
@@ -516,6 +597,10 @@ export const STORE = {
     // false (a truthy string here would silently lock a session's globals).
     (o as unknown as { lockGlobals?: unknown }).lockGlobals =
       (o as unknown as { lockGlobals?: unknown }).lockGlobals === true;
+    // -- NAME: plain trimmed string, same cap renameSession enforces; anything else
+    // drops to absent (a non-string name must not reach the switcher list).
+    if (typeof o.name === "string") o.name = o.name.trim().slice(0, this.NAME_CAP);
+    else delete (o as { name?: unknown }).name;
     await this.saveSession(o);
     return o;
   },
