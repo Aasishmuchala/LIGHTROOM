@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import { engineStore, useEngine } from "@/store/useEngine";
+import { downloadText } from "./lib";
 
 // Shown only when IndexedDB is unavailable (private browsing, disabled storage, an
 // open that rejected) and the store has degraded to an in-memory session with
@@ -18,13 +19,11 @@ export function StorageBanner({ onToast }: { onToast?: (m: string) => void }) {
 
   const onExport = async () => {
     const json = await engineStore.getState().exportJSON();
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `lightmatch-session-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // In THIS banner's storage-degraded mode, Export is the only way to keep the
+    // session — so the sink must be the race-free downloadText (append + next-tick
+    // revoke), not the hand-rolled click()-then-revoke it replaced (finding C10:
+    // a silently-empty download under a "Session exported." toast is data loss here).
+    downloadText(`lightmatch-session-${Date.now()}.json`, json, "application/json");
     toast("Session exported.");
   };
   const onImportPick = () => importRef.current?.click();

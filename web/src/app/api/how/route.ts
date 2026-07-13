@@ -117,11 +117,14 @@ export async function POST(request: Request): Promise<Response> {
         body: JSON.stringify(requestBody),
         signal: ac.signal,
       });
-      clearTimeout(t);
       if (res.status === 401) {
         return NextResponse.json({ ok: false, error: "Gateway returned 401 — the API key is missing or invalid." }, { status: 200 });
       }
       if (res.ok) {
+        // Body read stays under the LIVE abort signal — clearTimeout happens in the
+        // finally below, AFTER res.json()/res.text() complete — so a gateway that
+        // returns headers then stalls the body is still bounded by TIMEOUT_MS.
+        // Same pattern as /api/analyze's send() (stress finding C13).
         const json = await res.json().catch(() => null);
         const answer = extractText(json as { content?: ContentBlock[] } | undefined);
         if (answer) return NextResponse.json({ ok: true, answer });
@@ -133,8 +136,9 @@ export async function POST(request: Request): Promise<Response> {
         return NextResponse.json({ ok: false, error: `Gateway request failed: HTTP ${res.status}${bodyText ? " — " + bodyText.slice(0, 200) : ""}` }, { status: 200 });
       }
     } catch (e) {
-      clearTimeout(t);
       lastErr = (e as Error)?.name === "AbortError" ? `Request timed out after ${TIMEOUT_MS}ms` : ((e as Error)?.message || "network error");
+    } finally {
+      clearTimeout(t);
     }
     if (attempt < BACKOFF_MS.length) {
       await sleep(BACKOFF_MS[attempt]);

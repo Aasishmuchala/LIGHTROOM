@@ -30,6 +30,13 @@ import { cctFromLinearRGB, tintGMFromLinearRGB } from "./metrics";
  *  scene-referred value > 1 rolls off to just under 1 instead of hard-clipping. A tiny
  *  negative (from a noisy EXR channel) is clamped to 0 first. */
 export function reinhard(c: number): number {
+  // Non-finite input is a blown highlight, not a measurement: half-float EXRs store
+  // radiance above 65504 as +Inf (routine for a V-Ray sun disk or bright emitter), and
+  // NaN rides in on firefly/denoiser artifacts. Inf/(1+Inf) is NaN, and NaN survives
+  // srgbOetf and coerces to 0 in a Uint8ClampedArray — the brightest pixels in the
+  // frame would develop to BLACK holes. Develop +Inf/NaN to white; -Inf clamps to 0
+  // like any other negative.
+  if (!Number.isFinite(c)) return c < 0 ? 0 : 1;
   const x = c > 0 ? c : 0;
   return x / (1 + x);
 }
@@ -38,6 +45,12 @@ export function reinhard(c: number): number {
  *  value we develop and then re-linearize round-trips. Clamps input to [0,1]. */
 export function srgbOetf(c: number): number {
   let x = c;
+  // NaN fails BOTH range checks below and would flow through the pow branch as NaN
+  // (-> 0 in a Uint8ClampedArray). It only ever arrives here from a degenerate HDR
+  // sample on the tone:"none" path (reinhard already maps its own non-finites), so
+  // encode it as white — same blown-highlight convention as reinhard. ±Inf need no
+  // guard: the clamps below already send them to 1 / 0.
+  if (Number.isNaN(x)) return 1;
   if (x <= 0) return 0;
   if (x >= 1) return 1;
   x = x <= 0.0031308 ? x * 12.92 : 1.055 * x ** (1 / 2.4) - 0.055;
@@ -68,6 +81,15 @@ export const AUTO_EV_TARGET = 0.18;
 export const EV_MIN = -8;
 export const EV_MAX = 8;
 
+/** Cap on how many pixels autoExposureEV samples — same rationale as
+ *  LINEAR_STATS_MAX_SAMPLES below: EXRs can be 8K+ (33M px), and sorting one luminance
+ *  PER PIXEL froze the main thread for seconds at ingest (and doubled the buffer's
+ *  memory). A fixed deterministic STRIDE (not random sampling) keeps the pick a pure
+ *  function of the buffer — same buffer, same EV, always — while bounding the sort;
+ *  at 1M samples the percentile is stable to far finer than the 0.1-EV UI step.
+ *  Buffers at/below the cap are visited in full, exactly as before. */
+export const AUTO_EV_MAX_SAMPLES = 1_000_000;
+
 // ---------------------------------------------------------------------------
 // Auto-exposure: choose an EV so the scene is viewable immediately.
 // ---------------------------------------------------------------------------
@@ -79,7 +101,8 @@ export const EV_MAX = 8;
  *
  * Robust to arbitrary physical scales (V-Ray radiance can be 0.001 or 5000): a darker
  * render gets a positive EV, a blown-out one a negative EV. Falls back to EV 0 when the
- * buffer is empty or the chosen percentile is ~0 (a black frame — nothing to expose).
+ * buffer is empty, every sampled pixel is non-finite, or the chosen percentile is ~0
+ * (a black frame — nothing to expose).
  *
  * @param data   linear RGBA Float32Array (length w*h*4), scene-referred
  * @param opts   percentile (0..100) and target (display-linear 0..1); defaults above
@@ -93,20 +116,32 @@ export function autoExposureEV(
   const n = Math.floor(data.length / 4);
   if (n <= 0) return 0;
 
-  // Collect per-pixel linear luminance, ignoring fully-transparent pixels' contribution
-  // is unnecessary (alpha is not premultiplied here); we key off RGB only.
-  const lum = new Float64Array(n);
-  for (let i = 0, p = 0; i < n; i++, p += 4) {
-    lum[i] = linearLuminance(data[p], data[p + 1], data[p + 2]);
+  // Sampled per-pixel linear luminance (RGB only; alpha is not premultiplied here).
+  // The fixed stride bounds the sort on 4K-8K buffers — callers pass the FULL-res
+  // decode, and an uncapped comparator sort over 33M luminances froze the UI thread
+  // for seconds; stride is 1 (a full pass, identical to the historical behavior)
+  // whenever n <= AUTO_EV_MAX_SAMPLES. Non-finite luminances never vote — a NaN in a
+  // sort makes the order (and so the percentile pick) implementation-defined, and a
+  // half-float +Inf sun disk is a blown highlight, not an exposure datum — the same
+  // guard linearStats applies below.
+  const stride = Math.max(1, Math.ceil(n / AUTO_EV_MAX_SAMPLES));
+  const lum = new Float64Array(Math.ceil(n / stride));
+  let count = 0;
+  for (let i = 0; i < n; i += stride) {
+    const p = i * 4;
+    const L = linearLuminance(data[p], data[p + 1], data[p + 2]);
+    if (!Number.isFinite(L)) continue;
+    lum[count++] = L;
   }
-  // Percentile via sort (n is small — this runs once per decode, on the raw buffer whose
-  // longest edge we do NOT bound here; callers pass the full-res buffer, but a single
-  // O(n log n) sort at ingest time is fine and exact, unlike a coarse histogram).
-  const sorted = Array.prototype.slice.call(lum).sort((a: number, b: number) => a - b);
-  const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor((percentile / 100) * (sorted.length - 1))));
+  if (count === 0) return 0; // every sample was NaN/Inf — nothing to expose
+
+  // Percentile via typed-array sort: numeric ascending by default (no comparator, no
+  // boxed copy — the old Array.prototype.slice.call detour doubled the allocation).
+  const sorted = lum.subarray(0, count).sort();
+  const idx = Math.min(count - 1, Math.max(0, Math.floor((percentile / 100) * (count - 1))));
   const pct = sorted[idx];
 
-  if (!(pct > 0) || !isFinite(pct)) return 0; // black / degenerate frame -> no push
+  if (!(pct > 0)) return 0; // black frame -> no push (non-finites were filtered above)
   let ev = Math.log2(target / pct);
   if (!isFinite(ev)) return 0;
   if (ev < EV_MIN) ev = EV_MIN;

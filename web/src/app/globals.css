@@ -607,6 +607,155 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
 .how-send:disabled { opacity: 1; cursor: not-allowed; color: var(--color-faint); background: var(--color-chrome-2); box-shadow: 0 1px 2px oklch(0.2 0.01 60 / 0.3) inset; }
 
 /* ============================================================================
+   OPERATOR LINE — the session-aware V-Ray/Vantage expert chat. Its own instrument:
+   a bakelite intercom faceplate (distinct from the ivory readout cards) with an
+   ivory transcript window, a green "live" pilot lamp, and a two-stud composer
+   (CHECK RENDER + ASK). Shares the .how-* message/step/typing/error vocabulary so
+   the operator's numbered re-edits read exactly like the per-move help.
+   ============================================================================ */
+.op-panel {
+  border-radius: var(--radius-card);
+  background: linear-gradient(180deg, var(--color-chrome), var(--color-chrome-2));
+  box-shadow: 0 1px 0 oklch(1 0 0 / 0.14) inset, 0 0 0 1px var(--color-chrome-line), var(--shadow-sm);
+  overflow: hidden;
+}
+/* header = the intercom label plate: click to open the line. */
+.op-head {
+  width: 100%; display: flex; align-items: center; gap: 0.7rem;
+  padding: 0.7rem 0.85rem; cursor: pointer; border: none; text-align: left;
+  background: transparent; color: oklch(0.93 0.006 84);
+  transition: background var(--dur) var(--ease-out);
+}
+.op-head:hover { background: oklch(1 0 0 / 0.04); }
+.op-head.is-open { box-shadow: 0 -1px 0 var(--color-chrome-line) inset; }
+.op-head-badge {
+  flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, var(--nickel-hi), var(--nickel) 58%, var(--nickel-edge));
+  box-shadow: 0 1px 2px oklch(0.15 0.01 60 / 0.5), 0 1px 0 oklch(1 0 0 / 0.4) inset;
+}
+.op-head-lamp {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, oklch(0.86 0.14 158), var(--color-good) 60%, oklch(0.46 0.12 160));
+  box-shadow: 0 0 6px 1px oklch(0.66 0.14 158 / 0.6);
+  animation: lm-pulse 2.4s var(--ease-out) infinite;
+}
+.op-head-titles { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.08rem; }
+.op-head-title {
+  font-size: 0.86rem; font-weight: 680; letter-spacing: -0.01em; line-height: 1.1;
+  color: oklch(0.96 0.006 86);
+}
+.op-head-sub {
+  font-size: 0.7rem; color: oklch(0.80 0.008 80); line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.op-head-count {
+  flex: none; font-size: 0.66rem; font-weight: 700; font-variant-numeric: tabular-nums;
+  min-width: 1.2rem; height: 1.2rem; padding: 0 0.35rem; border-radius: 999px;
+  display: grid; place-items: center; color: oklch(0.30 0.09 48);
+  background: radial-gradient(circle at 38% 32%, var(--color-accent-hi), var(--color-accent) 64%, var(--color-accent-strong));
+  box-shadow: 0 0 5px var(--amber-glow), 0 1px 1px oklch(0.2 0.01 60 / 0.3) inset;
+}
+.op-head-caret { color: oklch(0.78 0.008 80); font-size: 0.72rem; flex: none; }
+.op-head.is-open .op-head-caret { transform: rotate(90deg); }
+
+.op-body { border-top: 1px solid var(--color-chrome-line); }
+.op-scroll {
+  display: flex; flex-direction: column; gap: 0.55rem;
+  max-height: 460px; overflow-y: auto; padding: 0.85rem;
+  background: linear-gradient(180deg, oklch(0.905 0.016 85), oklch(0.918 0.015 86));
+  box-shadow: 0 2px 6px oklch(0.2 0.01 60 / 0.18) inset;
+}
+/* teaching empty state. */
+.op-teach { display: flex; flex-direction: column; gap: 0.55rem; padding: 0.4rem 0.2rem; }
+.op-teach-lead { font-size: 0.82rem; font-weight: 600; color: var(--color-ink); }
+.op-teach-list { display: flex; flex-direction: column; gap: 0.4rem; padding-left: 0; list-style: none; }
+.op-teach-list li {
+  position: relative; padding-left: 1.1rem; font-size: 0.76rem; line-height: 1.5; color: var(--color-ink-2);
+}
+.op-teach-list li::before {
+  content: ""; position: absolute; left: 0; top: 0.5rem; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--color-accent); box-shadow: 0 0 4px var(--amber-glow);
+}
+.op-teach-list strong { color: var(--color-ink); font-weight: 650; }
+
+/* messages reuse .how-msg--you / --bot; op- overrides widen them for real conversation. */
+.op-msg--you { max-width: 88%; display: flex; flex-direction: column; gap: 0.4rem; }
+.op-msg--bot { max-width: 94%; }
+.op-you-text { display: block; }
+
+/* render check-in card inside a user turn: developed thumbnail + lit match read-out. */
+.op-checkin {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.35rem; border-radius: 8px; background: oklch(1 0 0 / 0.4);
+  box-shadow: 0 0 0 1px var(--color-accent-line);
+}
+.op-checkin-thumb {
+  flex: none; width: 68px; height: 46px; border-radius: 5px; object-fit: cover;
+  background: var(--color-canvas-deep);
+  box-shadow: 0 1px 2px oklch(0.15 0.01 60 / 0.4), 0 0 0 1px oklch(0.15 0.01 60 / 0.25) inset;
+}
+.op-checkin-read { display: flex; align-items: center; gap: 0.45rem; min-width: 0; }
+.op-checkin-pct { font-size: 1.05rem; font-weight: 750; color: var(--color-accent-ink); letter-spacing: -0.01em; }
+.op-checkin-look { font-size: 0.66rem; font-weight: 600; color: var(--color-muted); }
+
+/* log-as-attempt bridge to the formal refine ledger. */
+.op-log-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0 0.1rem; }
+.op-log-btn {
+  font-size: 0.73rem; font-weight: 650; letter-spacing: 0.005em; cursor: pointer; border: none;
+  padding: 0.36rem 0.7rem; border-radius: 8px; color: var(--color-accent-ink);
+  background: linear-gradient(180deg, var(--color-accent-tint), var(--color-accent-tint-2));
+  box-shadow: 0 1px 0 oklch(1 0 0 / 0.5) inset, 0 0 0 1px var(--color-accent-line);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.op-log-btn:hover:not(:disabled) { transform: translateY(-1px); }
+.op-log-btn:disabled { cursor: not-allowed; color: var(--color-faint); }
+.op-log-hint { font-size: 0.68rem; color: var(--color-muted); }
+
+/* composer: CHECK-RENDER stud + text line + ASK stud, on a bakelite base. */
+.op-composer {
+  display: flex; gap: 0.5rem; align-items: center;
+  padding: 0.6rem 0.7rem; border-top: 1px solid var(--color-chrome-line);
+  background: linear-gradient(180deg, oklch(0.575 0.01 72), oklch(0.53 0.01 70));
+}
+.op-attach {
+  flex: none; display: inline-flex; align-items: center; gap: 0.34rem;
+  font-size: 0.72rem; font-weight: 640; cursor: pointer; border: none;
+  padding: 0.44rem 0.6rem; border-radius: 8px; color: oklch(0.34 0.02 70);
+  background: linear-gradient(180deg, var(--nickel-hi), var(--nickel) 60%, var(--nickel-lo));
+  box-shadow: 0 1px 2px oklch(0.15 0.01 60 / 0.4), 0 1px 0 oklch(1 0 0 / 0.5) inset;
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+.op-attach:hover:not(:disabled) { transform: translateY(-1px); color: var(--color-accent-ink); }
+.op-attach:active:not(:disabled) { transform: translateY(0.5px); }
+.op-attach.is-drop {
+  color: var(--color-accent-ink);
+  box-shadow: 0 0 0 2px var(--color-accent), 0 0 8px var(--amber-glow), 0 1px 0 oklch(1 0 0 / 0.5) inset;
+}
+.op-attach:disabled { cursor: not-allowed; opacity: 0.55; }
+.op-attach-label { line-height: 1; }
+@media (max-width: 460px) { .op-attach-label { display: none; } }
+.op-input { flex: 1 1 auto; min-width: 0; font-family: var(--font-sans) !important; font-size: 0.8rem !important; padding: 0.5rem 0.66rem !important; }
+.op-send {
+  flex: none; font-size: 0.76rem; font-weight: 700; letter-spacing: 0.02em;
+  padding: 0.5rem 0.95rem; border-radius: 8px; cursor: pointer; border: none; color: oklch(0.30 0.09 48);
+  background: linear-gradient(180deg, var(--color-accent-hi), var(--color-accent) 55%, oklch(0.72 0.15 66));
+  box-shadow: 0 2px 0 var(--color-accent-strong), 0 3px 6px oklch(0.665 0.15 60 / 0.3), 0 1px 0 oklch(1 0 0 / 0.5) inset;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.op-send:hover:not(:disabled) { transform: translateY(-1px); }
+.op-send:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 var(--color-accent-strong) inset; }
+.op-send:disabled { cursor: not-allowed; color: oklch(0.34 0.02 70); background: var(--nickel-lo); box-shadow: 0 1px 2px oklch(0.2 0.01 60 / 0.3) inset; }
+
+.op-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+  padding: 0.44rem 0.7rem; border-top: 1px solid var(--color-chrome-line);
+  background: oklch(0.53 0.01 70);
+}
+.op-foot-note { font-size: 0.66rem; color: oklch(0.82 0.008 80); }
+.op-foot .btn-mini { color: oklch(0.90 0.006 84); }
+.op-foot .btn-mini:hover { color: var(--color-accent-hi); }
+
+/* ============================================================================
    Motion.
    ============================================================================ */
 @keyframes lm-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

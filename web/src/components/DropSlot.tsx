@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { safeSrc } from "./lib";
+import { useEffect, useRef, useState } from "react";
+import { createEvCommitQueue, safeSrc, type EvCommitQueue } from "./lib";
 
 // One image port. Clicking anywhere on it opens the native file picker (the standard
 // drop-zone affordance); it also accepts drag-drop and Ctrl+V paste. The click also
@@ -34,13 +34,50 @@ export function DropSlot({
   captionOverride?: string;
   /** When this slot ingested an EXR: the current develop EV (else null/undefined). */
   exrEv?: number | null;
-  /** Called (debounced by the browser's input events) when the user drags the EV slider. */
-  onExrEv?: (ev: number) => void;
+  /** Called with the newest EV once a drag pauses (trailing-debounced + serialized
+   *  HERE via createEvCommitQueue — a full-res redevelop per 0.1-EV tick was finding
+   *  C5). Return the engine promise so commits queue instead of overlapping. */
+  onExrEv?: (ev: number) => void | Promise<unknown>;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+
+  // -- EV slider commit path (C5): the visible value is echoed locally so dragging
+  // feels instant, while the expensive engine commit (full-res redevelop + re-measure
+  // + persist) trails through the queue — one commit per drag pause, never
+  // overlapping, always the newest EV. The latest-callback ref keeps the queue's
+  // sink current without recreating the queue; refs are only touched from effects
+  // and event handlers (never during render, per the hooks contract). ---------------
+  const onExrEvRef = useRef(onExrEv);
+  useEffect(() => {
+    onExrEvRef.current = onExrEv;
+  });
+  const evQueueRef = useRef<EvCommitQueue | null>(null);
+  /** The slot's commit queue, created lazily on the first drag tick. */
+  const evQueue = (): EvCommitQueue => {
+    if (evQueueRef.current == null) {
+      evQueueRef.current = createEvCommitQueue((ev) => onExrEvRef.current?.(ev));
+    }
+    return evQueueRef.current;
+  };
+  const [echoEv, setEchoEv] = useState<number | null>(null); // live drag value, uncommitted
+  // When a commit lands (exrEv moves) and nothing newer is queued or in flight, the
+  // store's value IS the truth — drop the echo so it (and any external EV change,
+  // e.g. a replaced EXR's fresh auto-exposure) shows through again.
+  useEffect(() => {
+    if (echoEv !== null && !evQueueRef.current?.pending()) setEchoEv(null);
+  }, [exrEv, echoEv]);
+  // Unmount: drop any queued commit (an in-flight one finishes; its result is valid).
+  useEffect(() => {
+    return () => {
+      evQueueRef.current?.cancel();
+    };
+  }, []);
   const src = dataUrl ? safeSrc(dataUrl) : "";
   const isExr = typeof exrEv === "number" && !!onExrEv;
+  // What the slider + readout show: the live drag echo while a commit trails, the
+  // store's committed EV otherwise.
+  const liveEv = isExr ? echoEv ?? (exrEv as number) : 0;
   // Preview height by role: primary ports (Reference / Base) get a tall, confident
   // thumbnail; the compact settings variant is retired but kept for safety.
   const previewH = large ? "h-36 sm:h-40" : compact ? "h-16" : "h-24";
@@ -153,9 +190,11 @@ export function DropSlot({
           </div>
         )}
 
-        {/* Exposure control — only for an EXR-developed slot. Re-develops the preview from
-            the retained linear buffer and re-measures on every change (instant, client-
-            side), so the user can match what they saw in the VFB. Stops propagation so
+        {/* Exposure control — only for an EXR-developed slot. The slider value tracks
+            the drag instantly (local echo); the actual redevelop + re-measure of the
+            retained linear buffer commits through the trailing queue (one full-res
+            develop per pause, serialized — finding C5), so the user can match what
+            they saw in the VFB without the drag hitching. Stops propagation so
             dragging never triggers the port's focus/replace click. */}
         {isExr && (
           <div
@@ -170,8 +209,8 @@ export function DropSlot({
                 Exposure
               </label>
               <span className="jewel text-[0.68rem] text-[var(--color-accent-ink)] font-semibold tabular-nums">
-                {(exrEv as number) >= 0 ? "+" : ""}
-                {(exrEv as number).toFixed(2)} EV
+                {liveEv >= 0 ? "+" : ""}
+                {liveEv.toFixed(2)} EV
               </span>
             </div>
             <input
@@ -180,12 +219,16 @@ export function DropSlot({
               min={-5}
               max={5}
               step={0.1}
-              value={exrEv as number}
+              value={liveEv}
               aria-label={`${label} exposure in stops`}
               className="exr-ev-slider w-full"
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
-              onChange={(e) => onExrEv?.(parseFloat(e.target.value))}
+              onChange={(e) => {
+                const ev = parseFloat(e.target.value);
+                setEchoEv(ev); // the readout + thumb move NOW …
+                evQueue().request(ev); // … the redevelop commits on the pause
+              }}
             />
           </div>
         )}

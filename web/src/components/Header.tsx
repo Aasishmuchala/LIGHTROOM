@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { engineStore, useEngine } from "@/store/useEngine";
 import { STORE } from "@/lib/store";
-import { MODELS, TARGETS } from "./lib";
+import { downloadText, MODELS, TARGETS } from "./lib";
 
 // The wordmark IS the instrument's axis: the warm→cool spectrum rendered as a set of
 // calibration ticks with the marigold key marked, then the wordmark set tight. Reads
@@ -75,13 +75,10 @@ export function Header() {
   };
   const onExport = async () => {
     const json = await engineStore.getState().exportJSON();
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `lightmatch-session-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // downloadText appends the anchor and revokes the object URL on the NEXT tick —
+    // the hand-rolled click()-then-revoke pair this replaced raced the download in
+    // some browsers, flashing "Session exported." over an empty file (finding C10).
+    downloadText(`lightmatch-session-${Date.now()}.json`, json, "application/json");
     flashMsg("Session exported.");
   };
   const onImportPick = () => importRef.current?.click();

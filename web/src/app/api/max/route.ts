@@ -159,11 +159,52 @@ interface MaxRouteBody {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  // CROSS-ORIGIN GUARD (stress finding C14): this route mutates the user's running
+  // 3ds Max scene, and a hostile web page can fire a no-preflight cross-origin POST
+  // (content-type text/plain is a CORS "simple request") at the local server.
+  // Requiring application/json forces any cross-origin caller into a preflight,
+  // which same-origin-policy then blocks because this route sets no CORS headers.
+  const contentType = (request.headers.get("content-type") || "").trim().toLowerCase();
+  if (!contentType.startsWith("application/json")) {
+    return NextResponse.json(
+      { ok: false, error: "content-type must be application/json" },
+      { status: 415 }
+    );
+  }
+  // Belt on top: an Origin header naming a different host than the one this request
+  // was addressed to is cross-site by definition — reject before touching the body.
+  // (An unparseable Origin, e.g. the literal "null" from a sandboxed page, stays
+  // cross-origin.) Same-origin browser POSTs and header-less callers (curl, tests)
+  // pass through.
+  const origin = request.headers.get("origin");
+  if (origin) {
+    const reqHost = request.headers.get("host") || new URL(request.url).host;
+    let sameHost = false;
+    try {
+      sameHost = new URL(origin).host === reqHost;
+    } catch {
+      /* sameHost stays false */
+    }
+    if (!sameHost) {
+      return NextResponse.json(
+        { ok: false, error: "cross-origin requests are not allowed" },
+        { status: 403 }
+      );
+    }
+  }
+
   let body: MaxRouteBody;
   try {
     body = (await request.json()) as MaxRouteBody;
   } catch {
     return NextResponse.json({ ok: false, error: "body was not valid JSON" }, { status: 400 });
+  }
+  // BODY SHAPE GUARD (stress finding C1): `null` / arrays / scalars are valid JSON but
+  // not a request shape. Reject them here so the `body.action` reads below can never
+  // throw — an unguarded TypeError would fall into the catch-all and be misreported to
+  // the client as "3ds Max is not reachable".
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ ok: false, error: "body was not a JSON object" }, { status: 400 });
   }
 
   try {
@@ -240,14 +281,15 @@ export async function POST(request: Request): Promise<Response> {
 
     return NextResponse.json({ ok: false, error: "unknown action" }, { status: 400 });
   } catch (e) {
-    // Max not running / listener not up — a NORMAL state, reported as such.
+    // Max not running / listener not up — a NORMAL state, reported as such. The raw
+    // error goes to the server log ONLY: echoing e.message to the client leaked
+    // internal runtime-error strings (stress finding C1).
+    console.error("[max] transport error:", (e as Error)?.message || String(e));
     return NextResponse.json({
       ok: false,
       offline: true,
       error:
-        "3ds Max is not reachable (" +
-        ((e as Error)?.message || String(e)) +
-        "). Start 3ds Max with the MCP listener installed and try again.",
+        "3ds Max is not reachable. Start 3ds Max with the MCP listener installed and try again.",
     });
   }
 }

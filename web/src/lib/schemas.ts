@@ -298,6 +298,37 @@ export function systemPrompt(target: TargetId | string, mode: ModeName | string)
   return lines.join("\n");
 }
 
+// -- CONTROL_ALIASES: pack-declared "same physical control" pairs, for the
+// one-value-per-control dedupe below. The vray7max pack deliberately offers two
+// fill-workflow lever ids that target the SAME control as their generic VRayLight
+// ids — declared in the pack's verified notes (prose only; the entry data carries no
+// structured alias field, and packs.ts is a byte-for-byte port of the vanilla source
+// that must not grow one, so the relationship is pinned here):
+//   fill.plane_intensity ≡ light.multiplier   ("targets this same control" — packs.ts
+//                                               light.multiplier notes, 2026-07-03)
+//   fill.plane_kelvin    ≡ light.temperature  ("same control as light.temperature" —
+//                                               packs.ts fill.plane_kelvin notes)
+// Without canonicalizing, one emit can carry BOTH ids with conflicting values — two
+// instructions for the same VRayLight spinner, where the live apply's later setter
+// silently overwrites the earlier one (export.ts maps both intensity ids to the same
+// `.multiplier` property). Keyed by target: alias identity is a pack fact, not a
+// global one. Lookups are own-property gated (the codebase's standard defense: never
+// let an inherited name like "constructor" read as a table hit). ------------------
+const CONTROL_ALIASES: Record<string, Record<string, string>> = {
+  vray7max: {
+    "fill.plane_intensity": "light.multiplier",
+    "fill.plane_kelvin": "light.temperature",
+  },
+};
+
+/** the canonical control id a param resolves to for dedupe (itself when unaliased). */
+function canonicalParam(target: string, param: string): string {
+  const table = Object.prototype.hasOwnProperty.call(CONTROL_ALIASES, target)
+    ? CONTROL_ALIASES[target]
+    : undefined;
+  return table && Object.prototype.hasOwnProperty.call(table, param) ? table[param] : param;
+}
+
 // -- validateRecipe(obj, target, mode): local (pre-network) validation of a
 // model-returned tool call, before it ever reaches the UI. Handles BOTH shapes with
 // one function rather than two near-duplicate validators — recipe (`values[]`,
@@ -385,7 +416,9 @@ export function validateRecipe(
       `"${arrKey}" carries ${items.length} items — the schema caps it at ${maxItems}; emit only the moves that close the gap`
     );
   }
-  const seenParams = new Set<string>();
+  // canonical control id → the param id that FIRST claimed it (so an alias'd repeat
+  // can name the exact conflict in its error).
+  const seenParams = new Map<string, string>();
 
   for (let i = 0; i < Math.min(items.length, maxItems); i++) {
     const item = items[i];
@@ -406,14 +439,22 @@ export function validateRecipe(
       );
       continue;
     }
-    // One value per control: a duplicate param is two conflicting instructions for the
-    // same knob — keep the FIRST occurrence, error (and drop) the repeats so the re-ask
-    // names the conflict instead of the UI rendering both.
-    if (seenParams.has(item.param as string)) {
-      errors.push(`${where}: duplicate param "${item.param}" — a ${isCorrection ? "correction" : "recipe"} may set each control once`);
+    // One value per control: a duplicate param — including a pack-declared ALIAS of an
+    // already-set param (CONTROL_ALIASES above; e.g. fill.plane_intensity after
+    // light.multiplier) — is two conflicting instructions for the same knob — keep the
+    // FIRST occurrence, error (and drop) the repeats so the re-ask names the conflict
+    // instead of the UI rendering both.
+    const canonical = canonicalParam(String(target), item.param as string);
+    const firstSeen = seenParams.get(canonical);
+    if (firstSeen !== undefined) {
+      errors.push(
+        firstSeen === item.param
+          ? `${where}: duplicate param "${item.param}" — a ${isCorrection ? "correction" : "recipe"} may set each control once`
+          : `${where}: param "${item.param}" targets the same physical control as "${firstSeen}" (pack-declared alias) — a ${isCorrection ? "correction" : "recipe"} may set each control once`
+      );
       continue;
     }
-    seenParams.add(item.param as string);
+    seenParams.set(canonical, item.param as string);
     const step = item.step;
     if (typeof step !== "number" || !Number.isInteger(step) || step < 1 || step > 6) {
       errors.push(`${where} (${item.param}): "step" must be an integer 1..6, got ${JSON.stringify(step)}`);

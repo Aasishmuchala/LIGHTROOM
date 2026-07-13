@@ -162,7 +162,13 @@ describe("POST /api/max — full handler + pipe→TCP fallback against a mock Ma
   });
 
   it("malformed JSON body → HTTP 400", async () => {
-    const res = await POST(new Request("http://localhost/api/max", { method: "POST", body: "{not json" }));
+    const res = await POST(
+      new Request("http://localhost/api/max", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{not json",
+      })
+    );
     expect(res.status).toBe(400);
   });
 
@@ -170,5 +176,102 @@ describe("POST /api/max — full handler + pipe→TCP fallback against a mock Ma
     if (!bound) return;
     const res = await post({ action: "frobnicate" });
     expect(res.status).toBe(400);
+  });
+});
+
+// -- Stress-finding regressions: C1 (JSON `null` body mislabeled as Max-offline and
+// leaking the raw TypeError string) and C14 (no cross-origin protection on a route
+// that mutates the running 3ds Max scene). The rejects never reach the wire, so they
+// run whether or not the mock listener bound; the same-origin pass needs :8765. -----
+const APPLY_BODY = {
+  action: "apply",
+  target: "vray7max",
+  values: [{ param: "sun.turbidity", set: 6 }],
+};
+
+describe("POST /api/max — body-shape + cross-origin guards (C1, C14)", () => {
+  it("JSON `null` body → clean 400 envelope, NOT offline:true, no internal error leak", async () => {
+    const res = await post(null);
+    expect(res.status).toBe(400);
+    const j = (await res.json()) as { ok: boolean; offline?: boolean; error: string };
+    expect(j.ok).toBe(false);
+    expect(j.offline).toBeUndefined(); // must not be mislabeled "Max is offline"
+    expect(j.error).not.toMatch(/not reachable|Cannot read propert/i); // no raw TypeError echo
+  });
+
+  it("JSON array / scalar bodies get the same clean non-offline reject", async () => {
+    for (const b of [[1], 7, false]) {
+      const j = (await (await post(b)).json()) as { ok: boolean; offline?: boolean };
+      expect(j.ok).toBe(false);
+      expect(j.offline).toBeUndefined();
+    }
+  });
+
+  it("a no-preflight content-type (text/plain) is rejected and NEVER reaches Max", async () => {
+    received = [];
+    const res = await POST(
+      new Request("http://localhost/api/max", {
+        method: "POST",
+        headers: { "content-type": "text/plain;charset=UTF-8" }, // the CORS "simple request" vector
+        body: JSON.stringify(APPLY_BODY),
+      })
+    );
+    expect(res.status).toBe(415);
+    const j = (await res.json()) as { ok: boolean; error: string };
+    expect(j.ok).toBe(false);
+    expect(j.error).toMatch(/application\/json/);
+    expect(received).toEqual([]); // no script ever hit the listener
+  });
+
+  it("a cross-origin Origin header is rejected even with application/json", async () => {
+    received = [];
+    const res = await POST(
+      new Request("http://localhost/api/max", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "https://evil.example.com" },
+        body: JSON.stringify(APPLY_BODY),
+      })
+    );
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(false);
+    expect(received).toEqual([]);
+  });
+
+  it("an unparseable Origin (sandboxed 'null') is treated as cross-origin", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/max", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "null" },
+        body: JSON.stringify(APPLY_BODY),
+      })
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("a same-origin apply (Origin host matches the request host) still passes", async () => {
+    if (!bound) return;
+    received = [];
+    const res = await POST(
+      new Request("http://localhost/api/max", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "http://localhost" },
+        body: JSON.stringify(APPLY_BODY),
+      })
+    );
+    const j = (await res.json()) as { ok: boolean };
+    expect(j.ok).toBe(true);
+    expect(applyScript()).toContain("lmSun.turbidity"); // the apply really ran
+  });
+
+  it("a content-type WITH charset parameter still passes (application/json; charset=utf-8)", async () => {
+    if (!bound) return;
+    const res = await POST(
+      new Request("http://localhost/api/max", {
+        method: "POST",
+        headers: { "content-type": "application/json; charset=utf-8" },
+        body: JSON.stringify({ action: "ping" }),
+      })
+    );
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
   });
 });

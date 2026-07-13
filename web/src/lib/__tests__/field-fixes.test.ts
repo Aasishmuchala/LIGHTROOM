@@ -289,6 +289,31 @@ describe("sky-region measurement + sky_estimate evidence", () => {
     expect(cutout.sky).toBeUndefined();
   });
 
+  it("a FLAT frame yields NO sky (stress fix C12: the p60 cut excluded nothing)", () => {
+    // Uniform mid-gray: every pixel TIES the image's own p60 bin, so the relative
+    // "bright-for-this-image" test excludes nothing. Before the flatness guard
+    // (SKY_MIN_DIM_FRAC) this fabricated a sky_estimate over ~47% of a skyless
+    // flat-lit frame and steered the model's HDRI/env knobs off a wall measurement.
+    const flat = imgRGBA(() => [128, 128, 128, 255]);
+    expect(flat.sky).toBeUndefined();
+    const est = sceneEvidence(flat, skyTop).sky_estimate;
+    expect(est.reference).toBeNull(); // flat side: honestly absent
+    expect(est.current).not.toBeNull(); // real sky split on the other side untouched
+  });
+
+  it("a real top-bright GRADIENT still yields sky (the flatness guard is not overzealous)", () => {
+    // Smooth vertical falloff — bluish bright sky at the top fading to a dark
+    // ground. Real luminance separation: the p60 cut excludes the dim majority,
+    // so the bright top band still attaches a substantial sky field.
+    const grad = imgRGBA((_x, y) => {
+      const v = Math.max(0, Math.min(255, 235 - y * 6));
+      return [v, v, Math.min(255, v + 15), 255];
+    });
+    expect(grad.sky).toBeDefined();
+    expect(grad.sky!.frac).toBeGreaterThan(0.25);
+    expect(grad.sky!.b).toBeGreaterThan(grad.sky!.r); // it measured the bluish sky
+  });
+
   it("an OLD persisted MetricVector without .sky yields sky_estimate nulls, no throw", () => {
     // Hand-built old-shape vector — exactly what a pre-2026-07-05 session restores.
     const oldVector: MetricVector = {

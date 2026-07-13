@@ -7,7 +7,7 @@
 import { STORE } from "@/lib/store";
 import { PACKS } from "@/lib/packs";
 import type { Recipe, Correction, TargetId, SheetGroup } from "@/lib/types";
-import type { EngineState } from "@/store/useEngine";
+import type { EngineState, LastError } from "@/store/useEngine";
 
 // -- The two gateway model options (verbatim from the vanilla UI.MODELS). ----------
 export const MODELS = [
@@ -367,4 +367,136 @@ export function gridHeatCells(
     });
   }
   return cells;
+}
+
+/* ============================================================================
+   ERROR-BANNER COPY — pure copy chooser for ErrorBanner (extracted so the
+   wording contracts, especially the auth split below, are pinnable in tests).
+   Recognizable, not loud: each typed error kind gets a calm, specific line.
+   ============================================================================ */
+
+export function errorBannerCopy(err: LastError): { title: string; detail: string; raw?: string } {
+  switch (err.kind) {
+    case "auth":
+      // A 401-shaped failure has two very different stories: the gateway REJECTED
+      // the key, or our own route refused to call out because NO key was sent at
+      // all. The old hardcoded "Key rejected" line lied to a user who simply
+      // hadn't pasted a key yet (stress finding UX-1, 2026-07-13) — when the
+      // route's message says the key is missing, say that, in its own words.
+      if (err.message && /no api key/i.test(err.message)) {
+        return { title: "No key yet", detail: err.message };
+      }
+      return { title: "Key rejected", detail: "The gateway returned 401. Check your oc_ key and try again." };
+    case "network":
+      return {
+        title: "Gateway error",
+        // Surface the route's ACTUAL reason (e.g. "Gateway request failed: HTTP 529 — …"
+        // or a timeout) instead of a static line — a network kind covers a timeout, a
+        // dropped socket, AND a retried 5xx, and the specific message is the whole point.
+        detail: err.message || "The request failed to reach the gateway — a timeout or a dropped connection, retried 3 times.",
+        raw: err.raw,
+      };
+    case "truncated":
+      return { title: "Response cut short", detail: "The model hit its token cap mid-recipe. Try again, or narrow the scene context." };
+    case "shape":
+      return {
+        title: "Unexpected response",
+        detail: "The model replied without a structured recipe. This is usually transient; try Analyze again.",
+        raw: err.raw,
+      };
+    case "invalid":
+      return { title: "Recipe failed validation", detail: err.message || "The model's recipe didn't fit the pack contract, twice." };
+    case "decode":
+      return { title: "Couldn't read that image", detail: err.message || REJECT_MESSAGE };
+    case "busy":
+      return { title: "Already working", detail: "An analyze or refine call is in flight. One moment." };
+    default:
+      return { title: "Something went wrong", detail: err.message || "An unexpected error occurred." };
+  }
+}
+
+/* ============================================================================
+   EXR EXPOSURE COMMIT QUEUE — pure scheduling for the DropSlot EV slider
+   (stress finding C5, 2026-07-13). A range input fires onChange on EVERY
+   0.1-EV drag tick, and each engine commit is a FULL-resolution redevelop +
+   JPEG re-encode + re-measure + IndexedDB persist — seconds per tick on a 4K
+   EXR, with overlapping async commits able to land out of order (last-write-
+   loses). This queue gives the slider two guarantees:
+
+     debounce   : one trailing commit per pause in the drag (EV_COMMIT_DELAY_MS),
+                  always carrying the NEWEST requested EV — never one per tick.
+     serialize  : commits never overlap. A monotonic request counter (`seq`)
+                  marks the newest ask; a commit dispatches only when none is in
+                  flight, and on completion re-dispatches iff a newer ask landed
+                  meanwhile (trailing-throttle during a long drag over a slow
+                  redevelop). With no overlap, a stale result can never commit
+                  after a newer one.
+
+   Framework-free on purpose: the component holds it in a ref and keeps its own
+   optimistic slider value, so dragging feels instant while commits trail.
+   ============================================================================ */
+
+/** Trailing delay before a drag pause commits. 150–250ms reads as "instant settle"
+ *  while collapsing a 30-tick drag into one redevelop. */
+export const EV_COMMIT_DELAY_MS = 200;
+
+export interface EvCommitQueue {
+  /** Record the newest requested EV and (re)arm the trailing delay. */
+  request(ev: number): void;
+  /** True while a request is waiting on the delay or a commit is in flight. */
+  pending(): boolean;
+  /** Drop any queued (not-yet-dispatched) request; an in-flight commit finishes but
+   *  will not re-dispatch. The queue stays usable for future requests. */
+  cancel(): void;
+}
+
+export function createEvCommitQueue(
+  commit: (ev: number) => unknown,
+  delayMs: number = EV_COMMIT_DELAY_MS
+): EvCommitQueue {
+  let seq = 0; // monotonic request counter — bumped on every ask; the serialization spine
+  let sentSeq = 0; // the ask the most recent dispatch was newest-as-of
+  let latestEv = 0; // value of the newest ask (only ever read at dispatch time)
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let inFlight = false;
+
+  const dispatch = (): void => {
+    const mySeq = (sentSeq = seq);
+    const ev = latestEv;
+    inFlight = true;
+    Promise.resolve()
+      .then(() => commit(ev))
+      .catch(() => {
+        /* the commit sink owns error surfacing (the store's lastError banner);
+           a failed commit must not wedge the queue */
+      })
+      .then(() => {
+        inFlight = false;
+        // A newer ask landed while this commit ran AND its trailing delay already
+        // elapsed (no timer armed) — send it now. Because commits never overlap,
+        // the last commit to run is by construction the newest ask.
+        if (seq !== mySeq && timer === null) dispatch();
+      });
+  };
+
+  return {
+    request(ev: number): void {
+      latestEv = ev;
+      seq += 1;
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        if (inFlight) return; // the in-flight completion re-dispatches the newest ask
+        if (seq !== sentSeq) dispatch();
+      }, delayMs);
+    },
+    pending(): boolean {
+      return timer !== null || inFlight;
+    },
+    cancel(): void {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      seq = sentSeq; // the in-flight completion (if any) sees nothing newer to send
+    },
+  };
 }

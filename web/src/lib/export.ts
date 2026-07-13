@@ -358,6 +358,17 @@ export function toMaxScript(recipe: Recipe, target: TargetId | string): string {
   for (const n of ["sun", "light", "plane", "dome", "cam"] as const) {
     if (nodes.has(n)) out.push(`  ${NODE_SETUP[n]}`);
   }
+  if (nodes.has("cam")) {
+    // ISO / f-number / shutter have ZERO brightness effect unless the camera's exposure
+    // is ON (docs; audit blocker 2026-07-05). The live bridge's buildApplyScript was
+    // patched then — this mirrors that fix into the exported .ms, or the step-1 exposure
+    // lock silently no-ops on any scene whose camera has the Exposure checkbox off.
+    // Same try/catch resilience as every setter: a camera without the property is left
+    // as-is, never aborting the FileIn.
+    out.push(
+      "  try ( lmCam.exposure = true ) catch () -- exposure ON, or the ISO/f-number/shutter setters below have no effect"
+    );
+  }
   // running tallies: every try/catch setter appends its param id to one of these.
   out.push("  local lmOk = #()   -- setters that landed");
   out.push("  local lmFail = #() -- setters this renderer/scene rejected (set by hand)");

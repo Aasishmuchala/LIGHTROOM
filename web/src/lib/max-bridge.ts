@@ -100,12 +100,20 @@ const PULLABLE: { param: string; node: MsNode; prop: string; kind: "bool" | "flo
     kind: m.type,
   }));
 
-// cm.type int → the pack's dropdown option string (reverse of export.ts's enum map).
+// cm.type int → the pack's dropdown option string. A SUPERSET of export.ts's enum map
+// on purpose: apply deliberately refuses to EMIT the two deprecated gamma options (4/5),
+// but pull must report whatever the scene actually has — the pack lists all seven as
+// real dropdown options (packs.ts cm.type notes), and a legacy scene sitting on "Gamma
+// correction" is a live setting, not a missing param. Dropping it here falsely shrank
+// the CURRENT SCENE SETTINGS block and made the model assume the Reinhard factory
+// default as the baseline (stress finding C16, 2026-07-13).
 const CM_TYPE_BY_INDEX: Record<number, string> = {
   0: "Linear multiply",
   1: "Exponential",
   2: "HSV exponential",
   3: "Intensity exponential",
+  4: "Gamma correction",
+  5: "Intensity gamma",
   6: "Reinhard",
 };
 

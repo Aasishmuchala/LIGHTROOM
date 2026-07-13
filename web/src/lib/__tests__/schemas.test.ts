@@ -157,6 +157,93 @@ describe("validateRecipe — display-only (lighting:false) params rejected", () 
   });
 });
 
+describe("validateRecipe — one value per PHYSICAL control (exact + pack-declared alias dupes)", () => {
+  it("a literal duplicate param errors and only the FIRST occurrence is kept", () => {
+    const r = validateRecipe(
+      recipe([value("sun.turbidity", 8, 2), value("sun.turbidity", 3, 2)]),
+      "vray7max"
+    );
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.includes('duplicate param "sun.turbidity"'))).toBe(true);
+    const kept = r.cleaned.values as Record<string, unknown>[];
+    expect(kept.length).toBe(1);
+    expect(kept[0].set).toBe(8);
+  });
+
+  // C17: the pack's notes declare fill.plane_intensity ≡ light.multiplier (and
+  // fill.plane_kelvin ≡ light.temperature) — the SAME VRayLight spinner offered under
+  // two ids. Both landing in one emit is two conflicting instructions for one knob
+  // (the live apply's later setter silently overwrites the earlier), so the dedupe
+  // canonicalizes through the alias exactly like a literal duplicate.
+  it("light.multiplier + fill.plane_intensity (same Multiplier spinner) cannot both land", () => {
+    const r = validateRecipe(
+      recipe([value("light.multiplier", 120, 4), value("fill.plane_intensity", 5, 4)]),
+      "vray7max"
+    );
+    expect(r.ok).toBe(false);
+    expect(
+      r.errors.some(
+        (e) =>
+          e.includes('"fill.plane_intensity"') &&
+          e.includes('same physical control as "light.multiplier"')
+      )
+    ).toBe(true);
+    const kept = r.cleaned.values as Record<string, unknown>[];
+    expect(kept.length).toBe(1);
+    expect(kept[0].param).toBe("light.multiplier"); // first occurrence wins
+    expect(kept[0].set).toBe(120);
+  });
+
+  it("alias order reversed: the fill lever came first, so IT wins and light.multiplier is the repeat", () => {
+    const r = validateRecipe(
+      recipe([value("fill.plane_intensity", 5, 4), value("light.multiplier", 120, 4)]),
+      "vray7max"
+    );
+    expect(r.ok).toBe(false);
+    expect(
+      r.errors.some(
+        (e) => e.includes('"light.multiplier"') && e.includes('"fill.plane_intensity"')
+      )
+    ).toBe(true);
+    const kept = r.cleaned.values as Record<string, unknown>[];
+    expect(kept.length).toBe(1);
+    expect(kept[0].param).toBe("fill.plane_intensity");
+  });
+
+  it("fill.plane_kelvin ≡ light.temperature dedupes the same way", () => {
+    const r = validateRecipe(
+      recipe([value("light.temperature", 4500, 4), value("fill.plane_kelvin", 6500, 4)]),
+      "vray7max"
+    );
+    expect(r.ok).toBe(false);
+    const kept = r.cleaned.values as Record<string, unknown>[];
+    expect(kept.length).toBe(1);
+    expect(kept[0].param).toBe("light.temperature");
+  });
+
+  it("either alias id ALONE stays fully valid (the fill levers themselves are not rejected)", () => {
+    expect(validateRecipe(recipe([value("fill.plane_intensity", 5, 4)]), "vray7max").ok).toBe(true);
+    expect(validateRecipe(recipe([value("light.multiplier", 120, 4)]), "vray7max").ok).toBe(true);
+  });
+
+  it("correction mode dedupes through the alias too", () => {
+    const r = validateRecipe(
+      {
+        moves: [move("light.multiplier", 120, 4), move("fill.plane_intensity", 5, 4)],
+        rationale: "r",
+        status: "continue",
+        status_reason: "s",
+        applied_assumed: true,
+      },
+      "vray7max",
+      "correction"
+    );
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.includes("correction may set each control once"))).toBe(true);
+    expect((r.cleaned.moves as unknown[]).length).toBe(1);
+  });
+});
+
 describe("validateRecipe — non-finite numeric rejected", () => {
   it("NaN set fails", () => {
     const r = validateRecipe(recipe([value("sun.turbidity", NaN)]), "vray7max");

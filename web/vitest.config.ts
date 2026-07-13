@@ -17,6 +17,12 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Threads, not the default forks pool: on Windows the child_process fork workers
+    // crash non-deterministically ("Worker exited unexpectedly") under the full suite's
+    // parallelism, silently dropping a random file's tests from the count. Every file
+    // passes in isolation and under threads (612/612, stable) — the crash is pool
+    // infrastructure, not the tests. Threads are also faster here.
+    pool: "threads",
     include: [
       "src/lib/__tests__/**/*.test.ts",
       "src/store/__tests__/**/*.test.ts",

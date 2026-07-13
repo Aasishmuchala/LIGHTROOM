@@ -77,13 +77,14 @@ export function InputPanel({
     engineStore.getState().setContext({ [group]: cur === value ? "" : value });
   };
 
-  // Re-expose an EXR-developed named slot from its retained linear buffer (instant,
-  // client-side). Errors are recorded on the store's lastError banner.
-  const onExrEv = (slot: "ref" | "base", ev: number) => {
+  // Re-expose an EXR-developed named slot from its retained linear buffer. RETURNS the
+  // engine promise: DropSlot's commit queue awaits it so full-res redevelops never
+  // overlap or land out of order (finding C5). Errors are recorded on the store's
+  // lastError banner.
+  const onExrEv = (slot: "ref" | "base", ev: number) =>
     engineStore.getState().redevelopExrSlot(slot, ev).catch(() => {
       /* banner shows it */
     });
-  };
 
   const doAnalyze = async () => {
     try {

@@ -7,6 +7,7 @@ import {
   EXR_MAGIC,
 } from "../exr";
 import { acceptsFile, isExrName } from "@/components/lib";
+import { developPixelsToRGBA } from "../develop";
 
 // ===========================================================================
 // A minimal, dependency-free OpenEXR *writer* — enough to produce a valid
@@ -254,30 +255,31 @@ describe("decodeExrBuffer — the REAL three.js decoder against a synthetic unco
     expect(decoded.data).toBeInstanceOf(Float32Array);
     expect(decoded.data.length).toBe(W * H * 4);
 
-    // three.js EXRLoader returns rows BOTTOM-UP relative to EXR scanline numbering: the
-    // output buffer's row 0 corresponds to the EXR's last scanline (writer y = H-1).
-    // This vertical orientation is irrelevant to LightMatch (all metrics are computed
-    // over the whole frame; develop is per-pixel), but the test maps it exactly.
+    // three.js EXRLoader emits rows BOTTOM-UP (WebGL texture convention), but
+    // decodeExrBuffer flips them at the decode boundary, so the output contract is
+    // TOP-DOWN: output row 0 == writer y=0 (the EXR's first scanline == the image
+    // TOP under INCREASING_Y lineOrder). Orientation MATTERS to LightMatch — the sky
+    // mask, light centroid, and 4x4 grid are all row-position-dependent — so the test
+    // pins the upright mapping exactly.
     const at = (x: number, outY: number) => {
       const i = (outY * W + x) * 4;
       return [decoded.data[i], decoded.data[i + 1], decoded.data[i + 2], decoded.data[i + 3]];
     };
-    const writerY = (outY: number) => H - 1 - outY;
 
-    // Output row 0 == writer y=1 (G=1); output row 1 == writer y=0 (G=0).
-    // Horizontal R ramp holds regardless of the vertical flip.
-    const r0 = at(0, 0); // x=0, writer y=1
+    // Output row 0 == writer y=0 (G=0); output row 1 == writer y=1 (G=1).
+    // Horizontal R ramp is unaffected by the vertical flip.
+    const r0 = at(0, 0); // x=0, writer y=0
     expect(r0[0]).toBeCloseTo(0, 5); // R at x=0
-    expect(r0[1]).toBeCloseTo(writerY(0) / (H - 1), 5); // G at writer y=1 -> 1
+    expect(r0[1]).toBeCloseTo(0, 5); // G at writer y=0 -> 0
     expect(r0[2]).toBeCloseTo(0.25, 5); // B constant
     expect(r0[3]).toBeCloseTo(1, 5); // A
 
     const r0Right = at(3, 0); // x=3
     expect(r0Right[0]).toBeCloseTo(1, 5); // R at x=3
 
-    const r1 = at(0, 1); // x=0, writer y=0
+    const r1 = at(0, 1); // x=0, writer y=1
     expect(r1[0]).toBeCloseTo(0, 5); // R at x=0
-    expect(r1[1]).toBeCloseTo(writerY(1) / (H - 1), 5); // G at writer y=0 -> 0
+    expect(r1[1]).toBeCloseTo(1, 5); // G at writer y=1 -> 1
 
     // The full set of decoded G-values is exactly {0, 1} (both rows present).
     const gVals = new Set<number>();
@@ -291,6 +293,52 @@ describe("decodeExrBuffer — the REAL three.js decoder against a synthetic unco
     expect(decoded.data[0]).toBeCloseTo(4.5, 4); // R stays > 1 (HDR)
     expect(decoded.data[1]).toBeCloseTo(2.0, 4);
     expect(decoded.data[2]).toBeCloseTo(0.5, 4);
+  });
+
+  // C2 regression (2026-07-13): three.js EXRLoader returns rows bottom-up; before the
+  // decode-boundary flip, every developed EXR was upside-down — the sky mask read the
+  // floor as sky and the light centroid reported the key light from below. This pins
+  // that a TOP-BRIGHT frame stays top-bright through decode AND develop. (develop is
+  // pinned via developPixelsToRGBA, the pure core — developExr's putImageData copies
+  // its output row-for-row onto the canvas, so row order is identical.)
+  it("a top-bright EXR stays top-bright through decode + develop (no vertical flip)", () => {
+    const W = 4;
+    const H = 8;
+    // Vertical ramp in writer space: y=0 (image TOP) -> 1.0, y=H-1 (bottom) -> 0.0.
+    const buf = writeUncompressedFloatExr(W, H, (_x, y) => {
+      const v = 1 - y / (H - 1);
+      return [v, v, v, 1];
+    });
+    const decoded = decodeExrBuffer(buf);
+
+    // Decoded linear buffer: row 0 is the bright image top, last row the dark bottom,
+    // and the ramp is monotonically decreasing downward.
+    const rowR = (row: number) => decoded.data[row * W * 4];
+    expect(rowR(0)).toBeCloseTo(1, 5);
+    expect(rowR(H - 1)).toBeCloseTo(0, 5);
+    for (let r = 1; r < H; r++) expect(rowR(r)).toBeLessThan(rowR(r - 1));
+
+    // Developed sRGB pixels: top row white-ish, bottom row black — same orientation.
+    const out = developPixelsToRGBA(decoded.data, W, H, { ev: 0, tone: "none" });
+    const outRowR = (row: number) => out[row * W * 4];
+    expect(outRowR(0)).toBe(255);
+    expect(outRowR(H - 1)).toBe(0);
+    expect(outRowR(0)).toBeGreaterThan(outRowR(H - 1));
+  });
+
+  it("flips odd-height EXRs cleanly (middle row stays put, ends swap)", () => {
+    const W = 2;
+    const H = 3;
+    // Rows in writer space carry R = 0.1 (top), 0.5 (middle), 0.9 (bottom).
+    const buf = writeUncompressedFloatExr(W, H, (_x, y) => {
+      const v = [0.1, 0.5, 0.9][y];
+      return [v, v, v, 1];
+    });
+    const decoded = decodeExrBuffer(buf);
+    const rowR = (row: number) => decoded.data[row * W * 4];
+    expect(rowR(0)).toBeCloseTo(0.1, 5); // image top
+    expect(rowR(1)).toBeCloseTo(0.5, 5); // middle untouched by the pairwise swap
+    expect(rowR(2)).toBeCloseTo(0.9, 5); // image bottom
   });
 
   it("throws an ExrDecodeError on garbage input", () => {

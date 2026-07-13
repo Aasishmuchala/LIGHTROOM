@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ReadyState, AnalyzingState } from "@/components/StatusStates";
 import { RecipeView } from "@/components/RecipeView";
 import { RefineLedger } from "@/components/RefineLedger";
+import { ExpertChat } from "@/components/ExpertChat";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { StorageBanner } from "@/components/StorageBanner";
 import { Toast } from "@/components/bits";
@@ -94,14 +95,42 @@ export default function Home() {
             showToast(`Pasted into ${slot === "ref" ? "Reference" : slot === "base" ? "Base render" : "Settings"}.`);
           }
           setFocusedSlot(null);
-        } catch {
-          /* store records lastError */
+        } catch (e) {
+          // Most failures annotate lastError and raise the ErrorBanner (decode, busy).
+          // But a stale 'attempt' focus after a target switch throws a plain Error the
+          // store does NOT annotate — without this the paste vanished with zero
+          // feedback (stress finding C8). Toast the reason only when no banner will show.
+          if (!engineStore.getState().lastError) {
+            showToast((e as Error)?.message || "That paste couldn't be placed.");
+          }
         }
       })();
     };
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
   }, [showToast]);
+
+  // Window-level drop guard (stress finding C9): a file dropped a few pixels OUTSIDE a
+  // port would otherwise hit the browser default — navigate the tab to the local image
+  // file, unloading the app mid-session (unrecoverable in a storage-degraded/incognito
+  // session). The ports call stopPropagation on their own drop, so anything reaching the
+  // window missed a target; swallow it. dragover must also preventDefault or the drop
+  // event never fires as "copy" and some browsers still navigate.
+  useEffect(() => {
+    const swallow = (ev: DragEvent) => {
+      // Only intercept file drags — never interfere with text/other DnD.
+      const types = ev.dataTransfer?.types;
+      const isFile = types && Array.prototype.indexOf.call(types, "Files") !== -1;
+      if (!isFile) return;
+      ev.preventDefault();
+    };
+    window.addEventListener("dragover", swallow);
+    window.addEventListener("drop", swallow);
+    return () => {
+      window.removeEventListener("dragover", swallow);
+      window.removeEventListener("drop", swallow);
+    };
+  }, []);
 
   const hasRecipe = !!(chain && chain.recipe);
   const hasAttempts = !!(chain && chain.attempts.length > 0);
@@ -155,6 +184,13 @@ export default function Home() {
                   <RecipeView onToast={showToast} />
                   {hasAttempts && <RefineLedger onToast={showToast} />}
                 </>
+              )}
+
+              {/* The operator line: available once both frames are loaded (a check-in
+                  needs a reference to measure against, and there's a session to discuss).
+                  Sits below the readout as its own instrument. */}
+              {state !== "empty" && !(inFlight && !hasRecipe) && (
+                <ExpertChat onToast={showToast} />
               )}
             </section>
           </div>

@@ -86,6 +86,36 @@ describe("toMaxScript — deterministic setters", () => {
 });
 
 // ---------------------------------------------------------------------------------
+// toMaxScript — camera exposure toggle (C15: the export path's mirror of the live
+// bridge's B4 audit fix — with the camera's Exposure checkbox off, the ISO/f-number/
+// shutter setters assign fine but change NOTHING in the render, so the exported .ms
+// must enable it exactly like buildApplyScript does)
+// ---------------------------------------------------------------------------------
+describe("toMaxScript — camera exposure toggle (mirrors buildApplyScript's B4 fix)", () => {
+  it("a recipe with camera exposure params emits the guarded exposure enable BEFORE the setters", () => {
+    const ms = toMaxScript(RECIPE, "vray7max"); // fixture carries cam.iso
+    // guarded (try/catch) like every setter — a camera without the property must
+    // never abort the FileIn
+    expect(ms).toContain("try ( lmCam.exposure = true ) catch ()");
+    // ordering: after the camera local it references, ahead of the ISO setter
+    expect(ms.indexOf("lmCam.exposure = true")).toBeGreaterThan(
+      ms.indexOf("lmFirstOrCreate VRayPhysicalCamera")
+    );
+    expect(ms.indexOf("lmCam.exposure = true")).toBeLessThan(ms.indexOf("lmCam.ISO = 200"));
+  });
+
+  it("no scripted camera value -> no exposure toggle and no camera node acquired", () => {
+    const noCam = {
+      ...RECIPE,
+      values: RECIPE.values.filter((v) => !String(v.param).startsWith("cam.")),
+    };
+    const ms = toMaxScript(noCam as Recipe, "vray7max");
+    expect(ms).not.toContain("lmCam.exposure");
+    expect(ms).not.toContain("lmFirstOrCreate VRayPhysicalCamera");
+  });
+});
+
+// ---------------------------------------------------------------------------------
 // toMaxScript — the honesty fallbacks
 // ---------------------------------------------------------------------------------
 describe("toMaxScript — SET MANUALLY fallbacks", () => {

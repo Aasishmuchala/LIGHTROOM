@@ -29,6 +29,32 @@ export const CLIP_LO_THRESH = 5; //   sRGB 0..255: a pixel counts toward clip.lo
 // absent. Both constants are shared with sceneEvidence()'s null-guard.
 export const SKY_TOP_FRAC = 0.45; // rows with y < h * this are sky-eligible
 export const SKY_MIN_FRAC = 0.04; // mask must cover >= this fraction of opaque pixels
+// Sky flatness guard (2026-07-13, stress fix C12): the sky test above is RELATIVE
+// ("bright-for-this-image" = own lum-bin >= own p60 bin), and on a FLAT frame every
+// pixel TIES the p60 bin, so the >= test excludes nothing — a skyless, evenly-lit
+// frame fabricated a sky_estimate covering the whole top band (~47% of the frame).
+// A relative-brightness cut is only meaningful when it actually separates a dim
+// population from a bright one, so the sky field attaches ONLY when the p60 cut
+// leaves at least this fraction of the counted pixels BELOW it. An image with real
+// tonal separation leaves ~60% below (minus bin ties); a flat frame leaves 0%.
+// Same "absent = honest" contract as SKY_MIN_FRAC: consumers already null-guard.
+export const SKY_MIN_DIM_FRAC = 0.1; // p60 must exclude >= this fraction of counted pixels
+// Grid no-signal neutral (2026-07-13, stress fix C11): a 4x4 grid cell whose opaque
+// coverage falls below this fraction of the cell's pixels carries (essentially) no
+// signal. Such a cell used to report 0 — indistinguishable from measured pitch
+// black — so an alpha'd region (a V-Ray "save alpha" beauty PNG's transparent sky)
+// read as a BLACK cell: it poisoned the 16 grid diffs and the look-distance score
+// (an attempt with an alpha hole could never reach the match gate against an opaque
+// reference), and skewed gridCentroid / gridKeyFillRatio in the model evidence.
+// Fix choice: a no-signal cell INHERITS the image's opaque-mean luminance instead.
+// Why inherit-the-mean rather than null: `grid` is number[16] across the whole app
+// (diffVectors' subtraction, SCORE_WEIGHTS, gridCentroid, gridKeyFillRatio, the
+// RefineLedger heat cells, the prompt's asymmetry scalars) and lives in persisted
+// sessions — a (number|null)[16] would ripple through every consumer — while the
+// opaque-mean is the honest "no evidence" prior: it never fabricates black, it
+// diffs to ~0 when ref and attempt are holed alike, and it keeps the 16-cell
+// contract intact. Fully-opaque images are untouched (coverage = 1 everywhere).
+export const GRID_CELL_MIN_COVERAGE = 0.01; // cell opaque fraction below this ⇒ no signal
 // EXPERIMENTAL edge-softness proxy (2026-07-05 addition — shadow softness / light
 // size is the last still-eyeballed match dimension): the distribution of the
 // luminance gradient magnitude |dL| over MID-TONE pixels only. Rationale: a
@@ -318,11 +344,17 @@ export function measureFromPixels(
     hiG = 0,
     hiB = 0,
     hiN = 0;
+  // Counted pixels strictly BELOW the p60 bin — the sky flatness guard's separation
+  // measure (see SKY_MIN_DIM_FRAC): a flat frame leaves this at 0 because every
+  // pixel ties the p60 bin. Piggybacks on the wb pass, which already walks exactly
+  // the counted set and computes each pixel's bin index.
+  let dimN = 0;
   for (let i = 0, p = 0; i < n; i++, p += 4) {
     if (!allTransparent && !opaque[i]) continue; // transparent pixels don't vote on wb
     let binIdx = Math.floor(lumArr[i] * HIST_BINS);
     if (binIdx < 0) binIdx = 0;
     else if (binIdx >= HIST_BINS) binIdx = HIST_BINS - 1;
+    if (binIdx < p60Bin) dimN++;
     const r = linearize(data[p] / 255),
       g = linearize(data[p + 1] / 255),
       b = linearize(data[p + 2] / 255);
@@ -356,31 +388,47 @@ export function measureFromPixels(
 
   // -- 4x4 grid: mean linear luminance per cell, row-major. Transparent pixels are
   //    excluded so a cell that is partly (or fully) transparent reports the mean of only
-  //    its opaque pixels, not a black-diluted value. A fully-transparent cell stays 0. ---
+  //    its opaque pixels, not a black-diluted value. A cell with no (or almost no — see
+  //    GRID_CELL_MIN_COVERAGE) opaque pixels was NOT measured: it inherits the image's
+  //    opaque-mean luminance (lumMean) rather than reporting 0, which read as measured
+  //    pitch black (stress fix C11 — a transparent hole must not fake a black cell,
+  //    block the match gate, or drag centroid/key-fill). The neutral is per-image, so
+  //    ref and attempt holed alike diff to ~0 exactly as if both covered the cell. ----
   const grid = new Array<number>(16).fill(0);
   const gridCount = new Array<number>(16).fill(0);
+  const gridTotal = new Array<number>(16).fill(0); // ALL pixels per cell, for coverage
   for (let y = 0; y < h; y++) {
     let gy = Math.floor((y / h) * 4);
     if (gy > 3) gy = 3;
     for (let x = 0; x < w; x++) {
       const idx = y * w + x;
-      if (!allTransparent && !opaque[idx]) continue;
       let gx = Math.floor((x / w) * 4);
       if (gx > 3) gx = 3;
       const cell = gy * 4 + gx;
+      gridTotal[cell]++;
+      if (!allTransparent && !opaque[idx]) continue;
       grid[cell] += lumArr[idx];
       gridCount[cell]++;
     }
   }
-  for (let i = 0; i < 16; i++) grid[i] = gridCount[i] ? grid[i] / gridCount[i] : 0;
+  for (let i = 0; i < 16; i++) {
+    // A cell also has zero TOTAL pixels when the image is narrower/shorter than the
+    // 4x4 lattice (e.g. a 1xN strip) — no signal there either, same neutral.
+    const covered =
+      gridCount[i] > 0 && gridCount[i] >= gridTotal[i] * GRID_CELL_MIN_COVERAGE;
+    grid[i] = covered ? grid[i] / gridCount[i] : lumMean;
+  }
 
   // -- OPTIONAL sky region (2026-07-05): linear means over the sky mask — rows in
   //    the top SKY_TOP_FRAC of the frame AND lum-bin >= the p60 bin (see constants).
   //    A cheap second pass over the already-computed lumArr + pixel data; transparent
   //    pixels are excluded exactly like every other statistic (and the fully-
   //    transparent fallback counts all pixels, same as the wb/grid passes). The field
-  //    is attached ONLY when the mask covers >= SKY_MIN_FRAC of the counted pixels —
-  //    a bottom-lit or sky-less frame omits it entirely, so old consumers (and old
+  //    is attached ONLY when the mask covers >= SKY_MIN_FRAC of the counted pixels
+  //    AND the p60 cut actually excluded a real dim population (>= SKY_MIN_DIM_FRAC
+  //    of counted pixels below the p60 bin — stress fix C12: on a flat frame the
+  //    relative test excludes nothing and any "sky" is fabricated). A bottom-lit,
+  //    sky-less, or flat-lit frame omits it entirely, so old consumers (and old
   //    persisted sessions, which never had it) see an unchanged shape. -------------
   let skyR = 0,
     skyG = 0,
@@ -405,8 +453,12 @@ export function measureFromPixels(
     }
   }
   const skyFrac = skyN / statN; // statN is never 0 (fallback guarantees it)
+  // Flatness guard (C12): the fraction of counted pixels the p60 cut actually
+  // excluded. ~0 means the frame is tonally flat — "bright-for-this-image"
+  // selected everything, and a sky read off that mask would be fabricated.
+  const dimFrac = dimN / statN;
   const sky =
-    skyFrac >= SKY_MIN_FRAC
+    skyFrac >= SKY_MIN_FRAC && dimFrac >= SKY_MIN_DIM_FRAC
       ? {
           frac: skyFrac,
           meanLum: skyLum / skyN,

@@ -396,6 +396,53 @@ export const STORE = {
     };
   },
 
+  // -- _sanitizeImportedChat(v): the import gate for the expert-chat transcript
+  // (session.chat). Chat text is rendered as React text nodes (no HTML sink), so
+  // malformed rows are DROPPED rather than fatal — but a check-in dataUrl feeds an
+  // <img src> exactly like slot/attempt images, so an invalid one REJECTS the whole
+  // import (same poison-file stance as the slot walk in importJSON). Caps lengths and
+  // message count so an imported file can't smuggle unbounded model-facing text. ----
+  CHAT_IMPORT_CAP: 40,
+  CHAT_TEXT_CAP: 8000,
+  _sanitizeImportedChat(v: unknown): { messages: unknown[] } | null {
+    if (v == null || typeof v !== "object" || Array.isArray(v)) return null;
+    const raw = (v as { messages?: unknown }).messages;
+    if (!Array.isArray(raw)) return null;
+    const REJECT = "importJSON: session file contains an invalid image payload.";
+    const messages: unknown[] = [];
+    for (const m of raw) {
+      if (!m || typeof m !== "object") continue;
+      const o = m as Record<string, unknown>;
+      if (o.role !== "user" && o.role !== "assistant") continue;
+      if (typeof o.content !== "string") continue;
+      const clean: Record<string, unknown> = {
+        role: o.role,
+        content: o.content.slice(0, this.CHAT_TEXT_CAP),
+        at: typeof o.at === "string" ? o.at.slice(0, 40) : "",
+      };
+      if (o.checkin != null) {
+        if (typeof o.checkin !== "object" || Array.isArray(o.checkin)) continue;
+        const c = o.checkin as Record<string, unknown>;
+        if (!this._validImportedDataUrl(c.dataUrl) || typeof c.dataUrl !== "string") {
+          throw new Error(REJECT);
+        }
+        clean.checkin = {
+          dataUrl: c.dataUrl,
+          score: typeof c.score === "number" && Number.isFinite(c.score) ? c.score : 0,
+          matchPercent:
+            typeof c.matchPercent === "number" && Number.isFinite(c.matchPercent)
+              ? c.matchPercent
+              : 0,
+          evidenceText:
+            typeof c.evidenceText === "string" ? c.evidenceText.slice(0, this.CHAT_TEXT_CAP) : "",
+        };
+      }
+      messages.push(clean);
+    }
+    if (!messages.length) return null;
+    return { messages: messages.slice(-this.CHAT_IMPORT_CAP) };
+  },
+
   // -- importJSON(str): validate the session shape, reject malformed with a clear
   // message, stamp `created` = now (so the import becomes loadLatest()'s newest and
   // survives prune), enforce the XSS boundary on every dataUrl, then save. ----------
@@ -460,6 +507,11 @@ export const STORE = {
     // the loose StoredSession shape — this field is engine-owned and not in STORE's type.
     (o as unknown as { liveSettings?: unknown }).liveSettings =
       this._sanitizeImportedLiveSettings((o as unknown as { liveSettings?: unknown }).liveSettings);
+    // -- CHAT BOUNDARY: same posture — sanitize the transcript (or drop it); an
+    // invalid check-in dataUrl inside it throws REJECT from the sanitizer itself.
+    (o as unknown as { chat?: unknown }).chat = this._sanitizeImportedChat(
+      (o as unknown as { chat?: unknown }).chat
+    );
     await this.saveSession(o);
     return o;
   },

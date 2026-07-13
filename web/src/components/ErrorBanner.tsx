@@ -1,45 +1,15 @@
 "use client";
 
 import type { LastError } from "@/store/useEngine";
-import { REJECT_MESSAGE } from "./lib";
+import { errorBannerCopy } from "./lib";
 
-// Recognizable, not loud. Each typed error kind gets a calm, specific line. The
-// banner sits inline (a tinted well), never a full-bleed alarm. -------------------
-function messageFor(err: LastError): { title: string; detail: string; raw?: string } {
-  switch (err.kind) {
-    case "auth":
-      return { title: "Key rejected", detail: "The gateway returned 401. Check your oc_ key and try again." };
-    case "network":
-      return {
-        title: "Gateway error",
-        // Surface the route's ACTUAL reason (e.g. "Gateway request failed: HTTP 529 — …"
-        // or a timeout) instead of a static line — a network kind covers a timeout, a
-        // dropped socket, AND a retried 5xx, and the specific message is the whole point.
-        detail: err.message || "The request failed to reach the gateway — a timeout or a dropped connection, retried 3 times.",
-        raw: err.raw,
-      };
-    case "truncated":
-      return { title: "Response cut short", detail: "The model hit its token cap mid-recipe. Try again, or narrow the scene context." };
-    case "shape":
-      return {
-        title: "Unexpected response",
-        detail: "The model replied without a structured recipe. This is usually transient; try Analyze again.",
-        raw: err.raw,
-      };
-    case "invalid":
-      return { title: "Recipe failed validation", detail: err.message || "The model's recipe didn't fit the pack contract, twice." };
-    case "decode":
-      return { title: "Couldn't read that image", detail: err.message || REJECT_MESSAGE };
-    case "busy":
-      return { title: "Already working", detail: "An analyze or refine call is in flight. One moment." };
-    default:
-      return { title: "Something went wrong", detail: err.message || "An unexpected error occurred." };
-  }
-}
-
+// Recognizable, not loud. Each typed error kind gets a calm, specific line — chosen
+// by the PURE errorBannerCopy in components/lib (extracted so the wording contracts,
+// e.g. the auth no-key-vs-rejected split, are pinned by tests). The banner sits
+// inline (a tinted well), never a full-bleed alarm. --------------------------------
 export function ErrorBanner({ error }: { error: LastError | null }) {
   if (!error) return null;
-  const { title, detail, raw } = messageFor(error);
+  const { title, detail, raw } = errorBannerCopy(error);
   const isDecode = error.kind === "decode";
   return (
     <div

@@ -20,7 +20,9 @@ import { FloatType } from "three";
  *  (little-endian version-field magic 20000630). */
 export const EXR_MAGIC = [0x76, 0x2f, 0x31, 0x01] as const;
 
-/** Decoded EXR: linear (scene-referred) RGBA, row-major, 4 floats per pixel. */
+/** Decoded EXR: linear (scene-referred) RGBA, row-major, 4 floats per pixel.
+ *  Rows are TOP-DOWN: row 0 is the image TOP (decodeExrBuffer flips the loader's
+ *  bottom-up texture order at the decode boundary — see the comment there). */
 export interface DecodedExr {
   width: number;
   height: number;
@@ -70,8 +72,9 @@ export async function isExrFile(file: File | Blob & { name?: string }): Promise<
  * can surface a clean message.
  *
  * Output contract: { width, height, data } where data is a Float32Array of length
- * width*height*4, linear/scene-referred RGBA. The loader normalizes 1/2-channel and
- * luminance-chroma EXRs up to RGBA for us, so callers always see 4 channels.
+ * width*height*4, linear/scene-referred RGBA, rows TOP-DOWN (row 0 = image top). The
+ * loader normalizes 1/2-channel and luminance-chroma EXRs up to RGBA for us, so
+ * callers always see 4 channels.
  */
 export function decodeExrBuffer(buffer: ArrayBuffer): DecodedExr {
   let parsed: { data: ArrayLike<number>; width: number; height: number };
@@ -99,6 +102,28 @@ export function decodeExrBuffer(buffer: ArrayBuffer): DecodedExr {
   // parse() with FloatType returns a Float32Array; normalize defensively.
   const data =
     parsed.data instanceof Float32Array ? parsed.data : Float32Array.from(parsed.data);
+
+  // three.js's EXRLoader emits its rows BOTTOM-UP (WebGL texture convention, flipY):
+  // output row 0 is the EXR's LAST scanline, i.e. the image BOTTOM (verified against a
+  // known top-bright gradient). LightMatch's consumers are spatial — developExr
+  // putImageData's this buffer straight onto a canvas (the slot thumbnail and the JPEG
+  // the model sees), and metrics' sky mask / light centroid / 4x4 grid all treat row 0
+  // as the image TOP — so leaving the texture order in place renders the frame
+  // upside-down and inverts every vertical lighting cue (sun elevation read off the
+  // floor). Flip rows ONCE here at the decode boundary so row 0 = image top for ALL
+  // consumers. In-place pairwise row swap; only complete rows that actually exist are
+  // touched (a short buffer must never be indexed past its end).
+  const rowFloats = parsed.width * 4;
+  const rows = Math.min(parsed.height, Math.floor(data.length / rowFloats));
+  const tmp = new Float32Array(rowFloats);
+  for (let top = 0, bot = rows - 1; top < bot; top++, bot--) {
+    const a = top * rowFloats;
+    const b = bot * rowFloats;
+    tmp.set(data.subarray(a, a + rowFloats));
+    data.copyWithin(a, b, b + rowFloats);
+    data.set(tmp, b);
+  }
+
   return { width: parsed.width, height: parsed.height, data };
 }
 

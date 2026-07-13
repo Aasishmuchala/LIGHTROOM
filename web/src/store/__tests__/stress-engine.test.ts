@@ -98,7 +98,11 @@ describe("concurrency spam", () => {
     for (const r of results) expect(r).toBe(results[0]);
   });
 
-  it("addAttempt during in-flight analyze coalesces to the SAME promise (no orphan attempt)", async () => {
+  it("addAttempt during in-flight analyze is REFUSED with BusyError (never coalesced to the wrong promise)", async () => {
+    // Pre-2026-07-13 the guard coalesced ANY gated call onto the in-flight promise —
+    // so this addAttempt returned the analyze's recipe, the UI toasted "Attempt
+    // scored. Look distance NaN." as a false success, and the dropped file vanished
+    // (stress-hunt findings C7/C20). Cross-op calls must refuse loudly instead.
     const st = engineStore.getState();
     await st.setImage("ref", pre(0));
     await st.setImage("base", pre(0.1));
@@ -107,11 +111,13 @@ describe("concurrency spam", () => {
       _analyze: vi.fn(() => new Promise((res) => { release = res; })) as unknown as EngineStore["_analyze"],
     });
     const p1 = st.analyze();
-    const p2 = st.addAttempt(pre(0.05)); // guarded -> returns the in-flight analyze promise
+    await expect(st.addAttempt(pre(0.05))).rejects.toBeInstanceOf(BusyError);
+    expect(engineStore.getState().lastError?.kind).toBe("busy");
     release(fakeRecipe());
-    const [r1, r2] = await Promise.all([p1, p2]);
-    expect(r1).toBe(r2 as unknown);
+    await p1;
+    // The refused attempt left no trace; the analyze landed normally.
     expect(engineStore.getState().activeChain()!.attempts.length).toBe(0);
+    expect(engineStore.getState().activeChain()!.recipe).toBeTruthy();
   });
 
   it("setImage / applied-toggles during in-flight throw BusyError and change nothing", async () => {

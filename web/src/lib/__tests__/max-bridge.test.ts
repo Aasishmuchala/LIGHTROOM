@@ -13,6 +13,7 @@ import {
   SAFE_MODE_BLOCKLIST,
 } from "../max-bridge";
 import { KNOWN_PROPS } from "../export";
+import { PACKS } from "../packs";
 
 describe("wire protocol", () => {
   it("requests are one newline-terminated JSON line with protocolVersion 2", () => {
@@ -91,6 +92,36 @@ describe("mapPullResult", () => {
     expect(mapPullResult("not json")).toBeNull();
     expect(mapPullResult(undefined)).toBeNull();
     expect(mapPullResult(42)).toBeNull();
+  });
+
+  // C16: the deprecated gamma options (4/5) are real dropdown positions per the pack —
+  // a legacy scene sitting on one is a LIVE setting the model must see, not "missing"
+  // (pull reports the truth; only APPLY refuses to emit the deprecated pair).
+  it("reverse-maps the deprecated gamma cm.type ints (4/5) instead of reporting them missing", () => {
+    for (const [idx, label] of [
+      [4, "Gamma correction"],
+      [5, "Intensity gamma"],
+    ] as const) {
+      const pulled = mapPullResult(
+        JSON.stringify({ renderer: "V_Ray_7", counts: {}, params: { "cm.type": idx } })
+      )!;
+      expect(pulled.params["cm.type"]).toBe(label);
+      expect(pulled.missing).not.toContain("cm.type");
+    }
+  });
+
+  it("covers the pack's FULL legal cm.type set: every int 0..6 maps to a pack-listed option", () => {
+    const notes = PACKS.lookup("vray7max", "cm.type")!.notes;
+    for (let idx = 0; idx <= 6; idx++) {
+      const pulled = mapPullResult(
+        JSON.stringify({ renderer: "V_Ray_7", counts: {}, params: { "cm.type": idx } })
+      )!;
+      const label = pulled.params["cm.type"];
+      expect(typeof label, `cm.type int ${idx} must reverse-map to an option string`).toBe(
+        "string"
+      );
+      expect(notes).toContain(label as string); // the exact option token the pack lists
+    }
   });
 });
 

@@ -48,6 +48,7 @@ import {
   type LinearStats,
 } from "@/lib/develop";
 import { PACKS } from "@/lib/packs";
+import { checkinEvidence, type CheckinEvidence } from "@/lib/chat-digest";
 import { systemPrompt, validateRecipe, EMIT_RECIPE, EMIT_CORRECTION } from "@/lib/schemas";
 import { STORE, type StoredSession } from "@/lib/store";
 import {
@@ -102,6 +103,36 @@ export interface AttemptEntry {
   score: number;
   correction: Correction;
   appliedParams: Record<string, boolean>;
+}
+
+// ---------------------------------------------------------------------------
+// Expert-chat state (2026-07-13 addition): the "operator line" conversation is
+// part of the session so it persists with it (IndexedDB + export/import; the
+// import boundary sanitizes it — see STORE._sanitizeImportedChat). A check-in
+// turn carries the measured render payload: the downscaled dataUrl (same
+// captureSlot output attempts store), the deterministic score, and the evidence
+// text that was shown to the model — so a reload can rebuild the exact wire
+// history. Older persisted sessions LACK session.chat — every consumer
+// null-guards.
+// ---------------------------------------------------------------------------
+export const CHAT_CAP = 40;
+export interface ChatCheckin {
+  dataUrl: string;
+  score: number;
+  matchPercent: number;
+  evidenceText: string;
+}
+export interface ChatMsg {
+  role: "user" | "assistant";
+  content: string;
+  at: string;
+  checkin?: ChatCheckin;
+}
+export interface ChatCheckinResult {
+  message: ChatMsg;
+  evidence: CheckinEvidence;
+  /** The measured image, reusable as addAttempt input without re-decoding. */
+  preCaptured: PreCaptured;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +195,8 @@ export interface Session {
   activeTarget: TargetId | string;
   chains: Record<string, Chain>;
   liveSettings?: LiveSettings | null;
+  /** Expert-chat transcript; optional — older persisted sessions lack it. */
+  chat?: { messages: ChatMsg[] } | null;
 }
 
 export type EngineState = "empty" | "ready" | "analyzed" | "refining";
@@ -396,8 +429,10 @@ export interface EngineStore {
   // _openDB() has already run. The UI reads this to surface the "won't persist" banner.
   storagePersistent: boolean;
   // internal, non-React concurrency gate (kept in state so it survives across actions
-  // but never rendered): the in-flight promise or null.
+  // but never rendered): the in-flight promise or null, plus WHICH op owns it (same-op
+  // calls coalesce; different-op calls are refused with BusyError — see guarded()).
   _inFlight: Promise<unknown> | null;
+  _inFlightOp: string | null;
   // test seam: the client adapter fn the store calls. Defaults to analyzeViaApi; tests
   // overwrite it with a stub so no /api/analyze POST is made.
   _analyze: typeof analyzeViaApi;
@@ -451,6 +486,22 @@ export interface EngineStore {
   boot(): Promise<Session>;
   exportJSON(): Promise<string>;
   importJSON(str: string): Promise<Session>;
+
+  // -- expert chat --
+  /** The transcript (empty array when the session has none). */
+  chatMessages(): ChatMsg[];
+  /** Append one message (role+content, optional checkin), enforcing CHAT_CAP by
+   *  dropping the oldest. Persists. */
+  chatAppend(msg: Omit<ChatMsg, "at">): Promise<Session>;
+  /** Ingest a render dropped into the chat: decode/measure via the SAME captureSlot
+   *  path attempts use (EXR develop branch included), score it against the loaded
+   *  reference, and append the user's check-in message with the measured payload.
+   *  Makes NO model call and does NOT touch the analyze in-flight gate. Throws
+   *  DecodeError (bad image) or Error (no reference loaded yet) — the chat panel
+   *  renders these inline; they never reach the global error banner. */
+  chatCheckin(input: ImageInput, note?: string): Promise<ChatCheckinResult>;
+  /** Drop the whole transcript. Persists. */
+  chatClear(): Promise<Session>;
 }
 
 // -- blank session factory: both chains pre-created (empty) so downstream code never
@@ -470,6 +521,7 @@ function blankSession(testSessionId: string | null): Session {
       vray7max: { recipe: null, attempts: [], _attemptCount: 0 },
       vantage33: { recipe: null, attempts: [], _attemptCount: 0 },
     },
+    chat: null,
   };
 }
 
@@ -519,23 +571,37 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     return get().session;
   };
 
-  // -- guarded(fn): run fn() behind the _inFlight gate. If a gated op is already
-  // running, return THAT SAME promise (fn never invoked twice). Clears lastError on
-  // entry (a fresh attempt that then succeeds must not leave the old banner up), sets
+  // -- guarded(op, fn): run fn() behind the _inFlight gate. If the SAME op is already
+  // running, return THAT SAME promise (fn never invoked twice — double-click safe).
+  // A DIFFERENT op arriving while busy is REFUSED with an annotated BusyError instead
+  // of being coalesced: coalescing would hand the caller the wrong promise, whose
+  // resolution the UI then mis-renders as the new op's success ("Attempt scored.
+  // Look distance NaN." over an in-flight analyze) while the user's file is silently
+  // dropped (stress-hunt findings C7/C20, 2026-07-13). Clears lastError on entry (a
+  // fresh attempt that then succeeds must not leave the old banner up), sets
   // _inFlight synchronously before any await inside fn can run, and clears it in a
   // finally so a rejected op still unblocks the next call. --------------------------
-  const guarded = <T,>(fn: () => Promise<T>): Promise<T> => {
+  const guarded = <T,>(op: string, fn: () => Promise<T>): Promise<T> => {
     const existing = get()._inFlight;
-    if (existing) return existing as Promise<T>;
+    if (existing) {
+      if (get()._inFlightOp === op) return existing as Promise<T>;
+      return Promise.reject(
+        annotateError(
+          new BusyError(
+            `${op}(): a ${get()._inFlightOp || "gated"} call is already in flight — wait for it to finish.`
+          )
+        )
+      );
+    }
     set({ lastError: null });
     const p = (async () => {
       try {
         return await fn();
       } finally {
-        set({ _inFlight: null });
+        set({ _inFlight: null, _inFlightOp: null });
       }
     })();
-    set({ _inFlight: p });
+    set({ _inFlight: p, _inFlightOp: op });
     return p;
   };
 
@@ -645,12 +711,16 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     return chain._attemptCount - (L - 1 - idx);
   };
 
-  // -- history for the active chain: recipe values[] normalized as round 0, then each
+  // -- history for ONE chain: recipe values[] normalized as round 0, then each
   // stored attempt's correction.moves as subsequent rounds. applied_assumed is true
-  // ONLY when that round's backing map is absent. ----------------------------------
-  const historyForActiveChain = (): HistoryRound[] => {
+  // ONLY when that round's backing map is absent. Takes the target EXPLICITLY —
+  // reading s.activeTarget here would race a header target-flip that lands between
+  // an attempt's decode await and its request assembly (finding C21, 2026-07-13),
+  // mixing one chain's history into another chain's correction call. -----------------
+  const historyForChain = (target: TargetId | string): HistoryRound[] => {
     const s = get().session;
-    const chain = s.chains[s.activeTarget];
+    const chain = s.chains[target];
+    if (!chain) return [];
     const rounds: HistoryRound[] = [];
     if (chain.recipe && Array.isArray(chain.recipe.values)) {
       rounds.push({
@@ -736,12 +806,35 @@ export const engineStore = createStore<EngineStore>((set, get) => {
 
   // -- the analyze implementation (called directly by analyze() and
   // reanalyzeOtherTarget(), both already inside the shared guard). ------------------
+  // -- usable-metrics guard (finding C19, 2026-07-13): sessions persisted by older
+  // builds, or imported files that passed the dataUrl walk, can carry slots WITHOUT
+  // metrics (or without metrics.grid) — deriveState still reads "ready", so without
+  // this check diffVectors throws an UN-annotated TypeError before the annotating
+  // try/catch is reached: no banner, silently dead Analyze button. ------------------
+  const METRICS_HINT =
+    "This session's images are missing their measurement data (saved by an older " +
+    "version or an edited file) — re-drop the reference and base render, then try again.";
+  const slotMetricsUsable = (slot: { metrics?: unknown } | null | undefined): boolean => {
+    const m = slot?.metrics as MetricVector | undefined;
+    return !!(
+      m &&
+      m.lum &&
+      typeof m.lum.p50 === "number" &&
+      Array.isArray(m.grid) &&
+      m.grid.length === 16 &&
+      m.wb
+    );
+  };
+
   const analyzeImpl = async (): Promise<Recipe> => {
     const s = get().session;
     if (deriveState(s) === "empty") {
       throw new Error(
         "analyze(): requires both reference and base images to be set first."
       );
+    }
+    if (!slotMetricsUsable(s.ref) || !slotMetricsUsable(s.base)) {
+      throw annotateError(new Error(METRICS_HINT));
     }
     const target = s.activeTarget;
     // Lean evidence: send ONLY the diff (base - reference), not the full reference+base
@@ -893,6 +986,9 @@ export const engineStore = createStore<EngineStore>((set, get) => {
         `addAttempt(): active target must have a recipe first (state is "${st}"); call analyze() first.`
       );
     }
+    if (!slotMetricsUsable(s.ref)) {
+      throw annotateError(new Error(METRICS_HINT));
+    }
     const target = s.activeTarget;
     const chain = s.chains[target];
     // EXR attempts are decoded + developed (auto-EV) to a display-referred canvas first,
@@ -931,7 +1027,7 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     // label by +1 in the MOVE HISTORY the model reads (attempt 1's correction would
     // arrive marked "round 2" while analyzing attempt 2 — misnumbered input to the
     // oscillation guard). The vanilla source has the same ordering bug; fixed here.
-    const history = historyForActiveChain();
+    const history = historyForChain(target);
     if (typeof chain._attemptCount !== "number") chain._attemptCount = chain.attempts.length;
     chain._attemptCount++;
     const attemptN = chain._attemptCount;
@@ -1040,6 +1136,9 @@ export const engineStore = createStore<EngineStore>((set, get) => {
         "addProbeRender(): no probe armed for the active target — call setProbe(param) first."
       );
     }
+    if (!slotMetricsUsable(s.base)) {
+      throw annotateError(new Error(METRICS_HINT));
+    }
     // Decode/measure through the SAME captureSlot path as attempts, EXR branch
     // included. The linear buffer is NOT retained — the probe wants only the measured
     // deltas below. EXPOSURE-CRITICAL: an EXR probe must be developed at the BASE
@@ -1104,6 +1203,7 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     lastError: null,
     storagePersistent: true,
     _inFlight: null,
+    _inFlightOp: null,
     _analyze: analyzeViaApi,
     _testSessionId: null,
     exrSlots: { ref: null, base: null, settings: null },
@@ -1229,6 +1329,23 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       // the pull on a ref/base swap, mirroring the exrSlots clear that already guards this
       // slot for the same staleness reason. (A `settings` shot is not a matched scene image.)
       if ((slot === "ref" || slot === "base") && next.liveSettings) next.liveSettings = null;
+      // Same staleness rule for the calibration probe (finding C22, 2026-07-13): its
+      // measured response was taken against the PREVIOUS base render — after a ref/base
+      // swap it would scale a NEW scene's corrections by a DEAD scene's sensitivity,
+      // and the probe is marked higher-trust than the model's own guess.
+      if (slot === "ref" || slot === "base") {
+        let cleared = false;
+        const chains: Record<string, Chain> = {};
+        for (const [t, ch] of Object.entries(next.chains)) {
+          if (ch && ch.probe) {
+            chains[t] = { ...ch, probe: null };
+            cleared = true;
+          } else {
+            chains[t] = ch;
+          }
+        }
+        if (cleared) next.chains = chains;
+      }
       set({ session: next });
       await persist();
       return slot === "settings" ? { dataUrl: captured.dataUrl } : captured;
@@ -1281,11 +1398,11 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     },
 
     analyze() {
-      return guarded(() => analyzeImpl());
+      return guarded("analyze", () => analyzeImpl());
     },
 
     addAttempt(input) {
-      return guarded(() => addAttemptImpl(input));
+      return guarded("addAttempt", () => addAttemptImpl(input));
     },
 
     async setProbe(param) {
@@ -1326,11 +1443,11 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     },
 
     addProbeRender(input) {
-      return guarded(() => addProbeRenderImpl(input));
+      return guarded("addProbeRender", () => addProbeRenderImpl(input));
     },
 
     reanalyzeOtherTarget() {
-      return guarded(async () => {
+      return guarded("reanalyze", async () => {
         const s = get().session;
         if (!s.ref || !s.base) {
           throw new Error(
@@ -1404,12 +1521,22 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       // A restored session has no live EXR linear buffers (they are never persisted);
       // clear the side channel so a stale slider can't appear over a re-hydrated slot.
       set({ exrSlots: { ref: null, base: null, settings: null } });
+      // Clobber guard (finding C23, 2026-07-13): the IndexedDB load below is async —
+      // a user who drops an image (or acts at all) while it is in flight replaces the
+      // session object; adopting the hydrated one afterwards would silently discard
+      // that action. Every mutator swaps the session reference, so an identity check
+      // on the pre-load session detects "user got here first".
+      const preLoad = get().session;
       try {
         const latest = await STORE.loadLatest();
-        set({ session: (latest as unknown as Session) || blankSession(get()._testSessionId) });
+        if (get().session === preLoad) {
+          set({ session: (latest as unknown as Session) || blankSession(get()._testSessionId) });
+        }
       } catch (e) {
         annotateError(e);
-        set({ session: blankSession(get()._testSessionId) });
+        if (get().session === preLoad) {
+          set({ session: blankSession(get()._testSessionId) });
+        }
       }
       try {
         await STORE.pruneToNewest(SESSION_RETENTION_CAP);
@@ -1427,6 +1554,18 @@ export const engineStore = createStore<EngineStore>((set, get) => {
     },
 
     async importJSON(str) {
+      // In-flight gate (finding C18, 2026-07-13): an analyze/attempt resolving AFTER
+      // an import re-reads get().session and would stamp its result onto — and
+      // persist under — the freshly imported session (cross-session corruption),
+      // while addAttempt's round lands in a detached chain (silent loss of a paid
+      // model call). Same refusal every other mutator makes.
+      if (get()._inFlight) {
+        throw annotateError(
+          new BusyError(
+            "importJSON(): an analyze/attempt call is in flight — wait for it to finish before importing a session."
+          )
+        );
+      }
       const imported = (await STORE.importJSON(str)) as unknown as Session;
       // Clear the EXR side channel exactly like boot()/reset(): the retained linear
       // buffers belong to the PREVIOUS session's slots. Left in place, the next
@@ -1439,6 +1578,75 @@ export const engineStore = createStore<EngineStore>((set, get) => {
         exrSlots: { ref: null, base: null, settings: null },
       });
       return imported;
+    },
+
+    // -- expert chat -----------------------------------------------------------------
+    chatMessages() {
+      const chat = get().session.chat;
+      return chat && Array.isArray(chat.messages) ? chat.messages : [];
+    },
+
+    async chatAppend(msg) {
+      const s = get().session;
+      const prev = s.chat && Array.isArray(s.chat.messages) ? s.chat.messages : [];
+      const messages = [...prev, { ...msg, at: new Date().toISOString() }];
+      while (messages.length > CHAT_CAP) messages.shift();
+      set({ session: { ...s, chat: { messages } } });
+      await persist();
+      return get().session;
+    },
+
+    async chatCheckin(input, note) {
+      const s = get().session;
+      if (!s.ref) {
+        throw new Error(
+          "Load a reference image first — a check-in is measured against the reference."
+        );
+      }
+      if (!slotMetricsUsable(s.ref)) {
+        throw new Error(METRICS_HINT);
+      }
+      // Same ingest as addAttempt (EXR develop branch included), but NO model call,
+      // no attempt number, no history round — the chat is advisory; the formal refine
+      // loop stays the source of truth (the panel offers "log as attempt" separately).
+      let captured: { dataUrl: string; metrics: MetricVector };
+      if (input instanceof Blob && (await isExrFile(input as File))) {
+        const dev = await developExrToCanvas(input);
+        captured = await captureSlot(dev.canvas as unknown as DrawableSource);
+      } else {
+        captured = await captureSlot(input);
+      }
+      const evidence: CheckinEvidence = checkinEvidence(s.ref.metrics, captured.metrics);
+      const message: ChatMsg = {
+        role: "user",
+        content:
+          note && note.trim()
+            ? note.trim()
+            : "Here is my latest render — check it against the reference.",
+        at: new Date().toISOString(),
+        checkin: {
+          dataUrl: captured.dataUrl,
+          score: evidence.score,
+          matchPercent: evidence.matchPercent,
+          evidenceText: evidence.text,
+        },
+      };
+      const prev = get().session.chat?.messages ?? [];
+      const messages = [...prev, message];
+      while (messages.length > CHAT_CAP) messages.shift();
+      set({ session: { ...get().session, chat: { messages } } });
+      await persist();
+      return {
+        message,
+        evidence,
+        preCaptured: { dataUrl: captured.dataUrl, metrics: captured.metrics },
+      };
+    },
+
+    async chatClear() {
+      set({ session: { ...get().session, chat: null } });
+      await persist();
+      return get().session;
     },
   };
 });

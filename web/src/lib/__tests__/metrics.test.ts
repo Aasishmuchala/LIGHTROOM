@@ -217,6 +217,80 @@ describe("measureFromPixels — alpha handling", () => {
     // fully transparent falls back to counting all pixels (black) → clip.lo === 1
     expect(m.clip.lo).toBe(1);
   });
+
+  // -- stress fix C11: transparent grid cells must not read as measured BLACK. ------
+  it("a fully-transparent grid cell reads the image's opaque-mean (neutral), never black", () => {
+    const half = measureFromPixels(halfTransparent(32, 32), 32, 32);
+    // Columns 2..3 of the 4x4 grid cover the transparent right half — zero opaque
+    // pixels. Before the fix they reported 0 (fake pitch black); now they inherit
+    // the image's opaque-mean luminance, the honest "not measured" neutral.
+    for (const row of [0, 1, 2, 3]) {
+      for (const col of [2, 3]) {
+        const cell = half.grid[row * 4 + col];
+        expect(cell).toBeCloseTo(half.lum.mean, 6);
+        expect(cell).toBeGreaterThan(0.1); // decisively NOT black
+      }
+    }
+    // ...while covered cells still carry their own measured mean (uniform gray-200
+    // makes it equal the image mean too — the value, not the code path, coincides).
+    expect(half.grid[0]).toBeCloseTo(half.lum.mean, 6);
+  });
+
+  it("an alpha hole in ONE image no longer blocks the match gate (was score ~54)", () => {
+    // The exact stress repro: byte-identical opaque pixels, one image with half the
+    // frame at alpha=0. The hole used to read as 8 black grid cells (diff -0.578
+    // each) and scored ~54 — the match gate (<= MATCH_THRESHOLD) was unreachable.
+    const ref = measureFromPixels(solid(32, 32, 200, 200, 200), 32, 32);
+    const holed = measureFromPixels(halfTransparent(32, 32), 32, 32);
+    const s = scoreVectors(ref, holed);
+    expect(s).toBeLessThanOrEqual(MATCH_THRESHOLD);
+    expect(s).toBeLessThan(0.01); // identical opaque content ⇒ essentially matched
+  });
+
+  it("the SAME transparent hole in ref and attempt leaves the score ~unchanged vs a fully opaque pair", () => {
+    /** gray-`v` fill with the right half transparent when `holed`. */
+    const grayHalf = (v: number, holed: boolean) => {
+      const d = new Uint8ClampedArray(32 * 32 * 4);
+      for (let y = 0; y < 32; y++) {
+        for (let x = 0; x < 32; x++) {
+          const p = (y * 32 + x) * 4;
+          const transparent = holed && x >= 16;
+          d[p] = transparent ? 0 : v;
+          d[p + 1] = transparent ? 0 : v;
+          d[p + 2] = transparent ? 0 : v;
+          d[p + 3] = transparent ? 0 : 255;
+        }
+      }
+      return measureFromPixels(d, 32, 32);
+    };
+    // A real (small) tonal mismatch, measured opaque and holed-alike: identical
+    // transparent regions must contribute ~0 — the same look-distance either way.
+    const scoreOpaque = scoreVectors(grayHalf(200, false), grayHalf(190, false));
+    const scoreHoled = scoreVectors(grayHalf(200, true), grayHalf(190, true));
+    expect(scoreOpaque).toBeGreaterThan(1); // the pair is genuinely (mildly) mismatched
+    expect(scoreHoled).toBeCloseTo(scoreOpaque, 4);
+  });
+
+  it("a stray opaque pixel below the cell coverage floor is no-signal → neutral", () => {
+    // 64x64 ⇒ 256-pixel cells; a single opaque pixel is 0.39% coverage — under
+    // GRID_CELL_MIN_COVERAGE (1%), so the lone white pixel must NOT claim its whole
+    // (otherwise transparent) cell as near-white; the cell reads the image mean.
+    const d = new Uint8ClampedArray(64 * 64 * 4);
+    for (let y = 0; y < 64; y++) {
+      for (let x = 0; x < 64; x++) {
+        const p = (y * 64 + x) * 4;
+        const opq = x < 32 || (x === 63 && y === 0); // left half + one stray pixel
+        const v = x === 63 && y === 0 ? 255 : 200;
+        d[p] = opq ? v : 0;
+        d[p + 1] = opq ? v : 0;
+        d[p + 2] = opq ? v : 0;
+        d[p + 3] = opq ? 255 : 0;
+      }
+    }
+    const m = measureFromPixels(d, 64, 64);
+    expect(m.grid[3]).toBeCloseTo(m.lum.mean, 6); // top-right cell holds the stray
+    expect(m.grid[3]).toBeLessThan(0.9); // not the stray pixel's near-1.0 luminance
+  });
 });
 
 describe("downscale dimension math (never upscales)", () => {
