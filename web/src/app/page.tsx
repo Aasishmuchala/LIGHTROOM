@@ -7,8 +7,9 @@ import { InputPanel } from "@/components/InputPanel";
 import { EmptyState } from "@/components/EmptyState";
 import { ReadyState, AnalyzingState } from "@/components/StatusStates";
 import { RecipeView } from "@/components/RecipeView";
-import { RefineLedger } from "@/components/RefineLedger";
+import { RefineDock } from "@/components/RefineDock";
 import { ExpertChat } from "@/components/ExpertChat";
+import { StatusStrip } from "@/components/StatusStrip";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { StorageBanner } from "@/components/StorageBanner";
 import { Toast } from "@/components/bits";
@@ -133,13 +134,12 @@ export default function Home() {
   }, []);
 
   const hasRecipe = !!(chain && chain.recipe);
-  const hasAttempts = !!(chain && chain.attempts.length > 0);
 
   return (
     <div className="min-h-full">
       {/* The instrument: one bakelite faceplate with a chrome edge and corner screws.
           The header is its top plate; the two columns are the input bay + the readout. */}
-      <main className="mx-auto w-full max-w-[1180px] px-3 sm:px-6 py-6 sm:py-10">
+      <main className="mx-auto w-full max-w-[1340px] px-3 sm:px-6 py-6 sm:py-10">
         <div className="device">
           <span aria-hidden className="screw" style={{ top: 15, left: 15 }} />
           <span aria-hidden className="screw" style={{ top: 15, right: 15 }} />
@@ -148,7 +148,13 @@ export default function Home() {
 
           <Header />
 
-          {/* the bench: input bay (left) + readout (right) */}
+          {/* one-line "where am I" read-out spanning the whole faceplate */}
+          <div className="px-1 sm:px-2 mb-4">
+            <StatusStrip />
+          </div>
+
+          {/* the bench: input bay (left) + readout (right). The rail is fixed-width so
+              the readout — where the recipe and refine loop live — takes the room. */}
           <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)] items-start px-1 sm:px-2 pb-1">
             {/* LEFT: the input bay */}
             <aside>
@@ -170,27 +176,42 @@ export default function Home() {
               ) : state === "empty" ? (
                 <EmptyState />
               ) : state === "ready" ? (
-                <ReadyState target={session.activeTarget} />
-              ) : (
                 <>
-                  {inFlight && (
-                    <div className="rounded-[var(--radius-control)] bg-[var(--color-accent-tint)] px-4 py-2.5 flex items-center gap-2.5 animate-fade shadow-[inset_0_1px_2px_oklch(0.2_0.01_60_/_0.25),0_0_0_1px_var(--color-accent-line)]">
-                      <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-[var(--color-accent-strong)] border-t-transparent animate-spin" />
-                      <span className="text-[0.82rem] font-semibold text-[var(--color-accent-ink)]">
-                        Reading the light…
-                      </span>
-                    </div>
-                  )}
-                  <RecipeView onToast={showToast} />
-                  {hasAttempts && <RefineLedger onToast={showToast} />}
+                  <ReadyState target={session.activeTarget} />
+                  {/* operator line is available in ready state too (ask questions
+                      before analyzing) — full width, nothing to sit beside yet */}
+                  <ExpertChat onToast={showToast} />
                 </>
-              )}
+              ) : (
+                // RECIPE PRESENT: recipe is the hero (left/main); the refine loop —
+                // the attempt port, the scored ledger, and the operator line — docks
+                // BESIDE it on wide screens so the whole apply→re-render→check loop is
+                // glanceable without scrolling past the recipe. Stacks under it on
+                // laptops/tablets (< xl).
+                <div className="grid gap-4 items-start xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]">
+                  <div className="min-w-0 flex flex-col gap-4">
+                    {inFlight && (
+                      <div className="rounded-[var(--radius-control)] bg-[var(--color-accent-tint)] px-4 py-2.5 flex items-center gap-2.5 animate-fade shadow-[inset_0_1px_2px_oklch(0.2_0.01_60_/_0.25),0_0_0_1px_var(--color-accent-line)]">
+                        <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-[var(--color-accent-strong)] border-t-transparent animate-spin" />
+                        <span className="text-[0.82rem] font-semibold text-[var(--color-accent-ink)]">
+                          Reading the light…
+                        </span>
+                      </div>
+                    )}
+                    <RecipeView onToast={showToast} />
+                  </div>
 
-              {/* The operator line: available once both frames are loaded (a check-in
-                  needs a reference to measure against, and there's a session to discuss).
-                  Sits below the readout as its own instrument. */}
-              {state !== "empty" && !(inFlight && !hasRecipe) && (
-                <ExpertChat onToast={showToast} />
+                  {/* the refine dock: sticky on wide screens so it stays in view as the
+                      artist scrolls the recipe sheet */}
+                  <div className="min-w-0 flex flex-col gap-4 xl:sticky xl:top-4">
+                    <RefineDock
+                      focusedSlot={focusedSlot}
+                      setFocusedSlot={setFocusedSlot}
+                      onToast={showToast}
+                    />
+                    <ExpertChat onToast={showToast} />
+                  </div>
+                </div>
               )}
             </section>
           </div>

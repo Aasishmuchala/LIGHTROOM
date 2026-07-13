@@ -29,43 +29,33 @@ export function InputPanel({
   // EXR develop state per named slot (drives the exposure slider). Reading the whole
   // record (stable ref unless an EXR slot changes) is fine for a selector.
   const exrSlots = useEngine((s) => s.exrSlots);
-  // Derive attempt counts from the (stable-ref) chain rather than calling
-  // attemptInfo() in the selector, which returns a fresh object each render and
-  // would loop useSyncExternalStore.
-  const info = {
-    n: chain ? (typeof chain._attemptCount === "number" ? chain._attemptCount : chain.attempts.length) : 0,
-    stored: chain ? chain.attempts.length : 0,
-  };
 
   const hasRecipe = !!(chain && chain.recipe);
   const analyzeReady = state !== "empty";
   const refining = state === "analyzed" || state === "refining";
   const otherTarget =
     session.activeTarget === "vray7max" ? "Chaos Vantage 3.3" : "V-Ray 7";
-  // Purely presentational progress read-out on the rail faceplate (no engine logic):
-  // which step the flow is on, out of the visible step count.
-  const totalSteps = refining ? 4 : 3;
-  const currentStep = hasRecipe ? 4 : analyzeReady ? 3 : 1;
-  const stepBadge = `Step ${Math.min(currentStep, totalSteps)} / ${totalSteps}`;
+  // Purely presentational progress read-out on the rail faceplate. The rail's job is to
+  // PRODUCE a recipe — three steps (frames → scene → analyze). Refining (dropping a
+  // re-render, reading the score) now lives on the readout beside the ledger, so it is
+  // no longer a rail step. Once a recipe exists the rail has done its job (3/3).
+  const currentStep = hasRecipe || analyzeReady ? 3 : 1;
+  const stepBadge = `Step ${currentStep} / 3`;
 
   const slotData = (key: string): string | null =>
     key === "ref" ? session.ref?.dataUrl ?? null : session.base?.dataUrl ?? null;
 
-  // Ingest a file into a slot: EXR/other reject with the verbatim message; otherwise
-  // hand the File straight to the engine (it decodes/measures/downscales).
-  const ingest = async (slot: string, file: File) => {
+  // Ingest a file into a named slot (ref / base): EXR/other reject with the verbatim
+  // message; otherwise hand the File straight to the engine (it decodes/measures/
+  // downscales). The attempt drop now lives in the readout's RefineDock.
+  const ingest = async (slot: "ref" | "base", file: File) => {
     const check = acceptsFile(file);
     if (!check.ok) {
       onToast(check.reason);
       return;
     }
     try {
-      if (slot === "attempt") {
-        const { score } = await engineStore.getState().addAttempt(file);
-        onToast(`Attempt scored. Look distance ${Math.round(score)}.`);
-      } else {
-        await engineStore.getState().setImage(slot as "ref" | "base", file);
-      }
+      await engineStore.getState().setImage(slot, file);
       setFocusedSlot(null);
     } catch {
       /* the store records lastError; the banner shows it */
@@ -128,7 +118,7 @@ export function InputPanel({
                   dataUrl={slotData(def.key)}
                   focused={focusedSlot === def.key}
                   onFocus={() => setFocusedSlot(def.key)}
-                  onFile={(f) => ingest(def.key, f)}
+                  onFile={(f) => ingest(def.key as "ref" | "base", f)}
                   large
                   exrEv={exr ? exr.ev : null}
                   onExrEv={(ev) => onExrEv(def.key as "ref" | "base", ev)}
@@ -178,8 +168,9 @@ export function InputPanel({
           </div>
         </Step>
 
-        {/* Step 3 — analyze: the commit action of the flow */}
-        <Step n={3} title={hasRecipe ? "Re-analyze" : "Analyze"} last={!refining}>
+        {/* Step 3 — analyze: the commit action of the flow (last rail step; refining
+            happens on the readout beside the recipe) */}
+        <Step n={3} title={hasRecipe ? "Re-analyze" : "Analyze"} last>
           <div className="flex flex-col">
             <button
               className="btn btn-primary btn-analyze w-full"
@@ -220,24 +211,6 @@ export function InputPanel({
             )}
           </div>
         </Step>
-
-        {/* Step 4 — refine (only with a recipe) */}
-        {refining && (
-          <Step n={4} title="Refine" sub="Apply the recipe, re-render, drop the result back in." last>
-            <DropSlot
-              slotKey="attempt"
-              label="Attempt"
-              hint={`${info.n} so far · becomes ${info.n + 1}`}
-              focused={focusedSlot === "attempt"}
-              onFocus={() => setFocusedSlot("attempt")}
-              onFile={(f) => ingest("attempt", f)}
-              captionOverride={`Drop the re-render, becomes attempt ${info.n + 1}`}
-            />
-            <p className="text-[0.72rem] text-[oklch(0.83_0.012_80)] mt-2.5 pl-0.5">
-              Same VFB display settings every attempt.
-            </p>
-          </Step>
-        )}
       </div>
     </div>
   );

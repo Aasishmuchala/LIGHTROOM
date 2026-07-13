@@ -312,6 +312,93 @@ h1, h2, h3, h4 { color: var(--color-ink); text-wrap: balance; }
 .btn-mini:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* ============================================================================
+   SETUP gear + popover — the set-and-forget controls (model, consensus, session
+   import/export) pulled off the command bar. Trigger sits on the bakelite bar; the
+   panel is an ivory dial card floating over the instrument (fixed-positioned).
+   ============================================================================ */
+.setup-trigger {
+  display: inline-flex; align-items: center; gap: 0.36rem; flex: none;
+  font-size: 0.76rem; font-weight: 600; letter-spacing: 0.01em; cursor: pointer; border: none;
+  padding: 0.4rem 0.66rem; border-radius: 8px; color: oklch(0.90 0.008 82);
+  background: linear-gradient(180deg, oklch(0.60 0.01 72), oklch(0.53 0.01 70));
+  box-shadow: 0 1px 0 oklch(1 0 0 / 0.14) inset, 0 1px 2px oklch(0.15 0.01 60 / 0.4), 0 0 0 1px var(--color-chrome-line);
+  transition: transform var(--dur-fast) var(--ease-out), color var(--dur) var(--ease-out);
+}
+.setup-trigger:hover { color: oklch(0.97 0.006 84); transform: translateY(-1px); }
+.setup-trigger:active { transform: translateY(0.5px); }
+.setup-trigger.is-open { color: var(--color-accent-hi); box-shadow: 0 1px 2px oklch(0.15 0.01 60 / 0.5) inset, 0 0 0 1px var(--color-accent-line); }
+.setup-trigger svg { flex: none; }
+@media (max-width: 460px) { .setup-trigger-label { display: none; } }
+
+.setup-panel {
+  position: fixed; z-index: var(--z-dropdown); width: min(20rem, calc(100vw - 1rem));
+  display: flex; flex-direction: column; gap: 0.15rem;
+  padding: 0.5rem; border-radius: var(--radius-card);
+  background: linear-gradient(180deg, oklch(0.945 0.012 88), var(--color-surface));
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--color-line-strong), 0 1px 0 oklch(1 0 0 / 0.8) inset;
+}
+.setup-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  padding: 0.5rem 0.55rem; border-radius: 9px;
+}
+.setup-row:hover { background: oklch(0.90 0.016 85 / 0.5); }
+.setup-row .select { min-width: 8rem; }
+.setup-label { font-size: 0.82rem; font-weight: 640; color: var(--color-ink); }
+.setup-note { font-size: 0.7rem; color: var(--color-muted); line-height: 1.4; margin-top: 0.1rem; max-width: 15rem; }
+.setup-divider { height: 1px; background: var(--color-line); margin: 0.2rem 0.55rem; }
+.setup-foot { font-size: 0.68rem; color: var(--color-faint); padding: 0.3rem 0.6rem 0.15rem; }
+
+/* ============================================================================
+   STATUS STRIP — the one-line "where am I" read-out under the command bar. A row of
+   stage nodes (done / current / todo) on the left, the live best-match on the right.
+   ============================================================================ */
+.status-strip {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  padding: 0.5rem 0.85rem; border-radius: var(--radius-control);
+  background: linear-gradient(180deg, oklch(0.585 0.01 72), oklch(0.545 0.01 70));
+  box-shadow: 0 1px 0 oklch(1 0 0 / 0.12) inset, 0 1px 2px oklch(0.15 0.01 60 / 0.3), 0 0 0 1px var(--color-chrome-line);
+}
+.status-stages { display: flex; align-items: center; gap: 0; margin: 0; padding: 0; list-style: none; min-width: 0; flex-wrap: wrap; }
+.status-stage { display: inline-flex; align-items: center; gap: 0.44rem; }
+.status-stage-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: oklch(0.44 0.01 70); box-shadow: 0 1px 1px oklch(0.15 0.01 60 / 0.4) inset;
+  transition: background var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+.status-stage-label {
+  font-size: 0.74rem; font-weight: 600; letter-spacing: 0.01em; color: oklch(0.82 0.008 80);
+  transition: color var(--dur) var(--ease-out);
+}
+.status-stage-sep { width: 1.4rem; height: 1px; margin: 0 0.5rem; background: oklch(0.46 0.01 70); flex: none; }
+.status-stage[data-state="done"] .status-stage-dot {
+  background: radial-gradient(circle at 40% 35%, oklch(0.82 0.14 158), var(--color-good) 65%); box-shadow: 0 0 4px oklch(0.66 0.14 158 / 0.4);
+}
+.status-stage[data-state="done"] .status-stage-label { color: oklch(0.88 0.01 82); }
+.status-stage[data-state="current"] .status-stage-dot {
+  background: radial-gradient(circle at 40% 35%, var(--color-accent-hi), var(--color-accent) 62%, var(--color-accent-strong));
+  box-shadow: 0 0 7px var(--amber-glow); animation: lm-pulse 2s var(--ease-out) infinite;
+}
+.status-stage[data-state="current"] .status-stage-label { color: oklch(0.97 0.006 84); font-weight: 700; }
+
+.status-read { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.status-read-pct { font-size: 0.95rem; font-weight: 750; color: var(--color-accent-hi); letter-spacing: -0.01em; }
+.status-read-sub { font-size: 0.68rem; font-weight: 500; color: oklch(0.82 0.008 80); }
+.status-read-hint { font-size: 0.74rem; color: oklch(0.85 0.008 80); text-align: right; }
+
+/* ============================================================================
+   REFINE DOCK — the co-located refine loop (attempt port + scored ledger) on the
+   readout. An ivory work-card so it reads as part of the results, not the rail.
+   ============================================================================ */
+.refine-dock {
+  border-radius: var(--radius-card); padding: 0.9rem 1rem 1rem;
+  background: linear-gradient(180deg, oklch(0.94 0.014 87), var(--color-surface));
+  box-shadow: 0 1px 0 oklch(1 0 0 / 0.7) inset, 0 0 0 1px var(--color-line), var(--shadow-sm);
+}
+.refine-dock-head { display: flex; flex-direction: column; gap: 0.12rem; margin-bottom: 0.7rem; }
+.refine-dock-title { font-size: 0.95rem; font-weight: 680; letter-spacing: -0.01em; color: var(--color-ink); }
+.refine-dock-sub { font-size: 0.74rem; color: var(--color-muted); line-height: 1.4; }
+
+/* ============================================================================
    Illuminated PUSHBUTTONS — the scene / time / rig picker. Active = depressed +
    amber lamp lit. (.btn-chip keeps its name; the components are untouched.)
    ============================================================================ */
