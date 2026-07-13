@@ -172,6 +172,30 @@ export function RecipeView({ onToast }: { onToast: (m: string) => void }) {
             </div>
           </div>
 
+          {/* AREA MODE disclosure — scene-global moves the model wanted but this
+              session's lock withheld. Honest and quiet: the user sees exactly what
+              was NOT taken and can revisit the hero shot if a global truly blocks. */}
+          {Array.isArray(recipe.withheld_globals) && recipe.withheld_globals.length > 0 && (
+            <div className="mt-3 rounded-[9px] px-3 py-2 bg-[var(--color-info-tint)] shadow-[0_0_0_1px_oklch(0.62_0.12_245_/_0.35)]">
+              <div className="text-[0.76rem] font-semibold text-[var(--color-info-ink)]">
+                {recipe.withheld_globals.length} scene-global move
+                {recipe.withheld_globals.length === 1 ? "" : "s"} withheld — globals are locked for
+                this session.
+              </div>
+              <div className="mt-1 text-[0.72rem] text-[var(--color-ink-2)] leading-snug">
+                {recipe.withheld_globals.map((w, i) => (
+                  <span key={w.param}>
+                    {i > 0 && " · "}
+                    <span className="jewel">{w.param}</span> → {String(w.set)}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-1 text-[0.7rem] text-[var(--color-muted)]">
+                If the match stalls without them, unlock globals or revisit the hero shot.
+              </div>
+            </div>
+          )}
+
           {/* calibration read-out — the signature spectrum, load-bearing: the axis the
               tool measures on, with the matched temperature marked. */}
           <CalibrationReadout changed={totalChanged} total={rows.length} />

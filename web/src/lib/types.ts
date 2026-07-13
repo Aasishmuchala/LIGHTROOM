@@ -241,6 +241,12 @@ export interface Recipe {
    *  the three fired calls actually fulfilled (>= 1). Absent on single-call recipes
    *  and on persisted sessions from older versions — null-guard everywhere. */
   consensus?: { runs: number };
+  /** OPTIONAL Area-mode withholdings (2026-07-13 addition): scene-GLOBAL moves the
+   *  model emitted while session.lockGlobals was on. The engine removes them from
+   *  `values` (they must not be applied or enter history) and parks them here so the
+   *  UI can say what was withheld and why. Absent unless Area mode withheld something;
+   *  older persisted sessions lack it — null-guard everywhere. */
+  withheld_globals?: Array<{ param: string; set: number | string; why?: string }>;
 }
 
 /** An emit_correction tool result (refine round). */
@@ -250,6 +256,9 @@ export interface Correction {
   status: RecipeStatus | string;
   status_reason: string;
   applied_assumed: boolean;
+  /** OPTIONAL Area-mode withholdings — same contract as Recipe.withheld_globals
+   *  (correction moves use `to`, normalized to `set` here for one UI shape). */
+  withheld_globals?: Array<{ param: string; set: number | string; why?: string }>;
 }
 
 /** JSON-schema tool definition shape (emit_recipe / emit_correction). Kept

@@ -4,6 +4,7 @@
 // on any adapter, engine, or the DOM.
 
 import { PACKS } from "./packs";
+import { LOCKED_GROUPS_PROSE, ALLOWED_GROUPS_PROSE } from "./scope";
 import type { ToolSchema, ValidationResult, ModeName, TargetId } from "./types";
 
 // -- emit_recipe: the full-analysis tool. Byte-fixed by the plan (Step 4.1) — do
@@ -108,7 +109,17 @@ export const EMIT_CORRECTION: ToolSchema = {
 // spinner") comes from PACKS.promptFragment(target) appended at the end, never
 // hardcoded here. That keeps this function identical in shape for every future
 // pack (adding a host is a data task, per the spec's non-goals). -----------------
-export function systemPrompt(target: TargetId | string, mode: ModeName | string): string {
+export interface SystemPromptOpts {
+  /** Area mode (big projects): scene globals are frozen — the model must solve this
+   *  shot with per-camera + local-light moves only. See lib/scope.ts. */
+  lockGlobals?: boolean;
+}
+
+export function systemPrompt(
+  target: TargetId | string,
+  mode: ModeName | string,
+  opts?: SystemPromptOpts
+): string {
   const isCorrection = mode === "correction";
   const lines: string[] = [];
 
@@ -155,6 +166,24 @@ export function systemPrompt(target: TargetId | string, mode: ModeName | string)
       "no spinner for them), STATE AN EXPLICIT NUMERIC TARGET inside the instruction (e.g. 'azimuth ~110°, " +
       "elevation ~15°', '~5200 K') so each refine round has a number to nudge rather than vague prose."
   );
+  // AREA MODE (big projects): the user matched the project's globals on a hero shot
+  // and is now doing a PER-AREA pass — one scene, many cameras/rooms. Scene-global
+  // controls are frozen; this shot must be solved with per-camera + local moves only.
+  // The app also enforces this after validation (engine withholds any global move
+  // that slips through), but telling the model up front yields recipes that actually
+  // budget the whole correction into the allowed controls.
+  if (opts?.lockGlobals) {
+    lines.push("");
+    lines.push(
+      "AREA MODE — SCENE GLOBALS ARE LOCKED: this is a per-area pass on a larger project whose global " +
+        `lighting (${LOCKED_GROUPS_PROSE}) was already matched on a hero shot and MUST NOT change — a global ` +
+        "move here would silently re-light every other area of the project. Emit moves ONLY for " +
+        `${ALLOWED_GROUPS_PROSE}. Close the measured gap with camera exposure/WB first, then local lights. ` +
+        "If the reference genuinely cannot be matched without touching a locked control, still emit the best " +
+        "achievable camera+local recipe and state in `rationale` (or `status_reason`) exactly which locked " +
+        "control is the blocker and what it would need — the user decides whether to revisit the hero shot."
+    );
+  }
   lines.push("");
   lines.push(
     "Baseline convention: unless a settings screenshot is supplied, assume the target is at its FACTORY " +

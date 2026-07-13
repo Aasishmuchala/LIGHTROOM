@@ -512,6 +512,10 @@ export const STORE = {
     (o as unknown as { chat?: unknown }).chat = this._sanitizeImportedChat(
       (o as unknown as { chat?: unknown }).chat
     );
+    // -- AREA-MODE FLAG: engine-owned boolean; anything but literal true imports as
+    // false (a truthy string here would silently lock a session's globals).
+    (o as unknown as { lockGlobals?: unknown }).lockGlobals =
+      (o as unknown as { lockGlobals?: unknown }).lockGlobals === true;
     await this.saveSession(o);
     return o;
   },

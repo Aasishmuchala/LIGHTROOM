@@ -48,6 +48,7 @@ import {
   type LinearStats,
 } from "@/lib/develop";
 import { PACKS } from "@/lib/packs";
+import { scopeOf } from "@/lib/scope";
 import { checkinEvidence, type CheckinEvidence } from "@/lib/chat-digest";
 import { systemPrompt, validateRecipe, EMIT_RECIPE, EMIT_CORRECTION } from "@/lib/schemas";
 import { STORE, type StoredSession } from "@/lib/store";
@@ -197,6 +198,11 @@ export interface Session {
   liveSettings?: LiveSettings | null;
   /** Expert-chat transcript; optional — older persisted sessions lack it. */
   chat?: { messages: ChatMsg[] } | null;
+  /** Area mode (2026-07-13, big projects): scene GLOBALS are locked — analyses and
+   *  corrections may move only per-camera + local-light controls; global moves the
+   *  model emits are withheld (recipe/correction.withheld_globals). Optional — older
+   *  persisted sessions lack it; absent means unlocked. */
+  lockGlobals?: boolean;
 }
 
 export type EngineState = "empty" | "ready" | "analyzed" | "refining";
@@ -418,6 +424,40 @@ export function mergeConsensusRecipes(
 }
 
 // ---------------------------------------------------------------------------
+// withholdGlobals(cleaned, itemsKey) — PURE: the Area-mode enforcement belt. The
+// system prompt already tells the model globals are locked, but a directive is not a
+// guarantee — any scene-GLOBAL move that slips through is REMOVED from the recipe's
+// values / correction's moves (so it can never be applied, exported, or enter the
+// move history) and parked on `withheld_globals` for the UI to disclose. Correction
+// moves carry `to` where recipe values carry `set`; both normalize to `set` in the
+// withheld row so the UI renders one shape.
+// ---------------------------------------------------------------------------
+export function withholdGlobals(
+  cleaned: Record<string, unknown>,
+  itemsKey: "values" | "moves"
+): Record<string, unknown> {
+  const items = Array.isArray(cleaned[itemsKey])
+    ? (cleaned[itemsKey] as Array<Record<string, unknown>>)
+    : [];
+  const kept: Array<Record<string, unknown>> = [];
+  const withheld: Array<{ param: string; set: number | string; why?: string }> = [];
+  for (const it of items) {
+    if (it && typeof it.param === "string" && scopeOf(it.param) === "global") {
+      const raw = itemsKey === "values" ? it.set : it.to;
+      withheld.push({
+        param: it.param,
+        set: typeof raw === "number" || typeof raw === "string" ? raw : String(raw),
+        ...(typeof it.why === "string" && it.why ? { why: it.why } : {}),
+      });
+    } else {
+      kept.push(it);
+    }
+  }
+  if (!withheld.length) return cleaned;
+  return { ...cleaned, [itemsKey]: kept, withheld_globals: withheld };
+}
+
+// ---------------------------------------------------------------------------
 // Store state + actions.
 // ---------------------------------------------------------------------------
 export interface EngineStore {
@@ -455,6 +495,8 @@ export interface EngineStore {
   // -- actions --
   reset(): Session;
   setContext(patch: Partial<Session["context"]>): Promise<Session>;
+  /** Area mode: freeze/unfreeze the scene globals for this session (persisted). */
+  setLockGlobals(on: boolean): Promise<Session>;
   /** Record (or clear) settings pulled live from 3ds Max; persisted with the session. */
   setLiveSettings(live: LiveSettings | null): Promise<Session>;
   setActiveTarget(target: TargetId | string): Promise<Session>;
@@ -522,6 +564,7 @@ function blankSession(testSessionId: string | null): Session {
       vantage33: { recipe: null, attempts: [], _attemptCount: 0 },
     },
     chat: null,
+    lockGlobals: false,
   };
 }
 
@@ -872,7 +915,7 @@ export const engineStore = createStore<EngineStore>((set, get) => {
         mediaType: mediaTypeFromDataUrl(s.settingsShot.dataUrl),
       });
     }
-    const system = systemPrompt(target, "recipe");
+    const system = systemPrompt(target, "recipe", { lockGlobals: s.lockGlobals === true });
     // Calibration probe: once the single-knob probe render has been measured, every
     // subsequent model call for this chain — re-analyze included — carries the
     // measured sensitivity so magnitudes are scaled by the scene, not guessed.
@@ -967,6 +1010,13 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       throw annotateError(e);
     }
 
+    // AREA-MODE BELT: with globals locked, strip any scene-global move the model
+    // emitted anyway (prompt directive + this filter = defense in depth). Runs AFTER
+    // the consensus merge so a merged recipe is filtered exactly like a single one.
+    if (s.lockGlobals === true) {
+      cleaned = withholdGlobals(cleaned, "values");
+    }
+
     // Mutate the chain immutably enough for zustand subscribers to see a new session ref.
     const s2 = get().session;
     s2.chains[target].recipe = cleaned as unknown as Recipe;
@@ -1035,7 +1085,7 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       { role: "reference", dataUrl: s.ref!.dataUrl, mediaType: mediaTypeFromDataUrl(s.ref!.dataUrl) },
       { role: "attempt", n: attemptN, dataUrl: captured.dataUrl, mediaType: mediaTypeFromDataUrl(captured.dataUrl) },
     ];
-    const system = systemPrompt(target, "correction");
+    const system = systemPrompt(target, "correction", { lockGlobals: s.lockGlobals === true });
     const userContent = buildUserContent({
       mode: "correction",
       images,
@@ -1074,6 +1124,12 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       // attemptNumberForChain assumes each increment ended in a stored row.
       chain._attemptCount--;
       throw annotateError(e);
+    }
+
+    // AREA-MODE BELT (see analyzeImpl): strip scene-global trims before they can
+    // enter the ledger, the applied map, or the next round's move history.
+    if (s.lockGlobals === true) {
+      cleaned = withholdGlobals(cleaned, "moves");
     }
 
     const correction = cleaned as unknown as Correction;
@@ -1251,6 +1307,14 @@ export const engineStore = createStore<EngineStore>((set, get) => {
       set({ lastError: null });
       const s = get().session;
       const next = { ...s, liveSettings: live };
+      set({ session: next });
+      await persist();
+      return next;
+    },
+
+    async setLockGlobals(on) {
+      set({ lastError: null });
+      const next = { ...get().session, lockGlobals: on === true };
       set({ session: next });
       await persist();
       return next;

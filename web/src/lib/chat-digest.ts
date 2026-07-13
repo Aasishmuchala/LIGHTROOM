@@ -58,6 +58,7 @@ export interface DigestSession {
   activeTarget?: string;
   chains?: Record<string, DigestChain | undefined>;
   liveSettings?: { renderer?: string; params?: Record<string, number | string> } | null;
+  lockGlobals?: boolean;
 }
 
 // Caps — the digest is a system-prompt tenant, not a dump. -------------------------
@@ -103,6 +104,14 @@ export function sessionDigest(session: DigestSession | null | undefined): string
     .map(([k, v]) => `${k}: ${clip(v, 40)}`)
     .join(", ");
   if (chips) lines.push(`- scene context: ${chips}`);
+
+  if (session.lockGlobals === true) {
+    lines.push(
+      "- AREA MODE: scene globals (sun/sky/environment/fog/color mapping…) are LOCKED for this session — " +
+        "it is a per-area pass on a larger project; only camera exposure/WB and local lights may move. " +
+        "Recommend only those; a locked control can be named as the blocker but never as a move."
+    );
+  }
 
   if (recipe && Array.isArray(recipe.values)) {
     const applied = chain?.recipeApplied || null;

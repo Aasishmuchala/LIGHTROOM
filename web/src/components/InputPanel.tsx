@@ -172,6 +172,35 @@ export function InputPanel({
             happens on the readout beside the recipe) */}
         <Step n={3} title={hasRecipe ? "Re-analyze" : "Analyze"} last>
           <div className="flex flex-col">
+            {/* AREA MODE — the big-project switch. On: this session is a per-area pass;
+                sun/sky/fog/color-mapping stay frozen (matched once on the hero shot) and
+                the recipe solves with camera exposure + local lights only. The engine
+                withholds any global move the model emits anyway. */}
+            <button
+              type="button"
+              className="area-lock mb-2.5"
+              data-on={session.lockGlobals === true}
+              aria-pressed={session.lockGlobals === true}
+              onClick={() =>
+                engineStore.getState().setLockGlobals(!(session.lockGlobals === true))
+              }
+              title="Per-area pass on a big project: keep sun, sky, fog & color mapping frozen — solve this shot with camera exposure and local lights only."
+            >
+              <span className="area-lock-lamp" aria-hidden />
+              <span className="min-w-0 text-left">
+                <span className="area-lock-title">
+                  Lock scene globals
+                  <span className="area-lock-state">
+                    {session.lockGlobals === true ? "ON" : "OFF"}
+                  </span>
+                </span>
+                <span className="area-lock-sub">
+                  {session.lockGlobals === true
+                    ? "Per-area pass — camera + local lights only."
+                    : "Big project? Match globals on a hero shot, then lock them here."}
+                </span>
+              </span>
+            </button>
             <button
               className="btn btn-primary btn-analyze w-full"
               disabled={!analyzeReady || inFlight}
